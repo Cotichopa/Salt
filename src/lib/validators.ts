@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseAmount, todayISO } from "@/lib/format";
+import { parseKeywords } from "@/lib/text";
 
 // Reglas de validación compartidas. Se usan en el servidor antes de tocar la base,
 // así ningún dato inválido entra, venga de la web o (más adelante) de WhatsApp.
@@ -65,6 +66,22 @@ export const expenseSchema = z.object({
 });
 
 export type ExpenseInput = z.infer<typeof expenseSchema>;
+
+export const categorySchema = z.object({
+  name: z.string().trim().min(2, "Mínimo 2 caracteres").max(30, "Máximo 30 caracteres"),
+  emoji: z
+    .string()
+    .trim()
+    .max(8, "Poné un solo emoji")
+    .transform((v) => v || null),
+  keywords: z
+    .string()
+    .max(500, "Demasiadas palabras")
+    .transform(parseKeywords)
+    .refine((k) => k.length <= 30, "Máximo 30 palabras clave"),
+});
+
+export type CategoryInput = z.infer<typeof categorySchema>;
 
 // Estado que devuelven las acciones de formularios para mostrar errores o avisos
 export type FormState =

@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const links = [
     { href: "/dashboard", label: "Inicio" },
     { href: "/gastos", label: "Gastos" },
+    { href: "/categorias", label: "Categorías" },
     ...(user.role === "ADMIN" ? [{ href: "/admin/usuarios", label: "Cuentas" }] : []),
   ];
 
@@ -21,12 +22,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <Link href="/dashboard" className="font-semibold">
             🧂 Salt
           </Link>
-          <nav className="flex flex-1 gap-1">
+          <nav className="flex flex-1 gap-1 overflow-x-auto">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
-                className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="shrink-0 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 {l.label}
               </Link>

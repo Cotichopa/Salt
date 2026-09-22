@@ -2,28 +2,12 @@ import "server-only";
 import { db } from "@/lib/db";
 import { dateToISO, isoToDate, monthRange, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import type { ExpenseInput } from "@/lib/validators";
+import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import type { Prisma, Source } from "@/generated/prisma/client";
 
 // Lógica de gastos, compartida por la web y el bot de WhatsApp.
 // Regla de oro: TODAS las funciones reciben el userId y filtran por él,
 // así nadie puede ver ni tocar gastos de otra persona.
-
-/** Categorías que puede usar un usuario: las base (userId null) + las propias */
-export function listCategories(userId: string) {
-  return db.category.findMany({
-    where: { OR: [{ userId: null }, { userId }] },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, emoji: true, keywords: true, userId: true },
-  });
-}
-
-async function assertCategoryAllowed(userId: string, categoryId: string) {
-  const category = await db.category.findFirst({
-    where: { id: categoryId, OR: [{ userId: null }, { userId }] },
-    select: { id: true },
-  });
-  if (!category) throw new ExpenseError("Categoría inválida");
-}
 
 export class ExpenseError extends Error {}
 
@@ -85,6 +69,15 @@ export function totalsByCurrency(expenses: ExpenseDTO[]) {
   const totals: Record<CurrencyCode, number> = { ARS: 0, USD: 0 };
   for (const e of expenses) totals[e.currency] += e.amount;
   return totals;
+}
+
+async function assertCategoryAllowed(userId: string, categoryId: string) {
+  try {
+    await assertCategoryUsable(userId, categoryId);
+  } catch (e) {
+    if (e instanceof CategoryError) throw new ExpenseError(e.message);
+    throw e;
+  }
 }
 
 export async function createExpense(userId: string, input: ExpenseInput, source: Source = "WEB") {
