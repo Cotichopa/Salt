@@ -17,6 +17,9 @@ export type PendingExpense = {
   description: string | null;
   date: string;
   guessedMethod?: boolean; // true si el medio de pago lo dedujimos nosotros
+  sourceId?: string | null; // tarjeta o billetera
+  sourceName?: string | null;
+  installments?: number;
 };
 
 export type Draft = {
@@ -30,6 +33,23 @@ export type Draft = {
   date?: string;
   expenseId?: string;
   page?: number;
+  // Para editar por texto: qué gasto y con qué valores queda
+  edit?: {
+    expenseId: string;
+    before: string;
+    after: string;
+    values: {
+      categoryId: string;
+      amount: number;
+      currency: "ARS" | "USD";
+      paymentMethod: "CASH" | "DEBIT" | "CREDIT" | "TRANSFER";
+      paymentSourceId?: string;
+      description: string | null;
+      date: string;
+    };
+  };
+  // Para completar datos que faltan de la propuesta
+  missing?: ("description" | "source")[];
 };
 
 export type Session = { state: string; data: Draft };

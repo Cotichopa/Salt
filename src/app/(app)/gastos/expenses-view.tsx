@@ -10,15 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ExpenseForm, type CategoryOption } from "./expense-form";
+import { ExpenseForm, type CategoryOption, type SourceOption } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
 
 // Vista de gastos: en celular una lista agrupada por día, en pantalla grande una tabla.
 // Tocar un gasto (en cualquiera de las dos) abre la ventana para editarlo o eliminarlo.
 
-type Props = { expenses: ExpenseDTO[]; categories: CategoryOption[]; today: string };
+type Props = { expenses: ExpenseDTO[]; categories: CategoryOption[]; sources: SourceOption[]; today: string };
 
-export function ExpensesView({ expenses, categories, today }: Props) {
+export function ExpensesView({ expenses, categories, sources, today }: Props) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<ExpenseDTO | null>(null);
   const [creating, setCreating] = useState(false);
@@ -28,7 +28,9 @@ export function ExpensesView({ expenses, categories, today }: Props) {
     const q = normalize(query);
     if (!q) return expenses;
     return expenses.filter((e) =>
-      [e.description, e.category.name, paymentMethodLabels[e.paymentMethod]].some((t) => t && normalize(t).includes(q)),
+      [e.description, e.category.name, paymentMethodLabels[e.paymentMethod], e.paymentSource?.name].some(
+        (t) => t && normalize(t).includes(q),
+      ),
     );
   }, [expenses, query]);
 
@@ -123,9 +125,7 @@ export function ExpensesView({ expenses, categories, today }: Props) {
                             <MessageCircleIcon className="size-3.5 shrink-0 text-green-600" aria-label="Cargado por WhatsApp" />
                           )}
                         </div>
-                        <div className="truncate text-sm text-muted-foreground">
-                          {[e.description, paymentMethodLabels[e.paymentMethod]].filter(Boolean).join(" · ")}
-                        </div>
+                        <div className="truncate text-sm text-muted-foreground">{detailLine(e)}</div>
                       </div>
                       <span className="font-medium whitespace-nowrap tabular-nums">
                         {formatMoney(e.amount, e.currency)}
@@ -176,8 +176,15 @@ export function ExpensesView({ expenses, categories, today }: Props) {
                           )}
                         </span>
                       </TableCell>
-                      <TableCell className="max-w-64 truncate text-muted-foreground">{e.description}</TableCell>
-                      <TableCell>{paymentMethodLabels[e.paymentMethod]}</TableCell>
+                      <TableCell className="max-w-64 truncate text-muted-foreground">
+                        {[e.description, e.installments > 1 ? `Cuota ${e.installmentNumber}/${e.installments}` : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {paymentMethodLabels[e.paymentMethod]}
+                        {e.paymentSource && <span className="text-muted-foreground"> · {e.paymentSource.name}</span>}
+                      </TableCell>
                       <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
                         {formatMoney(e.amount, e.currency)}
                       </TableCell>
@@ -205,7 +212,7 @@ export function ExpensesView({ expenses, categories, today }: Props) {
           <DialogHeader>
             <DialogTitle>Nuevo gasto</DialogTitle>
           </DialogHeader>
-          <ExpenseForm categories={categories} today={today} onDone={() => setCreating(false)} />
+          <ExpenseForm categories={categories} sources={sources} today={today} onDone={() => setCreating(false)} />
         </DialogContent>
       </Dialog>
 
@@ -218,6 +225,7 @@ export function ExpensesView({ expenses, categories, today }: Props) {
             <>
               <ExpenseForm
                 categories={categories}
+                sources={sources}
                 expense={editing}
                 today={today}
                 onDone={() => setEditing(null)}
@@ -225,6 +233,7 @@ export function ExpensesView({ expenses, categories, today }: Props) {
               <div className="flex justify-end border-t pt-4">
                 <DeleteExpenseButton
                   id={editing.id}
+                  installments={editing.installments}
                   summary={`${editing.category.name} por ${formatMoney(editing.amount, editing.currency)} del ${formatDay(isoToDate(editing.date))}`}
                   onDeleted={() => setEditing(null)}
                 />
@@ -235,6 +244,18 @@ export function ExpensesView({ expenses, categories, today }: Props) {
       </Dialog>
     </div>
   );
+}
+
+/** Línea de detalle: descripción · medio · tarjeta · cuota */
+function detailLine(e: ExpenseDTO) {
+  return [
+    e.description,
+    paymentMethodLabels[e.paymentMethod],
+    e.paymentSource?.name,
+    e.installments > 1 ? `Cuota ${e.installmentNumber}/${e.installments}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** "Hoy", "Ayer" o "lun 22/09" */
@@ -248,7 +269,7 @@ function dayLabel(date: string, today: string) {
 /** Descarga los gastos filtrados como CSV (se abre con Excel) */
 function exportCsv(expenses: ExpenseDTO[]) {
   const rows = [
-    ["Fecha", "Categoría", "Descripción", "Monto", "Moneda", "Medio de pago", "Origen"],
+    ["Fecha", "Categoría", "Descripción", "Monto", "Moneda", "Medio de pago", "Tarjeta o billetera", "Cuota", "Origen"],
     ...expenses.map((e) => [
       e.date,
       e.category.name,
@@ -257,6 +278,8 @@ function exportCsv(expenses: ExpenseDTO[]) {
       String(e.amount).replace(".", ","),
       e.currency,
       paymentMethodLabels[e.paymentMethod],
+      e.paymentSource?.name ?? "",
+      e.installments > 1 ? `${e.installmentNumber}/${e.installments}` : "",
       e.source === "WHATSAPP" ? "WhatsApp" : "Web",
     ]),
   ];

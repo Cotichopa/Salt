@@ -3,8 +3,19 @@ import { db } from "@/lib/db";
 import { normalize } from "@/lib/text";
 import { sendText } from "@/lib/whatsapp/client";
 import { listCategories } from "@/lib/services/categories";
-import { isAiEnabled, parseWithAI } from "@/lib/whatsapp/ai-parser";
-import { handleMenu, proposeExpenses, showMainMenu, startDeleteLast, type Ctx, type Input } from "@/lib/whatsapp/menu";
+import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
+import { listPaymentSources } from "@/lib/services/payment-sources";
+import {
+  handleDelete,
+  handleEdit,
+  handleMenu,
+  handleQuery,
+  proposeExpenses,
+  showMainMenu,
+  startDeleteLast,
+  type Ctx,
+  type Input,
+} from "@/lib/whatsapp/menu";
 import { clearSession, getSession } from "@/lib/whatsapp/session";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
 
@@ -44,18 +55,28 @@ export async function handleMessage(msg: IncomingMessage) {
   const session = await getSession(ctx.phone);
   if (await handleMenu(ctx, input, session)) return;
 
-  // Nada en curso: probamos interpretar el mensaje tal como está escrito
-  // ("ayer 3 lucas en el chino con débito") con la IA.
+  // Nada en curso: le preguntamos a la IA qué quiso decir y actuamos en consecuencia
   if (input.text && isAiEnabled()) {
-    const categories = await listCategories(ctx.userId);
-    const parsed = await parseWithAI(input.text, categories.map((c) => c.name));
+    const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+    const parsed = await parseMessage(input.text, {
+      categories: categories.map((c) => c.name),
+      sources: sources.map((s) => s.name),
+    });
 
     if (parsed === null) {
       // La IA no está disponible (sin crédito, sin internet, error): seguimos con el menú
       await showMainMenu(ctx, "Uf, no pude interpretar eso 😕 Probá con el menú:");
       return;
     }
-    if (parsed.length > 0 && (await proposeExpenses(ctx, parsed))) return;
+    if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses))) return;
+    if (parsed.intent === "consultar") return void (await handleQuery(ctx, parsed));
+    if (parsed.intent === "eliminar") return void (await handleDelete(ctx, parsed.target));
+    if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));
+    // No entendió del todo: repregunta en vez de tirar el menú de una
+    if (parsed.intent === "otro" && parsed.question) {
+      await sendText(ctx.phone, `${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);
+      return;
+    }
   }
 
   await showMainMenu(ctx, "No te entendí 🤔 Probá escribiendo el gasto (ej: _\"super 12500 debito\"_) o elegí una opción:");

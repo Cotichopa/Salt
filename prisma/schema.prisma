@@ -34,6 +34,11 @@ enum Source {
   WHATSAPP
 }
 
+enum PaymentSourceKind {
+  CARD // tarjetas: Visa, Mastercard, Cabal...
+  WALLET // billeteras y bancos: Mercado Pago, MODO, Ualá...
+}
+
 // ---------- Tablas ----------
 
 model User {
@@ -47,8 +52,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  expenses   Expense[]
-  categories Category[]
+  expenses       Expense[]
+  categories     Category[]
+  paymentSources PaymentSource[]
 
   @@map("users")
 }
@@ -68,6 +74,21 @@ model Category {
   @@map("categories")
 }
 
+// Tarjetas y billeteras de cada usuario (Visa, Mercado Pago, ...)
+model PaymentSource {
+  id        String            @id @default(cuid())
+  name      String
+  kind      PaymentSourceKind
+  userId    String
+  createdAt DateTime          @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([userId, name])
+  @@map("payment_sources")
+}
+
 model Expense {
   id            String        @id @default(cuid())
   userId        String
@@ -77,14 +98,23 @@ model Expense {
   paymentMethod PaymentMethod @default(CASH)
   description   String?
   date          DateTime      @db.Date // solo el día, sin hora
+  // Con qué tarjeta o billetera se pagó (opcional)
+  paymentSourceId String?
+  // Compras en cuotas: se guarda un gasto por cuota, todos con el mismo purchaseId
+  installments      Int     @default(1)
+  installmentNumber Int     @default(1)
+  purchaseId        String?
   source        Source        @default(WEB)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // Si se borra la tarjeta, los gastos quedan sin tarjeta (no se borran)
+  paymentSource PaymentSource? @relation(fields: [paymentSourceId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
+  @@index([purchaseId])
   @@map("expenses")
 }
 

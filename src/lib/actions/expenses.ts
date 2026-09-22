@@ -29,15 +29,16 @@ export async function saveExpense(_prev: FormState, formData: FormData): Promise
   return { ok: true, message: id ? "Gasto actualizado" : "Gasto cargado" };
 }
 
-export async function removeExpense(id: string): Promise<FormState> {
+export async function removeExpense(id: string, scope: "one" | "purchase" = "one"): Promise<FormState> {
   const user = await requireUser();
+  let deleted = 1;
   try {
-    await deleteExpense(user.id, id);
+    deleted = await deleteExpense(user.id, id, scope);
   } catch (e) {
     if (e instanceof ExpenseError) return { message: e.message };
     throw e;
   }
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
-  return { ok: true, message: "Gasto eliminado" };
+  return { ok: true, message: deleted > 1 ? `${deleted} cuotas eliminadas` : "Gasto eliminado" };
 }

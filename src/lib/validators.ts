@@ -71,6 +71,32 @@ export const expenseSchema = z.object({
     .max(200, "Máximo 200 caracteres")
     .transform((v) => v || null),
   date: z.iso.date("Fecha inválida").refine((d) => d <= todayISO(), "La fecha no puede ser futura"),
+  // Tarjeta o billetera (opcional). El formulario manda "" cuando no se eligió nada.
+  paymentSourceId: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined),
+  // Cuotas: se crea un gasto por cuota, uno por mes
+  installments: z.coerce
+    .number()
+    .int()
+    .min(1, "Mínimo 1 cuota")
+    .max(36, "Máximo 36 cuotas")
+    .optional()
+    .default(1),
+})
+  .refine((d) => (d.installments ?? 1) === 1 || d.paymentMethod === "CREDIT", {
+    path: ["installments"],
+    message: "Las cuotas son solo para tarjeta de crédito",
+  })
+  .refine((d) => !d.paymentSourceId || d.paymentMethod !== "CASH", {
+    path: ["paymentSourceId"],
+    message: "El efectivo no lleva tarjeta ni billetera",
+  });
+
+export const paymentSourceSchema = z.object({
+  name: z.string().trim().min(2, "Mínimo 2 caracteres").max(30, "Máximo 30 caracteres"),
+  kind: z.enum(["CARD", "WALLET"]),
 });
 
 export type ExpenseInput = z.infer<typeof expenseSchema>;

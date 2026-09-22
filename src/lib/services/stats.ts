@@ -39,11 +39,13 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     ? new Date(Math.min(prev.from.getTime() + elapsedDays * 86_400_000, prev.to.getTime()))
     : prev.to;
 
-  const [current, previous, byCategoryRaw, byMethodRaw, byDayRaw, prevDayRaw, biggestRaw] = await Promise.all([
+  const [current, previous, byCategoryRaw, byMethodRaw, bySourceRaw, byDayRaw, prevDayRaw, biggestRaw] =
+    await Promise.all([
     sumBetween(userId, currency, from, to),
     sumBetween(userId, currency, prev.from, prevTo),
     db.expense.groupBy({ by: ["categoryId"], where, _sum: { amount: true } }),
     db.expense.groupBy({ by: ["paymentMethod"], where, _sum: { amount: true } }),
+    db.expense.groupBy({ by: ["paymentSourceId"], where, _sum: { amount: true } }),
     db.expense.groupBy({ by: ["date"], where, _sum: { amount: true } }),
     db.expense.groupBy({
       by: ["date"],
@@ -60,7 +62,21 @@ export async function getDashboard(userId: string, month: string, currency: Curr
         category: { select: { name: true, emoji: true } },
       },
     }),
-  ]);
+    ]);
+
+  // Tarjetas y billeteras usadas este mes, de mayor a menor
+  const sourceIds = bySourceRaw.map((r) => r.paymentSourceId).filter((id): id is string => id !== null);
+  const sourceNames = await db.paymentSource.findMany({
+    where: { id: { in: sourceIds } },
+    select: { id: true, name: true },
+  });
+  const sourceById = new Map(sourceNames.map((s) => [s.id, s.name]));
+  const bySource = bySourceRaw
+    .map((r) => ({
+      name: r.paymentSourceId ? (sourceById.get(r.paymentSourceId) ?? "?") : "Sin especificar",
+      total: r._sum.amount?.toNumber() ?? 0,
+    }))
+    .sort((a, b) => b.total - a.total);
 
   // Categorías: sumar y ordenar de mayor a menor, con nombre y emoji
   const categories = await db.category.findMany({
@@ -134,6 +150,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     comparisonLabel: isCurrentMonth ? "vs. mismos días del mes pasado" : "vs. mes anterior",
     byCategory,
     byMethod,
+    bySource,
     byDay,
     cumulative,
     byWeekday,

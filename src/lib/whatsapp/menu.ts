@@ -12,7 +12,17 @@ import {
   type ExpenseDTO,
   type ExpenseFilters,
 } from "@/lib/services/expenses";
-import { isAiEnabled, matchCategory, parseWithAI, type ParsedExpense } from "@/lib/whatsapp/ai-parser";
+import {
+  isAiEnabled,
+  matchByName,
+  matchCategory,
+  parseMessage,
+  type ParsedExpense,
+  type QueryPeriod,
+  type Target,
+} from "@/lib/whatsapp/ai-parser";
+import { listPaymentSources, kindForMethod } from "@/lib/services/payment-sources";
+import { updateExpense } from "@/lib/services/expenses";
 import { sendButtons, sendList, sendText, type ListRow } from "@/lib/whatsapp/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
 
@@ -47,6 +57,8 @@ const expected: Record<string, string[]> = {
   "delete:pick": ["del:"],
   "delete:confirm": ["delconfirm:"],
   "ai:confirm": ["aiconfirm:"],
+  "ai:edit": ["editconfirm:"],
+  "ai:missing": [],
 };
 
 // ---------- Menú principal ----------
@@ -77,8 +89,11 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
   if (!session) return false;
   const d = session.data;
   switch (session.state) {
-    case "main":
-      return routeMain(ctx, { "1": "add", cargar: "add", "2": "query", consultar: "query", "3": "delete", eliminar: "delete" }[text] ?? "");
+    case "main": {
+      const option = { "1": "add", cargar: "add", "2": "query", consultar: "query", "3": "delete", eliminar: "delete" }[text];
+      // Si no eligió una opción, devolvemos false para que el mensaje siga camino a la IA
+      return option ? routeMain(ctx, option) : false;
+    }
     case "add:category":
       return pickCategory(ctx, input, d, "add");
     case "add:amount":
@@ -101,6 +116,10 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
       return confirmDelete(ctx, id, text, d);
     case "ai:confirm":
       return confirmAI(ctx, id, text, input.text ?? "", d);
+    case "ai:edit":
+      return confirmEdit(ctx, id, text, d);
+    case "ai:missing":
+      return receiveMissing(ctx, input.text ?? "", d);
   }
   return false;
 }
@@ -366,7 +385,7 @@ function expenseLine(e: ExpenseDTO) {
 // ---------- Eliminar ----------
 
 async function showDeleteList(ctx: Ctx) {
-  const last = await listExpenses(ctx.userId, {}, 10);
+  const last = await listExpenses(ctx.userId, { to: todayISO() }, 10);
   if (last.length === 0) {
     await clearSession(ctx.phone);
     await sendText(ctx.phone, `No tenés gastos para eliminar.${BACK}`);
@@ -388,7 +407,7 @@ async function showDeleteList(ctx: Ctx) {
 
 /** Atajo "borrar último": salta directo a la confirmación del gasto más reciente */
 export async function startDeleteLast(ctx: Ctx) {
-  const [last] = await listExpenses(ctx.userId, {}, 1);
+  const [last] = await listExpenses(ctx.userId, { to: todayISO() }, 1);
   if (!last) {
     await sendText(ctx.phone, `No tenés gastos para eliminar.${BACK}`);
     return;
@@ -445,38 +464,119 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
  * usuario) y los deja pendientes de confirmación. Devuelve false si ninguno era válido.
  */
 export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string) {
-  const cats = await listCategories(ctx.userId);
-  const fallbackMethod = await mostUsedPaymentMethod(ctx.userId);
+  const [cats, sources, fallbackMethod] = await Promise.all([
+    listCategories(ctx.userId),
+    listPaymentSources(ctx.userId),
+    mostUsedPaymentMethod(ctx.userId),
+  ]);
 
   const pending: PendingExpense[] = [];
   for (const p of parsed) {
     const cat = matchCategory(cats, p.categoryName);
     if (!cat) continue;
+    const method = p.paymentMethod ?? fallbackMethod;
+    // La tarjeta solo vale si es del tipo que corresponde al medio de pago
+    const source = matchByName(sources, p.sourceName);
+    const usable = source && source.kind === kindForMethod(method) ? source : null;
     pending.push({
       categoryId: cat.id,
       categoryLabel: label(cat),
       amount: p.amount,
       currency: p.currency,
-      paymentMethod: p.paymentMethod ?? fallbackMethod,
+      paymentMethod: method,
       description: p.description,
       date: p.date,
       guessedMethod: p.paymentMethod === null,
+      sourceId: usable?.id ?? null,
+      sourceName: usable?.name ?? null,
+      installments: method === "CREDIT" ? p.installments : 1,
     });
   }
   if (pending.length === 0) return false;
 
-  await setSession(ctx.phone, "ai:confirm", { pending });
+  // Qué datos faltan (solo preguntamos por los que realmente aportan)
+  const first = pending[0];
+  const missing: ("description" | "source")[] = [];
+  if (pending.length === 1 && !first.description) missing.push("description");
+  if (pending.length === 1 && kindForMethod(first.paymentMethod) && !first.sourceId) missing.push("source");
+
+  await setSession(ctx.phone, "ai:confirm", { pending, missing });
   const body = [
     heading ?? (pending.length === 1 ? "Entendí esto 👇" : `Entendí ${pending.length} gastos 👇`),
     "",
     ...pending.map(describePending),
     "",
     pending.some((p) => p.guessedMethod) ? "_El medio de pago lo supuse: revisalo._" : "",
+    missing.length > 0 ? `_Podés agregar: ${missing.map(missingLabel).join(" y ")}._` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
   await sendButtons(ctx.phone, body, [
+    { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
+    ...(missing.length > 0 ? [{ id: "aiconfirm:complete", title: "✏️ Completar" }] : []),
+    { id: "aiconfirm:no", title: "❌ Cancelar" },
+  ]);
+  return true;
+}
+
+const missingLabel = (m: "description" | "source") => (m === "description" ? "una descripción" : "la tarjeta");
+
+/** Pregunta, de a uno, los datos que faltan */
+async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
+  const [next, ...rest] = d.missing ?? [];
+  const pending = d.pending ?? [];
+  if (!next || pending.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
+
+  await setSession(ctx.phone, "ai:missing", { ...d, missing: [next, ...rest] });
+  if (next === "description") {
+    await sendText(ctx.phone, "📝 ¿Qué le ponemos de descripción? (o escribí *no* para dejarla vacía)");
+    return true;
+  }
+  const kind = kindForMethod(pending[0].paymentMethod);
+  const sources = (await listPaymentSources(ctx.userId)).filter((s) => s.kind === kind);
+  if (sources.length === 0) return skipMissing(ctx, d);
+  await sendList(
+    ctx.phone,
+    kind === "CARD" ? "💳 ¿Con qué tarjeta?" : "📲 ¿Con qué billetera?",
+    "Ver opciones",
+    sources.map((s) => ({ id: `src:${s.id}`, title: s.name })),
+    kind === "CARD" ? "Tarjetas" : "Billeteras",
+  );
+  return true;
+}
+
+function skipMissing(ctx: Ctx, d: Draft): Promise<boolean> {
+  return showPendingAgain(ctx, { ...d, missing: (d.missing ?? []).slice(1) });
+}
+
+/** Recibe el dato que faltaba y sigue con el siguiente (o vuelve a la confirmación) */
+async function receiveMissing(ctx: Ctx, rawText: string, d: Draft): Promise<boolean> {
+  const pending = [...(d.pending ?? [])];
+  const [current, ...rest] = d.missing ?? [];
+  if (!current || pending.length === 0) return false;
+
+  if (current === "description") {
+    const text = rawText.trim();
+    if (text && !["no", "No", "NO"].includes(text)) pending[0] = { ...pending[0], description: text.slice(0, 200) };
+  } else {
+    const sources = await listPaymentSources(ctx.userId);
+    const source = matchByName(sources, rawText.trim());
+    if (source && source.kind === kindForMethod(pending[0].paymentMethod)) {
+      pending[0] = { ...pending[0], sourceId: source.id, sourceName: source.name };
+    }
+  }
+  return showPendingAgain(ctx, { ...d, pending, missing: rest });
+}
+
+/** Vuelve a mostrar la propuesta (después de completar un dato) */
+async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
+  const pending = d.pending ?? [];
+  const missing = d.missing ?? [];
+  if (missing.length > 0) return askMissing(ctx, d);
+
+  await setSession(ctx.phone, "ai:confirm", { pending, missing: [] });
+  await sendButtons(ctx.phone, ["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [
     { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
@@ -484,12 +584,21 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
 }
 
 function describePending(p: PendingExpense) {
+  const cuotas = (p.installments ?? 1) > 1;
   const when = p.date === todayISO() ? "hoy" : shortDate(p.date);
-  const desc = p.description ? ` — ${p.description}` : "";
-  return `${p.categoryLabel} · *${formatMoney(p.amount, p.currency)}* · ${paymentMethodLabels[p.paymentMethod]} · ${when}${desc}`;
+  const lines = [
+    `${p.categoryLabel} · *${formatMoney(p.amount, p.currency)}*`,
+    [`💳 ${paymentMethodLabels[p.paymentMethod]}`, p.sourceName, `📅 ${when}`].filter(Boolean).join(" · "),
+  ];
+  if (cuotas) {
+    lines.push(`🧾 ${p.installments} cuotas de ${formatMoney(p.amount / (p.installments ?? 1), p.currency)}`);
+  }
+  if (p.description) lines.push(`📝 ${p.description}`);
+  return lines.join("\n");
 }
 
 async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText: string, d: Draft) {
+  if (id === "aiconfirm:complete") return askMissing(ctx, d);
   const yes = id === "aiconfirm:yes" || ["si", "guardar", "ok", "dale", "sip", "obvio"].includes(text);
   const no = id === "aiconfirm:no" || ["no", "cancelar", "nada"].includes(text);
   const pending = d.pending ?? [];
@@ -497,20 +606,24 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
   if (!yes && !no) {
     // No dijo ni sí ni no: puede ser una corrección ("con efectivo", "eran 8000", "fue ayer")
     if (rawText && pending.length > 0 && isAiEnabled()) {
-      const cats = await listCategories(ctx.userId);
-      const corrected = await parseWithAI(
+      const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+      const corrected = await parseMessage(
         rawText,
-        cats.map((c) => c.name),
+        { categories: cats.map((c) => c.name), sources: sources.map((s) => s.name) },
         pending.map((p) => ({
           amount: p.amount,
           currency: p.currency,
           categoryName: p.categoryLabel.replace(/^\S*\s/, ""), // sin el emoji
           paymentMethod: p.guessedMethod ? null : p.paymentMethod,
+          sourceName: p.sourceName ?? null,
+          installments: p.installments ?? 1,
           date: p.date,
           description: p.description,
         })),
       );
-      if (corrected?.length && (await proposeExpenses(ctx, corrected, "Corregido 👇"))) return true;
+      if (corrected?.intent === "cargar" && (await proposeExpenses(ctx, corrected.expenses, "Corregido 👇"))) {
+        return true;
+      }
     }
     await sendButtons(ctx.phone, "¿Los guardo?", [
       { id: "aiconfirm:yes", title: "✅ Guardar" },
@@ -523,6 +636,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
     await sendText(ctx.phone, `Dale, no guardé nada 👌${BACK}`);
     return true;
   }
+  let created = 0;
   for (const p of pending) {
     await createExpense(
       ctx.userId,
@@ -531,13 +645,158 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
         amount: p.amount,
         currency: p.currency,
         paymentMethod: p.paymentMethod,
+        paymentSourceId: p.sourceId ?? undefined,
+        installments: p.installments ?? 1,
         description: p.description,
         date: p.date,
       },
       "WHATSAPP",
     );
+    created += p.installments ?? 1;
   }
-  const title = pending.length === 1 ? "✅ Gasto guardado" : `✅ ${pending.length} gastos guardados`;
+  const title =
+    created > pending.length
+      ? `✅ Guardado en ${created} cuotas`
+      : pending.length === 1
+        ? "✅ Gasto guardado"
+        : `✅ ${pending.length} gastos guardados`;
   await sendText(ctx.phone, `${title}\n\n${pending.map(describePending).join("\n")}${BACK}`);
+  return true;
+}
+
+// ---------- Consultar, eliminar y editar hablando ----------
+
+/** "cuánto gasté en comida este mes" → arma los filtros y manda el resumen */
+export async function handleQuery(
+  ctx: Ctx,
+  q: { period: QueryPeriod; categoryName: string | null; sourceName: string | null; paymentMethod: PaymentMethodCode | null },
+) {
+  const today = todayISO();
+  const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+  const category = matchByName(cats, q.categoryName);
+  const source = matchByName(sources, q.sourceName);
+
+  const periods: Record<QueryPeriod, { title: string; filters: ExpenseFilters }> = {
+    hoy: { title: "de hoy", filters: { from: today, to: today } },
+    ayer: (() => {
+      const y = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+      return { title: "de ayer", filters: { from: y, to: y } };
+    })(),
+    semana: (() => {
+      const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+      const monday = new Date(Date.parse(`${today}T00:00:00Z`) - ((dow + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+      return { title: "de esta semana", filters: { from: monday, to: today } };
+    })(),
+    mes: { title: "de este mes", filters: { month: today.slice(0, 7) } },
+    mes_pasado: { title: "del mes pasado", filters: { month: shiftMonth(today.slice(0, 7), -1) } },
+    todo: { title: "en total", filters: {} },
+  };
+
+  const { title, filters } = periods[q.period];
+  const extra = [category ? `en ${label(category)}` : "", source ? `con ${source.name}` : ""].filter(Boolean).join(" ");
+  await sendSummary(ctx, `${title}${extra ? " " + extra : ""}`, {
+    ...filters,
+    ...(category ? { categoryId: category.id } : {}),
+    ...(source ? { paymentSourceId: source.id } : {}),
+    ...(q.paymentMethod ? { paymentMethod: q.paymentMethod } : {}),
+  });
+  return true;
+}
+
+/** Busca el gasto del que habla la persona entre los últimos 30 */
+async function findTarget(ctx: Ctx, target: Target) {
+  // Sin cuotas futuras: "el último" es el último que ya pasó, no una cuota de marzo
+  const recent = await listExpenses(ctx.userId, { to: todayISO() }, 30);
+  if (recent.length === 0) return null;
+  if (target.last || (!target.text && !target.amount)) return recent[0];
+
+  const words = normalize(target.text).split(/\s+/).filter((w) => w.length >= 3);
+  const scored = recent.map((e) => {
+    const haystack = normalize(`${e.category.name} ${e.description ?? ""} ${e.paymentSource?.name ?? ""}`);
+    let score = words.filter((w) => haystack.includes(w)).length;
+    if (target.amount > 0 && Math.abs(e.amount - target.amount) < 0.01) score += 2;
+    return { e, score };
+  });
+  const best = scored.sort((a, b) => b.score - a.score)[0];
+  return best.score > 0 ? best.e : null;
+}
+
+export async function handleDelete(ctx: Ctx, target: Target) {
+  const expense = await findTarget(ctx, target);
+  if (!expense) {
+    await sendText(ctx.phone, `No encontré ese gasto entre los últimos 🤔${BACK}`);
+    return true;
+  }
+  await askDeleteConfirm(ctx, expense);
+  return true;
+}
+
+export async function handleEdit(ctx: Ctx, target: Target, changes: Partial<ParsedExpense>) {
+  const expense = await findTarget(ctx, target);
+  if (!expense) {
+    await sendText(ctx.phone, `No encontré ese gasto entre los últimos 🤔${BACK}`);
+    return true;
+  }
+
+  const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+  const category = changes.categoryName ? matchByName(cats, changes.categoryName) : null;
+  const method = changes.paymentMethod ?? expense.paymentMethod;
+  const source = changes.sourceName ? matchByName(sources, changes.sourceName) : null;
+  const usableSource = source && source.kind === kindForMethod(method) ? source : null;
+  // Si cambia el medio de pago y la tarjeta anterior ya no corresponde, se quita
+  const keepsOldSource = expense.paymentSource && kindForMethod(method) === kindForMethod(expense.paymentMethod);
+
+  const values = {
+    categoryId: category?.id ?? expense.category.id,
+    amount: changes.amount ?? expense.amount,
+    currency: changes.currency ?? expense.currency,
+    paymentMethod: method,
+    paymentSourceId: usableSource?.id ?? (keepsOldSource ? expense.paymentSource!.id : undefined),
+    description: changes.description ?? expense.description,
+    date: changes.date ?? expense.date,
+  };
+
+  const describe = (v: typeof values, sourceName: string | null) =>
+    [
+      `${category ? label(category) : label(expense.category)} · *${formatMoney(v.amount, v.currency)}*`,
+      [`💳 ${paymentMethodLabels[v.paymentMethod]}`, sourceName, `📅 ${shortDate(v.date)}`].filter(Boolean).join(" · "),
+      v.description ? `📝 ${v.description}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+  const before = expenseLine(expense);
+  const after = describe(values, usableSource?.name ?? (keepsOldSource ? expense.paymentSource!.name : null));
+
+  await setSession(ctx.phone, "ai:edit", { edit: { expenseId: expense.id, before, after, values } });
+  await sendButtons(ctx.phone, `¿Cambio este gasto?\n\n*Antes*\n${before}\n\n*Después*\n${after}`, [
+    { id: "editconfirm:yes", title: "✅ Cambiar" },
+    { id: "editconfirm:no", title: "❌ Cancelar" },
+  ]);
+  return true;
+}
+
+async function confirmEdit(ctx: Ctx, id: string | undefined, text: string, d: Draft) {
+  const yes = id === "editconfirm:yes" || ["si", "dale", "ok", "cambiar"].includes(text);
+  const no = id === "editconfirm:no" || ["no", "cancelar"].includes(text);
+  if (!yes && !no) {
+    await sendButtons(ctx.phone, "¿Lo cambio?", [
+      { id: "editconfirm:yes", title: "✅ Cambiar" },
+      { id: "editconfirm:no", title: "❌ Cancelar" },
+    ]);
+    return true;
+  }
+  const edit = d.edit;
+  await clearSession(ctx.phone);
+  if (no || !edit) {
+    await sendText(ctx.phone, `Listo, lo dejé como estaba 👌${BACK}`);
+    return true;
+  }
+  try {
+    await updateExpense(ctx.userId, edit.expenseId, edit.values);
+    await sendText(ctx.phone, `✅ Gasto actualizado\n\n${edit.after}${BACK}`);
+  } catch {
+    await sendText(ctx.phone, `Ese gasto ya no existe 🤔${BACK}`);
+  }
   return true;
 }

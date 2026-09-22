@@ -3,6 +3,7 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
+import { ensureDefaults } from "../src/lib/services/payment-sources";
 
 const baseCategories = [
   { name: "Comida", emoji: "🍔", keywords: ["almuerzo", "cena", "desayuno", "delivery", "pizza", "rotiseria"] },
@@ -49,6 +50,11 @@ async function main() {
     },
   });
   console.log(`✔ admin: ${email}`);
+
+  // Tarjetas y billeteras base para las cuentas que todavía no tienen ninguna
+  const users = await db.user.findMany({ select: { id: true } });
+  for (const u of users) await ensureDefaults(u.id);
+  console.log(`✔ medios de pago propios en ${users.length} cuenta(s)`);
 }
 
 main()

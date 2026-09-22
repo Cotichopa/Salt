@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireUser } from "@/lib/dal";
 import { todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
+import { listPaymentSources } from "@/lib/services/payment-sources";
 import { listExpenses, type ExpenseFilters as Filters } from "@/lib/services/expenses";
 import { ExpenseDialog } from "./expense-dialog";
 import { ExpenseFilters } from "./expense-filters";
@@ -26,21 +27,26 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
     categoryId: typeof params.categoria === "string" ? params.categoria : undefined,
     currency: pick<CurrencyCode>(params.moneda, ["ARS", "USD"]),
     paymentMethod: pick<PaymentMethodCode>(params.medio, ["CASH", "DEBIT", "CREDIT", "TRANSFER"]),
+    paymentSourceId: typeof params.tarjeta === "string" ? params.tarjeta : undefined,
   };
 
-  const [categories, expenses] = await Promise.all([listCategories(user.id), listExpenses(user.id, filters)]);
+  const [categories, sources, expenses] = await Promise.all([
+    listCategories(user.id),
+    listPaymentSources(user.id),
+    listExpenses(user.id, filters),
+  ]);
   const categoryOptions = categories.map(({ id, name, emoji }) => ({ id, name, emoji }));
 
   return (
     <div className="flex flex-col gap-4 py-2">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Gastos</h1>
-        <ExpenseDialog categories={categoryOptions} today={today} />
+        <ExpenseDialog categories={categoryOptions} sources={sources} today={today} />
       </div>
 
-      <ExpenseFilters categories={categoryOptions} month={month} maxMonth={currentMonth} />
+      <ExpenseFilters categories={categoryOptions} sources={sources} month={month} maxMonth={currentMonth} />
 
-      <ExpensesView expenses={expenses} categories={categoryOptions} today={today} />
+      <ExpensesView expenses={expenses} categories={categoryOptions} sources={sources} today={today} />
     </div>
   );
 }

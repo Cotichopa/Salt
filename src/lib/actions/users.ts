@@ -5,6 +5,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/dal";
+import { ensureDefaults } from "@/lib/services/payment-sources";
 import { createUserSchema, resetPasswordSchema, updatePhoneSchema, type FormState } from "@/lib/validators";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -18,7 +19,8 @@ export async function createUser(_prev: FormState, formData: FormData): Promise<
 
   const { password, ...data } = parsed.data;
   try {
-    await db.user.create({ data: { ...data, passwordHash: await bcrypt.hash(password, 10) } });
+    const created = await db.user.create({ data: { ...data, passwordHash: await bcrypt.hash(password, 10) } });
+    await ensureDefaults(created.id);
   } catch (e) {
     // P2002 = se violó una restricción @unique (email o teléfono ya usados)
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

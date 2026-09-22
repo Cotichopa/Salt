@@ -20,17 +20,19 @@ import {
 export function DeleteExpenseButton({
   id,
   summary,
+  installments = 1,
   onDeleted,
 }: {
   id: string;
   summary: string;
+  installments?: number;
   onDeleted?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
 
-  function confirm() {
+  function confirm(scope: "one" | "purchase" = "one") {
     startTransition(async () => {
-      const result = await removeExpense(id);
+      const result = await removeExpense(id, scope);
       if (result?.ok) {
         toast.success(result.message);
         onDeleted?.();
@@ -47,12 +49,22 @@ export function DeleteExpenseButton({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>¿Eliminar este gasto?</AlertDialogTitle>
-          <AlertDialogDescription>{summary}. Esta acción no se puede deshacer.</AlertDialogDescription>
+          <AlertDialogDescription>
+            {summary}.{" "}
+            {installments > 1
+              ? `Es parte de una compra en ${installments} cuotas.`
+              : "Esta acción no se puede deshacer."}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={confirm}>
-            Eliminar
+          {installments > 1 && (
+            <AlertDialogAction variant="destructive" onClick={() => confirm("purchase")}>
+              Las {installments} cuotas
+            </AlertDialogAction>
+          )}
+          <AlertDialogAction variant="destructive" onClick={() => confirm("one")}>
+            {installments > 1 ? "Solo esta cuota" : "Eliminar"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

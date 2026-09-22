@@ -30,7 +30,7 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 | `npm run dev` | Servidor de desarrollo (puerto 3001) |
 | `npm run build` | Compila para producción |
 | `npm run db:up` / `db:down` | Prende / apaga la base de datos |
-| `npm run db:migrate` | Aplica cambios del esquema y regenera el cliente de Prisma |
+| `npm run db:migrate` | Aplica cambios del esquema y regenera el cliente de Prisma. **Después hay que reiniciar `npm run dev`**: el servidor se queda con el cliente viejo en memoria |
 | `npm run db:seed` | Carga categorías base y la cuenta admin |
 | `npm run db:studio` | Visor de las tablas en el navegador |
 | `npm run lint` | Revisa el código |
@@ -110,6 +110,7 @@ prisma/
 | `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
 | `categories` | Nombre, emoji, palabras clave. Sin usuario = categoría base, compartida |
 | `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, descripción, fecha, origen (WEB/WHATSAPP) |
+| `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
 | `wa_sessions` | En qué paso del menú está cada teléfono (expira a los 15 minutos) |
 
 **Reglas que protegen los datos:**
@@ -154,10 +155,14 @@ Mensaje ──► ¿es un comando? (menu, cancelar, borrar último)
 
 - **Menú:** ➕ Cargar gasto (categoría → monto → moneda → medio → descripción → confirmar),
   📊 Consultar (hoy, semana, mes, mes pasado, por categoría) y 🗑️ Eliminar (elegís de los últimos 10).
-- **Texto libre:** "ayer gasté 3 lucas en el chino con débito", "nafta 15k y peaje 2500" (varios gastos
-  en un mensaje), "compré zapatillas 89990 en 6 cuotas" (deduce que fue con crédito).
+- **Texto libre:** entiende qué querés hacer, no solo cargar:
+  - *cargar*: "ayer gasté 3 lucas en el chino con débito", "zapatillas 120000 en 6 cuotas con la visa"
+  - *consultar*: "cuánto gasté en comida este mes", "cuánto llevo en la visa"
+  - *eliminar*: "borrá el gasto de la nafta"
+  - *editar*: "la nafta eran 18000", "pasalo a efectivo"
+  - si le falta un dato, ofrece completarlo; si no entiende, repregunta.
 - **Siempre pide confirmación** antes de guardar.
-- **Costo de la IA:** ~US$ 0,0015 por mensaje (~US$ 2 por mes con uso familiar). Cada consulta deja
+- **Costo de la IA:** ~US$ 0,0035 por mensaje (~US$ 5 por mes con uso familiar). Cada consulta deja
   el costo en la terminal: `[ai-parser] 1099+72 tokens · US$ 0.00146`.
 - **Seguridad:** solo responde a teléfonos cargados en Salt, verifica la firma de Meta en cada aviso
   e ignora mensajes repetidos.
@@ -254,6 +259,10 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 | 9 | Texto libre interpretado con IA | ✅ |
 | 10 | Despliegue en servidor propio | ⏳ pendiente |
 | 11 | Transcripción de audios (opcional) | 💡 idea |
+
+**Además de las etapas:** rediseño monocromático con logo de ánfora y modo claro/oscuro, gráficos del
+inicio (torta, acumulado, día de la semana), pantalla de gastos con lista por día, buscador y
+exportación, tarjetas y billeteras propias, y compras en cuotas.
 
 **Ideas para más adelante:** presupuestos por categoría con aviso, gastos recurrentes (alquiler,
 Netflix), exportar a Excel, modo oscuro, foto de ticket, varias monedas con cotización del día.

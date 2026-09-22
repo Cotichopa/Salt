@@ -5,15 +5,17 @@ import { PencilIcon, PlusIcon } from "lucide-react";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ExpenseForm, type CategoryOption } from "./expense-form";
+import { ExpenseForm, type CategoryOption, type SourceOption } from "./expense-form";
 
 // Ventana con el formulario. Sin `expense` muestra "Nuevo gasto"; con `expense`, un lápiz para editar.
 export function ExpenseDialog({
   categories,
+  sources,
   expense,
   today,
 }: {
   categories: CategoryOption[];
+  sources: SourceOption[];
   expense?: ExpenseDTO;
   today: string;
 }) {
@@ -35,7 +37,7 @@ export function ExpenseDialog({
         <DialogHeader>
           <DialogTitle>{expense ? "Editar gasto" : "Nuevo gasto"}</DialogTitle>
         </DialogHeader>
-        <ExpenseForm categories={categories} expense={expense} today={today} onDone={() => setOpen(false)} />
+        <ExpenseForm categories={categories} sources={sources} expense={expense} today={today} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );

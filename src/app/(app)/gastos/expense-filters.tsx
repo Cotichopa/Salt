@@ -5,7 +5,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { currencyLabels, formatMonth, paymentMethodLabels } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { CategoryOption } from "./expense-form";
+import type { CategoryOption, SourceOption } from "./expense-form";
 
 // Los filtros viven en la URL (?mes=2026-09&categoria=...). Así, si recargás la página
 // o compartís el link, se mantienen. Cambiar un filtro = cambiar la URL.
@@ -18,7 +18,17 @@ function shiftMonth(month: string, delta: number) {
   return d.toISOString().slice(0, 7);
 }
 
-export function ExpenseFilters({ categories, month, maxMonth }: { categories: CategoryOption[]; month: string; maxMonth: string }) {
+export function ExpenseFilters({
+  categories,
+  sources,
+  month,
+  maxMonth,
+}: {
+  categories: CategoryOption[];
+  sources: SourceOption[];
+  month: string;
+  maxMonth: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -45,6 +55,14 @@ export function ExpenseFilters({ categories, month, maxMonth }: { categories: Ca
       key: "medio",
       placeholder: "Medio",
       items: [{ value: ALL, label: "Todos los medios" }, ...Object.entries(paymentMethodLabels).map(([value, label]) => ({ value, label }))],
+    },
+    {
+      key: "tarjeta",
+      placeholder: "Tarjeta",
+      items: [
+        { value: ALL, label: "Todas las tarjetas" },
+        ...sources.map((s) => ({ value: s.id, label: s.name })),
+      ],
     },
   ];
 

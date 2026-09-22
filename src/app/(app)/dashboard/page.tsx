@@ -4,6 +4,7 @@ import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon } from "l
 import { requireUser } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
+import { listPaymentSources } from "@/lib/services/payment-sources";
 import { getDashboard } from "@/lib/services/stats";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,7 +50,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       : currentMonth;
   const currency: CurrencyCode = params.moneda === "USD" ? "USD" : "ARS";
 
-  const [data, categories] = await Promise.all([getDashboard(user.id, month, currency), listCategories(user.id)]);
+  const [data, categories, sources] = await Promise.all([
+    getDashboard(user.id, month, currency),
+    listCategories(user.id),
+    listPaymentSources(user.id),
+  ]);
   const href = (m: string, c: CurrencyCode) => `/dashboard?mes=${m}&moneda=${c}`;
 
   const delta = data.previousTotal > 0 ? (data.total - data.previousTotal) / data.previousTotal : null;
@@ -58,7 +63,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     <div className="flex flex-col gap-4 py-2">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Hola, {user.name} 👋</h1>
-        <ExpenseDialog categories={categories.map(({ id, name, emoji }) => ({ id, name, emoji }))} today={today} />
+        <ExpenseDialog
+          categories={categories.map(({ id, name, emoji }) => ({ id, name, emoji }))}
+          sources={sources}
+          today={today}
+        />
       </div>
 
       {/* Una sola fila de filtros que aplica a todo el dashboard */}
@@ -176,6 +185,20 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                 <p className="text-sm text-muted-foreground">Cómo lo pagaste</p>
                 <PaymentMethodBar data={data.byMethod} currency={currency} />
               </div>
+
+              {data.bySource.length > 0 && (
+                <div className="flex flex-col gap-3 border-t pt-5">
+                  <p className="text-sm text-muted-foreground">Con qué tarjeta o billetera</p>
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {data.bySource.map((s) => (
+                      <li key={s.name} className="flex items-center gap-2 text-sm">
+                        <span className="flex-1 truncate">{s.name}</span>
+                        <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </CardContent>
           </Card>
 
