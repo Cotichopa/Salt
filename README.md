@@ -1,36 +1,270 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧂 Salt — gastos familiares por web y WhatsApp
 
-## Getting Started
+Cada integrante de la familia carga sus gastos desde el portal web o escribiéndole a **Chop**, el bot de
+WhatsApp, y ve sus propios gastos, totales y gráficos. Nadie ve los gastos del resto.
 
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+  Navegador ──────────┐
+                      ├──► Next.js ──► servicios ──► Prisma ──► PostgreSQL
+  WhatsApp ──► Meta ──┘   (web + API)  (una sola     (ORM)      (Docker)
+                                        lógica)
+                            │
+                            └──► Claude Haiku (interpreta los mensajes libres)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La regla de oro del proyecto: **la web y el bot usan el mismo código** para crear, consultar y borrar
+gastos (`src/lib/services/`). Nada se implementa dos veces, y las reglas de seguridad valen para los dos.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Arrancar el proyecto
 
-## Learn More
+```bash
+npm run db:up      # levanta PostgreSQL en Docker
+npm run dev        # http://localhost:3001
+npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
+```
 
-To learn more about Next.js, take a look at the following resources:
+| Comando | Para qué |
+|---|---|
+| `npm run dev` | Servidor de desarrollo (puerto 3001) |
+| `npm run build` | Compila para producción |
+| `npm run db:up` / `db:down` | Prende / apaga la base de datos |
+| `npm run db:migrate` | Aplica cambios del esquema y regenera el cliente de Prisma |
+| `npm run db:seed` | Carga categorías base y la cuenta admin |
+| `npm run db:studio` | Visor de las tablas en el navegador |
+| `npm run lint` | Revisa el código |
+| `npm run tunnel` | Expone el puerto 3001 en internet (ngrok) |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+El archivo `.env` (que **no** va a git) tiene las claves. `.env.example` es la plantilla con todas las
+variables que hay que completar.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Tecnologías
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Pieza | Elección | Por qué |
+|---|---|---|
+| Framework | **Next.js 16** (App Router) + TypeScript | Web, backend y webhook en un solo proyecto |
+| Estilos | **Tailwind CSS 4** + **shadcn/ui** | Componentes editables, copiados dentro del proyecto |
+| Gráficos | **Recharts** (vía shadcn `chart`) | Integrado con los componentes |
+| Base de datos | **PostgreSQL 17** en Docker | Igual en desarrollo y en producción |
+| ORM | **Prisma 7** | Consultas en TypeScript, migraciones versionadas, permite cambiar de motor |
+| Sesiones | **jose** (JWT en cookie) + capa de acceso propia | Lo que recomienda la documentación de Next.js |
+| Validación | **zod** | Las mismas reglas para la web y para WhatsApp |
+| WhatsApp | **Meta WhatsApp Cloud API** | Número de prueba gratuito |
+| IA | **Claude Haiku 4.5** (`@anthropic-ai/sdk`) | Interpreta mensajes escritos en lenguaje natural |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Mapa del proyecto
+
+```
+src/
+├── app/
+│   ├── (app)/                  Páginas privadas (requieren sesión)
+│   │   ├── dashboard/          Indicadores y gráficos  ← charts.tsx
+│   │   ├── gastos/             Tabla, filtros, alta/edición/borrado
+│   │   ├── categorias/         Categorías propias
+│   │   ├── cuenta/             Cambiar la contraseña
+│   │   ├── admin/usuarios/     Alta y administración de cuentas (solo admin)
+│   │   └── layout.tsx          Encabezado y navegación
+│   ├── login/                  Pantalla de ingreso
+│   ├── api/whatsapp/route.ts   Webhook: acá llegan los mensajes de Meta
+│   ├── globals.css             ← COLORES Y ESTILOS GENERALES
+│   └── layout.tsx              Fuentes, idioma, título
+├── components/ui/              Componentes de shadcn (editables)
+├── lib/
+│   ├── services/               Lógica compartida (web + WhatsApp)
+│   │   ├── expenses.ts         Crear, listar, editar y borrar gastos
+│   │   ├── categories.ts       Categorías base y propias
+│   │   └── stats.ts            Números del dashboard
+│   ├── actions/                Puente entre los formularios y los servicios
+│   ├── whatsapp/
+│   │   ├── bot.ts              Comandos globales (menu, cancelar, borrar último)
+│   │   ├── menu.ts             Menú paso a paso (máquina de estados) y textos
+│   │   ├── ai-parser.ts        Instrucciones para la IA y formato de respuesta
+│   │   ├── client.ts           Envío de mensajes, botones y listas
+│   │   ├── session.ts          En qué paso está cada conversación
+│   │   └── webhook.ts          Verificación de la firma de Meta
+│   ├── db.ts                   Conexión única a la base
+│   ├── dal.ts                  requireUser() y requireAdmin()
+│   ├── session.ts              Cookie firmada
+│   ├── validators.ts           Reglas de validación (zod)
+│   ├── format.ts               Montos, fechas y etiquetas en español
+│   └── text.ts                 Normalizar texto (sin tildes, minúsculas)
+└── generated/prisma/           Cliente de Prisma (se genera solo, no se edita)
+
+prisma/
+├── schema.prisma               Definición de las tablas
+├── migrations/                 Historial de cambios de la base
+└── seed.ts                     Datos iniciales
+```
+
+---
+
+## Base de datos
+
+| Tabla | Guarda |
+|---|---|
+| `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
+| `categories` | Nombre, emoji, palabras clave. Sin usuario = categoría base, compartida |
+| `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, descripción, fecha, origen (WEB/WHATSAPP) |
+| `wa_sessions` | En qué paso del menú está cada teléfono (expira a los 15 minutos) |
+
+**Reglas que protegen los datos:**
+- Todas las consultas filtran por el usuario de la sesión: nadie puede ver ni tocar gastos ajenos.
+- Las contraseñas se guardan como hash (bcrypt), nunca en texto.
+- Los montos usan `Decimal`, no `Float`, para que no haya errores de redondeo.
+- Las fechas guardan solo el día, calculado con la zona horaria de Argentina.
+- Borrar una categoría con gastos obliga a moverlos a otra (en una transacción).
+- Borrar un usuario borra sus gastos; una categoría con gastos no se puede borrar.
+
+---
+
+## Cómo funciona la sesión
+
+```
+Login ──► valida con bcrypt ──► cookie firmada (JWT, httpOnly, 30 días)
+                                        │
+        ┌───────────────────────────────┴──────────────────────────┐
+   src/proxy.ts                                            src/lib/dal.ts
+   Filtro rápido antes de cada página                      Verificación real contra la base
+   (solo revisa la firma)                                  (¿existe?, ¿está activo?, ¿es admin?)
+```
+
+Cada página y cada acción del servidor verifica permisos por su cuenta: esconder un botón no alcanza.
+
+---
+
+## El bot de WhatsApp (Chop)
+
+```
+Mensaje ──► ¿es un comando? (menu, cancelar, borrar último)
+              │ no
+              ▼
+            ¿hay una conversación en curso? ──► sigue el paso del menú
+              │ no
+              ▼
+            IA (Claude Haiku) ──► entiende el gasto ──► confirmás ──► guardado
+              │ no entiende / sin crédito
+              ▼
+            muestra el menú
+```
+
+- **Menú:** ➕ Cargar gasto (categoría → monto → moneda → medio → descripción → confirmar),
+  📊 Consultar (hoy, semana, mes, mes pasado, por categoría) y 🗑️ Eliminar (elegís de los últimos 10).
+- **Texto libre:** "ayer gasté 3 lucas en el chino con débito", "nafta 15k y peaje 2500" (varios gastos
+  en un mensaje), "compré zapatillas 89990 en 6 cuotas" (deduce que fue con crédito).
+- **Siempre pide confirmación** antes de guardar.
+- **Costo de la IA:** ~US$ 0,0015 por mensaje (~US$ 2 por mes con uso familiar). Cada consulta deja
+  el costo en la terminal: `[ai-parser] 1099+72 tokens · US$ 0.00146`.
+- **Seguridad:** solo responde a teléfonos cargados en Salt, verifica la firma de Meta en cada aviso
+  e ignora mensajes repetidos.
+
+Los textos del bot están en `src/lib/whatsapp/menu.ts` y `bot.ts`; las reglas de interpretación, en la
+constante `SYSTEM` de `ai-parser.ts`.
+
+---
+
+## 🎨 Dónde tocar la estética
+
+Todo el aspecto visual sale de **variables de color** definidas en `src/app/globals.css`. Cambiando
+esas variables cambia toda la app de una, sin tocar las páginas.
+
+### 1. Colores generales — `src/app/globals.css`
+
+En el bloque `:root` (modo claro) y `.dark` (modo oscuro):
+
+| Variable | Qué pinta |
+|---|---|
+| `--background` / `--foreground` | Fondo y texto de la página |
+| `--card` / `--card-foreground` | Fondo y texto de las tarjetas |
+| `--primary` / `--primary-foreground` | Botones principales |
+| `--secondary`, `--muted`, `--accent` | Botones suaves, textos grises, resaltados |
+| `--destructive` | Rojo de eliminar |
+| `--border`, `--input`, `--ring` | Bordes, campos y el aro al enfocar |
+| `--radius` | Qué tan redondeadas son las esquinas (hoy `0.625rem`) |
+| `--chart-1` … `--chart-5` | Colores de los gráficos |
+
+Los colores están en formato **oklch** (claridad, saturación, tono), pero también acepta hex común
+(`#2a78d6`). Para probar paletas enteras: **tweakcn.com** o **ui.shadcn.com/themes** generan estos
+bloques listos para pegar.
+
+> Los colores de los gráficos están validados para daltonismo. Si los cambiás, conviene mantener
+> tonos bien distintos entre sí.
+
+### 2. Tipografía — `src/app/layout.tsx`
+
+Hoy usa **Geist**. Para cambiarla, se importa otra de `next/font/google`:
+
+```ts
+import { Inter } from "next/font/google";
+const geistSans = Inter({ variable: "--font-geist-sans", subsets: ["latin"] });
+```
+
+### 3. Componentes — `src/components/ui/`
+
+Son de shadcn, pero el código es tuyo: están copiados en el proyecto y se pueden editar. Por ejemplo,
+en `button.tsx` están los tamaños y las variantes (`default`, `outline`, `ghost`, `destructive`).
+
+Para sumar componentes nuevos (pestañas, avatares, menús laterales):
+
+```bash
+npx shadcn@latest add tabs avatar sidebar
+```
+
+### 4. Modo oscuro
+
+Las variables del modo oscuro ya están definidas en `.dark`, pero **falta el botón para activarlo**.
+Se agrega instalando `next-themes` (ya viene como dependencia de sonner) y un interruptor en el
+encabezado. Es un rato de trabajo, si lo querés lo hacemos.
+
+### 5. Páginas donde toquetear el diseño
+
+| Archivo | Qué contiene |
+|---|---|
+| `src/app/(app)/layout.tsx` | Encabezado, navegación, ancho máximo del contenido |
+| `src/app/(app)/dashboard/page.tsx` | Tarjetas de indicadores y distribución de los gráficos |
+| `src/app/(app)/dashboard/charts.tsx` | Alto, colores y formato de cada gráfico |
+| `src/app/(app)/gastos/page.tsx` | Tabla de gastos y tarjetas de totales |
+| `src/app/login/page.tsx` | Pantalla de ingreso |
+
+Las clases tipo `flex`, `gap-4`, `text-2xl` son de **Tailwind**: se escriben en el atributo
+`className` y cada una hace una cosa (`gap-4` = separación, `text-2xl` = tamaño de texto). Referencia:
+tailwindcss.com/docs.
+
+**Consejo:** hacé los cambios con `npm run dev` corriendo, así ves el resultado al instante. Y si
+algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` lo deja como estaba.
+
+---
+
+## Estado del proyecto
+
+| Etapa | Qué incluye | Estado |
+|---|---|---|
+| 1 | Next.js, Tailwind, shadcn/ui, Prisma, PostgreSQL en Docker | ✅ |
+| 2 | Tablas, migraciones y datos iniciales | ✅ |
+| 3 | Login, sesiones, administración de cuentas | ✅ |
+| 4 | Gastos en la web: cargar, listar, editar, borrar, filtrar | ✅ |
+| 5 | Categorías propias con emoji y palabras clave | ✅ |
+| 6 | Dashboard con indicadores y gráficos | ✅ |
+| 7 | Webhook de WhatsApp con verificación de firma | ✅ |
+| 8 | Menú paso a paso del bot | ✅ |
+| 9 | Texto libre interpretado con IA | ✅ |
+| 10 | Despliegue en servidor propio | ⏳ pendiente |
+| 11 | Transcripción de audios (opcional) | 💡 idea |
+
+**Ideas para más adelante:** presupuestos por categoría con aviso, gastos recurrentes (alquiler,
+Netflix), exportar a Excel, modo oscuro, foto de ticket, varias monedas con cotización del día.
+
+---
+
+## Antes de desplegar
+
+- [ ] Cambiar el token temporal de WhatsApp por uno **permanente** (usuario del sistema en Meta).
+- [ ] Generar contraseñas nuevas para el `.env` del servidor (no reusar las locales).
+- [ ] Apuntar el webhook de Meta al dominio definitivo.
+- [ ] **La cuenta de WhatsApp Business (WABA) tiene que estar suscripta a la app** en Meta: no alcanza
+      con configurar el webhook. Sin eso, los mensajes no llegan nunca.
+- [ ] Definir copias de seguridad de la base de datos.
