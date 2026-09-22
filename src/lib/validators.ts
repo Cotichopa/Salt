@@ -18,6 +18,9 @@ const phoneRule = z
   .string()
   .trim()
   .transform((v) => v.replace(/\D/g, ""))
+  // Celulares argentinos: WhatsApp los identifica con un 9 después del 54 (549...).
+  // Si lo escribieron sin el 9 (54 11 2233-4455), se lo agregamos.
+  .transform((v) => (/^54\d{10}$/.test(v) ? `549${v.slice(2)}` : v))
   .refine((v) => v === "" || (v.length >= 10 && v.length <= 15), "Teléfono inválido (ej: 5491122334455)")
   .transform((v) => (v === "" ? null : v));
 
@@ -36,6 +39,11 @@ export const changePasswordSchema = z
     confirm: z.string(),
   })
   .refine((d) => d.next === d.confirm, { path: ["confirm"], message: "Las contraseñas no coinciden" });
+
+export const updatePhoneSchema = z.object({
+  userId: z.string().min(1),
+  phone: phoneRule,
+});
 
 export const resetPasswordSchema = z.object({
   userId: z.string().min(1),

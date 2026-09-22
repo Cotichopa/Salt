@@ -58,7 +58,7 @@ export default async function UsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <UserActions userId={u.id} active={u.active} isSelf={u.id === admin.id} />
+                    <UserActions userId={u.id} phone={u.phone} active={u.active} isSelf={u.id === admin.id} />
                   </TableCell>
                 </TableRow>
               ))}

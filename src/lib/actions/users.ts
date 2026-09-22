@@ -5,7 +5,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/dal";
-import { createUserSchema, resetPasswordSchema, type FormState } from "@/lib/validators";
+import { createUserSchema, resetPasswordSchema, updatePhoneSchema, type FormState } from "@/lib/validators";
 import { Prisma } from "@/generated/prisma/client";
 
 // Acciones de administración de cuentas. Cada una verifica que quien la llama sea ADMIN:
@@ -49,4 +49,20 @@ export async function resetUserPassword(_prev: FormState, formData: FormData): P
     data: { passwordHash: await bcrypt.hash(parsed.data.password, 10) },
   });
   return { ok: true, message: "Contraseña cambiada" };
+}
+
+export async function updateUserPhone(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  const parsed = updatePhoneSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
+  try {
+    await db.user.update({ where: { id: parsed.data.userId }, data: { phone: parsed.data.phone } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { errors: { phone: ["Ese número ya está en otra cuenta"] } };
+    }
+    throw e;
+  }
+  revalidatePath("/admin/usuarios");
+  return { ok: true, message: parsed.data.phone ? "WhatsApp actualizado" : "WhatsApp quitado" };
 }
