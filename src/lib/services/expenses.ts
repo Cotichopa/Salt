@@ -13,6 +13,8 @@ export class ExpenseError extends Error {}
 
 export type ExpenseFilters = {
   month?: string; // "2026-09"
+  from?: string; // "YYYY-MM-DD" (incluido)
+  to?: string; // "YYYY-MM-DD" (incluido)
   categoryId?: string;
   currency?: CurrencyCode;
   paymentMethod?: PaymentMethodCode;
@@ -46,11 +48,17 @@ function toDTO(e: Prisma.ExpenseGetPayload<{ select: typeof expenseSelect }>): E
   return { ...e, amount: e.amount.toNumber(), date: dateToISO(e.date) };
 }
 
-export async function listExpenses(userId: string, filters: ExpenseFilters = {}) {
+export async function listExpenses(userId: string, filters: ExpenseFilters = {}, limit?: number) {
   const where: Prisma.ExpenseWhereInput = { userId };
   if (filters.month) {
     const { from, to } = monthRange(filters.month);
     where.date = { gte: from, lt: to };
+  }
+  if (filters.from || filters.to) {
+    where.date = {
+      ...(filters.from ? { gte: isoToDate(filters.from) } : {}),
+      ...(filters.to ? { lte: isoToDate(filters.to) } : {}),
+    };
   }
   if (filters.categoryId) where.categoryId = filters.categoryId;
   if (filters.currency) where.currency = filters.currency;
@@ -60,6 +68,7 @@ export async function listExpenses(userId: string, filters: ExpenseFilters = {})
     where,
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     select: expenseSelect,
+    take: limit,
   });
   return rows.map(toDTO);
 }
@@ -102,4 +111,22 @@ export async function updateExpense(userId: string, id: string, input: ExpenseIn
 export async function deleteExpense(userId: string, id: string) {
   const { count } = await db.expense.deleteMany({ where: { id, userId } });
   if (count === 0) throw new ExpenseError("Gasto no encontrado");
+}
+
+/** Un gasto del usuario, o null si no existe o es de otra persona */
+export async function getExpense(userId: string, id: string) {
+  const row = await db.expense.findFirst({ where: { id, userId }, select: expenseSelect });
+  return row ? toDTO(row) : null;
+}
+
+/** Medio de pago que más usa el usuario (para cuando el mensaje no lo aclara) */
+export async function mostUsedPaymentMethod(userId: string) {
+  const [top] = await db.expense.groupBy({
+    by: ["paymentMethod"],
+    where: { userId },
+    _count: { paymentMethod: true },
+    orderBy: { _count: { paymentMethod: "desc" } },
+    take: 1,
+  });
+  return top?.paymentMethod ?? "DEBIT";
 }

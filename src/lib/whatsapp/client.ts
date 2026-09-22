@@ -38,3 +38,48 @@ async function send(to: string, payload: Record<string, unknown>) {
 export function sendText(to: string, body: string) {
   return send(to, { type: "text", text: { body, preview_url: false } });
 }
+
+// Límites de WhatsApp: si un texto se pasa, Meta rechaza el mensaje entero
+const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+export type Button = { id: string; title: string };
+
+/** Mensaje con hasta 3 botones (título de 20 caracteres como máximo) */
+export function sendButtons(to: string, body: string, buttons: Button[]) {
+  return send(to, {
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: cut(body, 1024) },
+      action: {
+        buttons: buttons.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: cut(b.title, 20) } })),
+      },
+    },
+  });
+}
+
+export type ListRow = { id: string; title: string; description?: string };
+
+/** Mensaje con un botón que abre una lista de hasta 10 opciones */
+export function sendList(to: string, body: string, buttonText: string, rows: ListRow[], sectionTitle = "Opciones") {
+  return send(to, {
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: cut(body, 4096) },
+      action: {
+        button: cut(buttonText, 20),
+        sections: [
+          {
+            title: cut(sectionTitle, 24),
+            rows: rows.slice(0, 10).map((r) => ({
+              id: r.id,
+              title: cut(r.title, 24),
+              ...(r.description ? { description: cut(r.description, 72) } : {}),
+            })),
+          },
+        ],
+      },
+    },
+  });
+}
