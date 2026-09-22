@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ExpenseDialog } from "../gastos/expense-dialog";
-import { CategoryChart, DailyChart, MonthlyChart, PaymentMethodBar } from "./charts";
+import { CategoryPie, CumulativeChart, DailyChart, MonthlyChart, PaymentMethodBar, WeekdayChart } from "./charts";
 
 export const metadata: Metadata = { title: "Inicio · Salt" };
 
@@ -140,12 +140,23 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         </Card>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
-          <Card>
+          <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Por categoría</CardTitle>
+              <CardTitle>En qué se fue</CardTitle>
+              <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
             </CardHeader>
             <CardContent>
-              <CategoryChart data={data.byCategory} currency={currency} />
+              <CategoryPie data={data.byCategory} currency={currency} />
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Cómo venís contra el mes pasado</CardTitle>
+              <CardDescription>Suma acumulada día a día.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CumulativeChart data={data.cumulative} currency={currency} month={month} />
             </CardContent>
           </Card>
 
@@ -168,6 +179,16 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                 currency={currency}
                 rows={data.byDay.filter((d) => d.total > 0).map((d) => ({ label: `${d.day}/${month.slice(5)}`, total: d.total }))}
               />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Por día de la semana</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WeekdayChart data={data.byWeekday} currency={currency} />
+              <DataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
             </CardContent>
           </Card>
 

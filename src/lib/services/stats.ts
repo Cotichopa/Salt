@@ -41,12 +41,17 @@ export async function getDashboard(userId: string, month: string, currency: Curr
 
   const sixMonthsFrom = monthRange(shiftMonth(month, -5)).from;
 
-  const [current, previous, byCategoryRaw, byMethodRaw, byDayRaw, lastMonthsRaw] = await Promise.all([
+  const [current, previous, byCategoryRaw, byMethodRaw, byDayRaw, prevDayRaw, lastMonthsRaw] = await Promise.all([
     sumBetween(userId, currency, from, to),
     sumBetween(userId, currency, prev.from, prevTo),
     db.expense.groupBy({ by: ["categoryId"], where, _sum: { amount: true } }),
     db.expense.groupBy({ by: ["paymentMethod"], where, _sum: { amount: true } }),
     db.expense.groupBy({ by: ["date"], where, _sum: { amount: true } }),
+    db.expense.groupBy({
+      by: ["date"],
+      where: { userId, currency, date: { gte: prev.from, lt: prev.to } },
+      _sum: { amount: true },
+    }),
     db.expense.groupBy({
       by: ["date"],
       where: { userId, currency, date: { gte: sixMonthsFrom, lt: to } },
@@ -80,6 +85,31 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     return { day: i + 1, total: dayTotals.get(iso) ?? 0, future: iso > today };
   });
 
+  // Acumulado día a día: cuánto llevás gastado al día N, este mes y el mes pasado
+  const prevDayTotals = new Map<number, number>();
+  for (const d of prevDayRaw) prevDayTotals.set(d.date.getUTCDate(), d._sum.amount?.toNumber() ?? 0);
+  let runNow = 0;
+  let runPrev = 0;
+  const prevDays = daysInMonth(prevMonth);
+  const cumulative = byDay.map((d) => {
+    runNow += d.total;
+    runPrev += prevDayTotals.get(d.day) ?? 0;
+    return {
+      day: d.day,
+      actual: d.future ? null : runNow, // no dibujamos los días que todavía no pasaron
+      anterior: d.day <= prevDays ? runPrev : null,
+    };
+  });
+
+  // Gasto por día de la semana (lunes a domingo)
+  const weekdayNames = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const weekdayTotals = new Array(7).fill(0);
+  for (const d of byDayRaw) {
+    const jsDay = d.date.getUTCDay(); // 0 = domingo
+    weekdayTotals[(jsDay + 6) % 7] += d._sum.amount?.toNumber() ?? 0;
+  }
+  const byWeekday = weekdayNames.map((name, i) => ({ name, total: weekdayTotals[i] }));
+
   const monthTotals = new Map<string, number>();
   for (const d of lastMonthsRaw) {
     const key = dateToISO(d.date).slice(0, 7);
@@ -99,6 +129,8 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     byCategory,
     byMethod,
     byDay,
+    cumulative,
+    byWeekday,
     lastMonths,
   };
 }

@@ -1,7 +1,25 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, Cell, LabelList, XAxis, YAxis, type TooltipContentProps } from "recharts";
-import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Label,
+  LabelList,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  Sector,
+  XAxis,
+  YAxis,
+  type PieSectorDataItem,
+  type TooltipContentProps,
+} from "recharts";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import { formatMoney, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
 import type { Dashboard } from "@/lib/services/stats";
 
@@ -143,5 +161,199 @@ export function PaymentMethodBar({ data, currency }: { data: Dashboard["byMethod
         ))}
       </ul>
     </div>
+  );
+}
+
+// ---------- Torta de categorías con forma activa ----------
+// Al pasar el mouse (o tocar en el celular) la porción se agranda y el centro
+// muestra el detalle. Mostramos las 6 categorías más grandes y el resto en "Otras".
+
+const SLICE_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-6)",
+  "var(--chart-7)",
+];
+
+function ActiveSlice(props: PieSectorDataItem) {
+  const { outerRadius = 0, ...rest } = props;
+  return (
+    <g>
+      <Sector {...rest} outerRadius={outerRadius + 6} />
+      <Sector {...rest} innerRadius={outerRadius + 10} outerRadius={outerRadius + 12} />
+    </g>
+  );
+}
+
+export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"]; currency: CurrencyCode }) {
+  const [active, setActive] = useState(0);
+
+  const slices = useMemo(() => {
+    const top = data.slice(0, 6).map((d, i) => ({ ...d, fill: SLICE_COLORS[i] }));
+    const restTotal = data.slice(6).reduce((sum, d) => sum + d.total, 0);
+    return restTotal > 0 ? [...top, { name: "Otras", total: restTotal, fill: "var(--chart-5)" }] : top;
+  }, [data]);
+
+  const total = slices.reduce((sum, d) => sum + d.total, 0);
+  const current = slices[Math.min(active, slices.length - 1)];
+  const share = total > 0 ? Math.round((current.total / total) * 100) : 0;
+
+  return (
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-2">
+      <ChartContainer config={singleSeries} className="aspect-square h-56 shrink-0">
+        <PieChart>
+          <ChartTooltip defaultIndex={0} content={() => null} />
+          <Pie
+            data={slices}
+            dataKey="total"
+            nameKey="name"
+            innerRadius={58}
+            outerRadius={84}
+            paddingAngle={2}
+            stroke="var(--card)"
+            strokeWidth={2}
+            activeShape={ActiveSlice}
+            onMouseEnter={(_, index) => setActive(index)}
+            onClick={(_, index) => setActive(index)}
+          >
+            <Label
+              position="center"
+              content={() => (
+                <>
+                  <text x="50%" y="46%" textAnchor="middle" className="fill-muted-foreground text-xs">
+                    {current.name}
+                  </text>
+                  <text x="50%" y="58%" textAnchor="middle" className="fill-foreground text-base font-semibold">
+                    {formatMoney(current.total, currency)}
+                  </text>
+                  <text x="50%" y="70%" textAnchor="middle" className="fill-muted-foreground text-xs">
+                    {share}% del mes
+                  </text>
+                </>
+              )}
+            />
+          </Pie>
+        </PieChart>
+      </ChartContainer>
+
+      {/* La referencia también hace de tabla: nombre, monto y porcentaje de cada porción */}
+      <ul className="flex w-full flex-col gap-1.5 text-sm">
+        {slices.map((s, i) => (
+          <li key={s.name}>
+            <button
+              type="button"
+              onMouseEnter={() => setActive(i)}
+              onFocus={() => setActive(i)}
+              onClick={() => setActive(i)}
+              aria-current={i === active}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-muted aria-[current=true]:bg-muted"
+            >
+              <span className="size-3 shrink-0 rounded-sm" style={{ background: s.fill }} />
+              <span className="flex-1 truncate">{s.name}</span>
+              <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
+              <span className="w-10 text-right text-muted-foreground tabular-nums">
+                {total > 0 ? Math.round((s.total / total) * 100) : 0}%
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------- Acumulado del mes vs. mes pasado ----------
+
+export function CumulativeChart({
+  data,
+  currency,
+  month,
+}: {
+  data: Dashboard["cumulative"];
+  currency: CurrencyCode;
+  month: string;
+}) {
+  const config = {
+    actual: { label: "Este mes", color: "var(--chart-1)" },
+    anterior: { label: "Mes pasado", color: "var(--chart-5)" },
+  } satisfies ChartConfig;
+
+  return (
+    <ChartContainer config={config} className="aspect-auto h-56 w-full">
+      <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="day" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={12} />
+        <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(v) => compact.format(v)} />
+        <ChartTooltip
+          content={<CompareTooltip currency={currency} formatLabel={(d) => `${d}/${month.slice(5)}`} />}
+        />
+        <Line
+          dataKey="anterior"
+          type="monotone"
+          stroke="var(--color-anterior)"
+          strokeWidth={2}
+          dot={false}
+          connectNulls
+        />
+        <Line dataKey="actual" type="monotone" stroke="var(--color-actual)" strokeWidth={2} dot={false} />
+        <ChartLegend content={<ChartLegendContent />} />
+      </LineChart>
+    </ChartContainer>
+  );
+}
+
+// Tooltip con las dos series y la diferencia entre ellas
+function CompareTooltip({
+  active,
+  payload,
+  label,
+  currency,
+  formatLabel,
+}: Partial<TooltipContentProps<number, string>> & { currency: CurrencyCode; formatLabel: (l: string) => string }) {
+  if (!active || !payload?.length) return null;
+  const now = payload.find((p) => p.dataKey === "actual")?.value;
+  const before = payload.find((p) => p.dataKey === "anterior")?.value;
+  const diff = typeof now === "number" && typeof before === "number" ? now - before : null;
+
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+      <div className="text-muted-foreground">Día {formatLabel(String(label))}</div>
+      {typeof now === "number" && (
+        <div className="font-medium tabular-nums">Este mes: {formatMoney(now, currency)}</div>
+      )}
+      {typeof before === "number" && (
+        <div className="text-muted-foreground tabular-nums">Mes pasado: {formatMoney(before, currency)}</div>
+      )}
+      {diff !== null && (
+        <div className={cn("tabular-nums", diff > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-500")}>
+          {diff > 0 ? "+" : "−"}
+          {formatMoney(Math.abs(diff), currency)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Gasto por día de la semana ----------
+
+export function WeekdayChart({ data, currency }: { data: Dashboard["byWeekday"]; currency: CurrencyCode }) {
+  const max = Math.max(...data.map((d) => d.total));
+  return (
+    <ChartContainer config={singleSeries} className="aspect-auto h-44 w-full">
+      <BarChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="name" tickLine={false} axisLine={false} />
+        <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(v) => compact.format(v)} />
+        <ChartTooltip cursor={{ fill: "var(--muted)" }} content={<MoneyTooltip currency={currency} formatLabel={(l) => l} />} />
+        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={28}>
+          {data.map((d) => (
+            // El día más caro en color, el resto en gris: se ve de una cuál es
+            <Cell key={d.name} fill={d.total === max && max > 0 ? "var(--chart-1)" : "var(--chart-5)"} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ChartContainer>
   );
 }

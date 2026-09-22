@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             <Logo className="size-5" />
             Salt
           </Link>
-          <nav className="flex flex-1 gap-1 overflow-x-auto">
+          <nav className="flex flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {links.map((l) => (
               <Link
                 key={l.href}
