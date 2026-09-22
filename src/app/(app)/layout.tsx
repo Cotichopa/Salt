@@ -10,6 +10,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const links = [
     { href: "/dashboard", label: "Inicio" },
+    { href: "/gastos", label: "Gastos" },
     ...(user.role === "ADMIN" ? [{ href: "/admin/usuarios", label: "Cuentas" }] : []),
   ];
 

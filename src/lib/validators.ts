@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseAmount, todayISO } from "@/lib/format";
 
 // Reglas de validación compartidas. Se usan en el servidor antes de tocar la base,
 // así ningún dato inválido entra, venga de la web o (más adelante) de WhatsApp.
@@ -39,6 +40,31 @@ export const resetPasswordSchema = z.object({
   userId: z.string().min(1),
   password: passwordRule,
 });
+
+export const expenseSchema = z.object({
+  amount: z
+    .string()
+    .transform((v, ctx) => {
+      const n = parseAmount(v);
+      if (n === null || n <= 0) {
+        ctx.addIssue({ code: "custom", message: "Monto inválido (ej: 15000 o 15.000,50)" });
+        return z.NEVER;
+      }
+      return n;
+    })
+    .refine((n) => n < 1_000_000_000_000, "Monto demasiado grande"),
+  currency: z.enum(["ARS", "USD"]),
+  paymentMethod: z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER"]),
+  categoryId: z.string().min(1, "Elegí una categoría"),
+  description: z
+    .string()
+    .trim()
+    .max(200, "Máximo 200 caracteres")
+    .transform((v) => v || null),
+  date: z.iso.date("Fecha inválida").refine((d) => d <= todayISO(), "La fecha no puede ser futura"),
+});
+
+export type ExpenseInput = z.infer<typeof expenseSchema>;
 
 // Estado que devuelven las acciones de formularios para mostrar errores o avisos
 export type FormState =
