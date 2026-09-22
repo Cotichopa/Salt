@@ -1,7 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Esquema de la base de datos: cada "model" es una tabla y cada línea una columna.
+// Después de cambiar este archivo corré `npm run db:migrate` para aplicar los cambios.
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +8,92 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------- Listas de valores permitidos ----------
+
+enum Role {
+  ADMIN // puede crear y administrar cuentas
+  MEMBER
+}
+
+enum Currency {
+  ARS
+  USD
+}
+
+enum PaymentMethod {
+  CASH // efectivo
+  DEBIT // débito
+  CREDIT // crédito
+  TRANSFER // transferencia
+}
+
+enum Source {
+  WEB
+  WHATSAPP
+}
+
+// ---------- Tablas ----------
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  phone        String?  @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
+  role         Role     @default(MEMBER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  expenses   Expense[]
+  categories Category[]
+
+  @@map("users")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  emoji     String?
+  keywords  String[] @default([]) // palabras que el bot de WhatsApp asocia a esta categoría
+  userId    String? // null = categoría base, visible para todos
+  createdAt DateTime @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+model Expense {
+  id            String        @id @default(cuid())
+  userId        String
+  categoryId    String
+  amount        Decimal       @db.Decimal(14, 2) // Decimal y no Float: con plata no queremos errores de redondeo
+  currency      Currency      @default(ARS)
+  paymentMethod PaymentMethod @default(CASH)
+  description   String?
+  date          DateTime      @db.Date // solo el día, sin hora
+  source        Source        @default(WEB)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([userId, date])
+  @@map("expenses")
+}
+
+// En qué paso del menú de WhatsApp está cada teléfono (etapa 8)
+model WaSession {
+  phone     String   @id
+  state     String
+  data      Json?
+  updatedAt DateTime @updatedAt
+
+  @@map("wa_sessions")
 }

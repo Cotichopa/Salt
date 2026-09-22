@@ -1,13 +1,6 @@
-import { Button } from "@/components/ui/button";
+import { redirect } from "next/navigation";
 
+// La portada no tiene contenido propio: el proxy manda a /login si no hay sesión
 export default function Home() {
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
-      <h1 className="text-4xl font-semibold tracking-tight">🧂 Salt</h1>
-      <p className="max-w-sm text-muted-foreground">
-        Tus gastos del día a día, desde la web o por WhatsApp.
-      </p>
-      <Button>Próximamente: iniciar sesión</Button>
-    </main>
-  );
+  redirect("/dashboard");
 }
