@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ExpenseDialog } from "../gastos/expense-dialog";
-import { CategoryPie, CumulativeChart, DailyChart, MonthlyChart, PaymentMethodBar, WeekdayChart } from "./charts";
+import { CategoryPie, CumulativeChart, DailyChart, PaymentMethodBar, WeekdayChart } from "./charts";
 
 export const metadata: Metadata = { title: "Inicio · Salt" };
 
@@ -96,17 +96,17 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       </div>
 
       {/* Fila de indicadores */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card size="sm">
           <CardHeader>
             <CardDescription>Total del mes</CardDescription>
-            <div className="text-3xl font-semibold">{formatMoney(data.total, currency)}</div>
+            <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(data.total, currency)}</div>
             {delta !== null && Math.round(delta * 100) === 0 && (
               <p className="text-sm text-muted-foreground">Igual {data.comparisonLabel.replace("vs.", "que")}</p>
             )}
             {delta !== null && Math.round(delta * 100) !== 0 && (
               // Gastar más es malo: sube en rojo, baja en verde (siempre con flecha y texto, no solo color)
-              <p className={cn("flex items-center gap-1 text-sm", delta > 0 ? "text-red-700 dark:text-red-400" : "text-green-800 dark:text-green-500")}>
+              <p className={cn("flex flex-wrap items-center gap-1 text-sm", delta > 0 ? "text-red-700 dark:text-red-400" : "text-green-800 dark:text-green-500")}>
                 {delta > 0 ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />}
                 {Math.abs(Math.round(delta * 100))}% {delta > 0 ? "más" : "menos"}
                 <span className="text-muted-foreground">{data.comparisonLabel}</span>
@@ -114,16 +114,41 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             )}
           </CardHeader>
         </Card>
+
         <Card size="sm">
           <CardHeader>
-            <CardDescription>Promedio por día</CardDescription>
-            <div className="text-3xl font-semibold">{formatMoney(Math.round(data.dailyAverage), currency)}</div>
+            <CardDescription>{data.projection !== null ? "Proyección a fin de mes" : "Promedio por día"}</CardDescription>
+            <div className="text-2xl font-semibold lg:text-3xl">
+              {formatMoney(Math.round(data.projection ?? data.dailyAverage), currency)}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {data.projection !== null ? `Si seguís a este ritmo · ${formatMoney(Math.round(data.dailyAverage), currency)} por día` : "Mes cerrado"}
+            </p>
           </CardHeader>
         </Card>
+
         <Card size="sm">
           <CardHeader>
-            <CardDescription>Cantidad de gastos</CardDescription>
-            <div className="text-3xl font-semibold">{data.count}</div>
+            <CardDescription>Gasto promedio</CardDescription>
+            <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(Math.round(data.averageTicket), currency)}</div>
+            <p className="text-sm text-muted-foreground">
+              {data.count} {data.count === 1 ? "gasto cargado" : "gastos cargados"}
+            </p>
+          </CardHeader>
+        </Card>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardDescription>El más grande</CardDescription>
+            <div className="text-2xl font-semibold lg:text-3xl">
+              {data.biggest ? formatMoney(data.biggest.amount, currency) : "—"}
+            </div>
+            {data.biggest && (
+              <p className="truncate text-sm text-muted-foreground">
+                {data.biggest.category}
+                {data.biggest.description ? ` · ${data.biggest.description}` : ""}
+              </p>
+            )}
           </CardHeader>
         </Card>
       </div>
@@ -145,8 +170,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
               <CardTitle>En qué se fue</CardTitle>
               <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col gap-6">
               <CategoryPie data={data.byCategory} currency={currency} />
+              <div className="flex flex-col gap-3 border-t pt-5">
+                <p className="text-sm text-muted-foreground">Cómo lo pagaste</p>
+                <PaymentMethodBar data={data.byMethod} currency={currency} />
+              </div>
             </CardContent>
           </Card>
 
@@ -157,15 +186,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardHeader>
             <CardContent>
               <CumulativeChart data={data.cumulative} currency={currency} month={month} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Por medio de pago</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PaymentMethodBar data={data.byMethod} currency={currency} />
             </CardContent>
           </Card>
 
@@ -192,15 +212,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Últimos 6 meses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MonthlyChart data={data.lastMonths} currency={currency} />
-              <DataTable currency={currency} rows={data.lastMonths.map((m) => ({ label: formatMonth(m.month), total: m.total }))} />
-            </CardContent>
-          </Card>
         </div>
       )}
     </div>

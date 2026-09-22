@@ -28,12 +28,6 @@ import type { Dashboard } from "@/lib/services/stats";
 // un solo color cuando hay una sola serie, y tooltip al pasar el mouse.
 
 const compact = new Intl.NumberFormat("es-AR", { notation: "compact", maximumFractionDigits: 1 });
-const monthShort = new Intl.DateTimeFormat("es-AR", { month: "short", timeZone: "UTC" });
-
-function monthLabel(month: string) {
-  return monthShort.format(new Date(`${month}-01T00:00:00Z`)).replace(".", "");
-}
-
 // Recuadro que aparece al pasar el mouse sobre una barra
 function MoneyTooltip({
   active,
@@ -84,39 +78,6 @@ export function CategoryChart({ data, currency }: { data: Dashboard["byCategory"
             position="right"
             className="fill-foreground"
             formatter={(v) => formatMoney(Number(v), currency)}
-          />
-        </Bar>
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-export function MonthlyChart({ data, currency }: { data: Dashboard["lastMonths"]; currency: CurrencyCode }) {
-  // "Énfasis": el mes elegido en color y los anteriores en gris, como contexto
-  return (
-    <ChartContainer config={singleSeries} className="aspect-auto h-56 w-full">
-      <BarChart data={data} margin={{ top: 24, right: 4, left: 4, bottom: 0 }}>
-        <CartesianGrid vertical={false} />
-        <XAxis dataKey="month" tickLine={false} axisLine={false} tickFormatter={monthLabel} />
-        <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(v) => compact.format(v)} />
-        <ChartTooltip cursor={{ fill: "var(--muted)" }} content={<MoneyTooltip currency={currency} formatLabel={monthLabel} />} />
-        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={24}>
-          {data.map((d) => (
-            <Cell key={d.month} fill={d.selected ? "var(--chart-1)" : "var(--chart-5)"} />
-          ))}
-          <LabelList
-            dataKey="total"
-            position="top"
-            className="fill-foreground"
-            content={({ x, y, width, index }) => {
-              const d = index === undefined ? undefined : data[index];
-              if (!d?.selected) return null; // solo rotulamos el mes elegido
-              return (
-                <text x={Number(x) + Number(width) / 2} y={Number(y) - 6} textAnchor="middle" className="fill-foreground text-xs">
-                  {formatMoney(d.total, currency)}
-                </text>
-              );
-            }}
           />
         </Bar>
       </BarChart>

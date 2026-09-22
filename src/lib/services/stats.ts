@@ -39,9 +39,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     ? new Date(Math.min(prev.from.getTime() + elapsedDays * 86_400_000, prev.to.getTime()))
     : prev.to;
 
-  const sixMonthsFrom = monthRange(shiftMonth(month, -5)).from;
-
-  const [current, previous, byCategoryRaw, byMethodRaw, byDayRaw, prevDayRaw, lastMonthsRaw] = await Promise.all([
+  const [current, previous, byCategoryRaw, byMethodRaw, byDayRaw, prevDayRaw, biggestRaw] = await Promise.all([
     sumBetween(userId, currency, from, to),
     sumBetween(userId, currency, prev.from, prevTo),
     db.expense.groupBy({ by: ["categoryId"], where, _sum: { amount: true } }),
@@ -52,10 +50,15 @@ export async function getDashboard(userId: string, month: string, currency: Curr
       where: { userId, currency, date: { gte: prev.from, lt: prev.to } },
       _sum: { amount: true },
     }),
-    db.expense.groupBy({
-      by: ["date"],
-      where: { userId, currency, date: { gte: sixMonthsFrom, lt: to } },
-      _sum: { amount: true },
+    db.expense.findFirst({
+      where,
+      orderBy: { amount: "desc" },
+      select: {
+        amount: true,
+        description: true,
+        date: true,
+        category: { select: { name: true, emoji: true } },
+      },
     }),
   ]);
 
@@ -110,15 +113,18 @@ export async function getDashboard(userId: string, month: string, currency: Curr
   }
   const byWeekday = weekdayNames.map((name, i) => ({ name, total: weekdayTotals[i] }));
 
-  const monthTotals = new Map<string, number>();
-  for (const d of lastMonthsRaw) {
-    const key = dateToISO(d.date).slice(0, 7);
-    monthTotals.set(key, (monthTotals.get(key) ?? 0) + (d._sum.amount?.toNumber() ?? 0));
-  }
-  const lastMonths = Array.from({ length: 6 }, (_, i) => {
-    const key = shiftMonth(month, i - 5);
-    return { month: key, total: monthTotals.get(key) ?? 0, selected: key === month };
-  });
+  // Proyección: si seguís gastando al ritmo de estos días, cuánto terminarías gastando
+  const totalDays = daysInMonth(month);
+  const projection = isCurrentMonth && elapsedDays > 0 ? (current.total / elapsedDays) * totalDays : null;
+
+  const biggest = biggestRaw
+    ? {
+        amount: biggestRaw.amount.toNumber(),
+        description: biggestRaw.description,
+        date: dateToISO(biggestRaw.date),
+        category: `${biggestRaw.category.emoji ?? ""} ${biggestRaw.category.name}`.trim(),
+      }
+    : null;
 
   return {
     total: current.total,
@@ -131,7 +137,9 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     byDay,
     cumulative,
     byWeekday,
-    lastMonths,
+    projection,
+    averageTicket: current.count > 0 ? current.total / current.count : 0,
+    biggest,
   };
 }
 
