@@ -1,0 +1,25 @@
+# Nombre fijo del proyecto en Docker (evita mezclarse con otros proyectos "salt")
+name: salt-gastos
+
+services:
+  # Base de datos PostgreSQL para desarrollo local.
+  # Los datos quedan en el volumen "pgdata" y sobreviven a reinicios.
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: America/Argentina/Buenos_Aires
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432" # solo accesible desde tu PC
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:
