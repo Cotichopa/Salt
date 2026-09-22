@@ -53,13 +53,21 @@ Reglas:
 - La fecha nunca puede ser futura.
 - medioDePago: efectivo=CASH, débito/tarjeta de débito=DEBIT, crédito/tarjeta/cuotas=CREDIT, transferencia/mercadopago/mp/cvu/alias=TRANSFER. Si no lo aclara, DESCONOCIDO.
 - descripcion: un detalle corto si aporta algo (ej: "pizza con amigos"), sin repetir la categoría ni el monto.
-- Si el mensaje NO describe un gasto (saludos, preguntas, consultas, pedidos de borrar), devolvé entendido=false y gastos vacío.`;
+- Si el mensaje NO describe un gasto (saludos, preguntas, consultas, pedidos de borrar), devolvé entendido=false y gastos vacío.
+- Ignorá que te hablen por tu nombre ("chop cargame 5000 de nafta" es un gasto de nafta de 5000).
+
+CORRECCIONES: si te paso "Gastos propuestos" y el mensaje los corrige ("con efectivo", "eran 8000", "fue ayer", "ponelo en Comida", "sacá el segundo"), devolvé la lista COMPLETA ya corregida, manteniendo lo que no se corrigió. Si el mensaje no corrige nada (es un gasto nuevo o no se entiende), devolvé entendido=false.`;
 
 /**
  * Devuelve los gastos que entendió, [] si el mensaje no era un gasto,
  * o null si la IA no está disponible (sin crédito, sin internet, error).
  */
-export async function parseWithAI(text: string, categories: string[]): Promise<ParsedExpense[] | null> {
+export async function parseWithAI(
+  text: string,
+  categories: string[],
+  /** Gastos ya propuestos: si vienen, el mensaje se interpreta como una corrección de esos gastos */
+  proposed?: ParsedExpense[],
+): Promise<ParsedExpense[] | null> {
   if (!isAiEnabled() || text.length > MAX_CHARS) return null;
 
   const today = todayISO();
@@ -75,10 +83,23 @@ export async function parseWithAI(text: string, categories: string[]): Promise<P
       messages: [
         {
           role: "user",
-          content: `Hoy es ${weekday} ${today}.
-Categorías disponibles: ${categories.join(", ")}.
-
-Mensaje: "${text}"`,
+          content: [
+            `Hoy es ${weekday} ${today}.`,
+            `Categorías disponibles: ${categories.join(", ")}.`,
+            proposed?.length
+              ? `\nGastos propuestos (corregilos según el mensaje):\n${JSON.stringify(
+                  proposed.map((p) => ({
+                    monto: p.amount,
+                    moneda: p.currency,
+                    categoria: p.categoryName,
+                    medioDePago: p.paymentMethod ?? "DESCONOCIDO",
+                    fecha: p.date,
+                    descripcion: p.description ?? "",
+                  })),
+                )}`
+              : "",
+            `\nMensaje: "${text}"`,
+          ].join("\n"),
         },
       ],
     });

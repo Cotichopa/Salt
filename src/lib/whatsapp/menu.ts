@@ -12,7 +12,7 @@ import {
   type ExpenseDTO,
   type ExpenseFilters,
 } from "@/lib/services/expenses";
-import { matchCategory, type ParsedExpense } from "@/lib/whatsapp/ai-parser";
+import { isAiEnabled, matchCategory, parseWithAI, type ParsedExpense } from "@/lib/whatsapp/ai-parser";
 import { sendButtons, sendList, sendText, type ListRow } from "@/lib/whatsapp/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
 
@@ -100,7 +100,7 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
     case "delete:confirm":
       return confirmDelete(ctx, id, text, d);
     case "ai:confirm":
-      return confirmAI(ctx, id, text, d);
+      return confirmAI(ctx, id, text, input.text ?? "", d);
   }
   return false;
 }
@@ -444,7 +444,7 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
  * Convierte lo que entendió la IA en gastos concretos (categoría y medio de pago del
  * usuario) y los deja pendientes de confirmación. Devuelve false si ninguno era válido.
  */
-export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[]) {
+export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string) {
   const cats = await listCategories(ctx.userId);
   const fallbackMethod = await mostUsedPaymentMethod(ctx.userId);
 
@@ -467,7 +467,7 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[]) {
 
   await setSession(ctx.phone, "ai:confirm", { pending });
   const body = [
-    pending.length === 1 ? "Entendí esto 👇" : `Entendí ${pending.length} gastos 👇`,
+    heading ?? (pending.length === 1 ? "Entendí esto 👇" : `Entendí ${pending.length} gastos 👇`),
     "",
     ...pending.map(describePending),
     "",
@@ -489,11 +489,29 @@ function describePending(p: PendingExpense) {
   return `${p.categoryLabel} · *${formatMoney(p.amount, p.currency)}* · ${paymentMethodLabels[p.paymentMethod]} · ${when}${desc}`;
 }
 
-async function confirmAI(ctx: Ctx, id: string | undefined, text: string, d: Draft) {
-  const yes = id === "aiconfirm:yes" || ["si", "guardar", "ok", "dale"].includes(text);
-  const no = id === "aiconfirm:no" || ["no", "cancelar"].includes(text);
+async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText: string, d: Draft) {
+  const yes = id === "aiconfirm:yes" || ["si", "guardar", "ok", "dale", "sip", "obvio"].includes(text);
+  const no = id === "aiconfirm:no" || ["no", "cancelar", "nada"].includes(text);
   const pending = d.pending ?? [];
+
   if (!yes && !no) {
+    // No dijo ni sí ni no: puede ser una corrección ("con efectivo", "eran 8000", "fue ayer")
+    if (rawText && pending.length > 0 && isAiEnabled()) {
+      const cats = await listCategories(ctx.userId);
+      const corrected = await parseWithAI(
+        rawText,
+        cats.map((c) => c.name),
+        pending.map((p) => ({
+          amount: p.amount,
+          currency: p.currency,
+          categoryName: p.categoryLabel.replace(/^\S*\s/, ""), // sin el emoji
+          paymentMethod: p.guessedMethod ? null : p.paymentMethod,
+          date: p.date,
+          description: p.description,
+        })),
+      );
+      if (corrected?.length && (await proposeExpenses(ctx, corrected, "Corregido 👇"))) return true;
+    }
     await sendButtons(ctx.phone, "¿Los guardo?", [
       { id: "aiconfirm:yes", title: "✅ Guardar" },
       { id: "aiconfirm:no", title: "❌ Cancelar" },
