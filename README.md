@@ -39,6 +39,10 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 El archivo `.env` (que **no** va a git) tiene las claves. `.env.example` es la plantilla con todas las
 variables que hay que completar.
 
+> **Si cambiás `prisma/schema.prisma`:** corré `npm run db:migrate` y **reiniciá `npm run dev`**.
+> El servidor se queda con el cliente viejo en memoria y da errores del tipo
+> "Cannot read properties of undefined".
+
 ---
 
 ## Tecnologías
@@ -64,26 +68,32 @@ src/
 ├── app/
 │   ├── (app)/                  Páginas privadas (requieren sesión)
 │   │   ├── dashboard/          Indicadores y gráficos  ← charts.tsx
-│   │   ├── gastos/             Tabla, filtros, alta/edición/borrado
+│   │   ├── gastos/             Lista por día / tabla, filtros, buscador, alta y edición
 │   │   ├── categorias/         Categorías propias
+│   │   ├── medios/             Tarjetas y billeteras propias
 │   │   ├── cuenta/             Cambiar la contraseña
 │   │   ├── admin/usuarios/     Alta y administración de cuentas (solo admin)
 │   │   └── layout.tsx          Encabezado y navegación
-│   ├── login/                  Pantalla de ingreso
+│   ├── login/                  Pantalla de ingreso (panel de marca partido)
 │   ├── api/whatsapp/route.ts   Webhook: acá llegan los mensajes de Meta
+│   ├── icon.svg                Ícono de la pestaña (ánfora)
 │   ├── globals.css             ← COLORES Y ESTILOS GENERALES
-│   └── layout.tsx              Fuentes, idioma, título
-├── components/ui/              Componentes de shadcn (editables)
+│   └── layout.tsx              Fuentes, idioma, título, tema
+├── components/
+│   ├── ui/                     Componentes de shadcn (editables)
+│   ├── logo.tsx                El ánfora (contorno y sólida)
+│   └── theme-toggle.tsx        Interruptor claro/oscuro
 ├── lib/
 │   ├── services/               Lógica compartida (web + WhatsApp)
-│   │   ├── expenses.ts         Crear, listar, editar y borrar gastos
+│   │   ├── expenses.ts         Crear (con cuotas), listar, editar y borrar gastos
 │   │   ├── categories.ts       Categorías base y propias
+│   │   ├── payment-sources.ts  Tarjetas y billeteras
 │   │   └── stats.ts            Números del dashboard
 │   ├── actions/                Puente entre los formularios y los servicios
 │   ├── whatsapp/
 │   │   ├── bot.ts              Comandos globales (menu, cancelar, borrar último)
 │   │   ├── menu.ts             Menú paso a paso (máquina de estados) y textos
-│   │   ├── ai-parser.ts        Instrucciones para la IA y formato de respuesta
+│   │   ├── ai-parser.ts        Instrucciones para la IA: intención + datos
 │   │   ├── client.ts           Envío de mensajes, botones y listas
 │   │   ├── session.ts          En qué paso está cada conversación
 │   │   └── webhook.ts          Verificación de la firma de Meta
@@ -120,6 +130,8 @@ prisma/
 - Las fechas guardan solo el día, calculado con la zona horaria de Argentina.
 - Borrar una categoría con gastos obliga a moverlos a otra (en una transacción).
 - Borrar un usuario borra sus gastos; una categoría con gastos no se puede borrar.
+- Borrar una tarjeta NO borra los gastos: quedan sin tarjeta.
+- Una compra en cuotas son varios gastos con el mismo `purchaseId`, uno por mes.
 
 ---
 
@@ -147,10 +159,12 @@ Mensaje ──► ¿es un comando? (menu, cancelar, borrar último)
             ¿hay una conversación en curso? ──► sigue el paso del menú
               │ no
               ▼
-            IA (Claude Haiku) ──► entiende el gasto ──► confirmás ──► guardado
-              │ no entiende / sin crédito
-              ▼
-            muestra el menú
+            IA (Claude Haiku) ──► ¿qué quiere hacer?
+              ├─ cargar    ──► propone el gasto ──► confirmás ──► guardado
+              ├─ consultar ──► resumen del período pedido
+              ├─ eliminar  ──► busca el gasto ──► confirmás ──► borrado
+              ├─ editar    ──► muestra antes/después ──► confirmás ──► cambiado
+              └─ no entiende / sin crédito ──► repregunta o muestra el menú
 ```
 
 - **Menú:** ➕ Cargar gasto (categoría → monto → moneda → medio → descripción → confirmar),
@@ -232,7 +246,8 @@ encabezado. Es un rato de trabajo, si lo querés lo hacemos.
 | `src/app/(app)/layout.tsx` | Encabezado, navegación, ancho máximo del contenido |
 | `src/app/(app)/dashboard/page.tsx` | Tarjetas de indicadores y distribución de los gráficos |
 | `src/app/(app)/dashboard/charts.tsx` | Alto, colores y formato de cada gráfico |
-| `src/app/(app)/gastos/page.tsx` | Tabla de gastos y tarjetas de totales |
+| `src/app/(app)/gastos/expenses-view.tsx` | Lista por día (celular), tabla (escritorio), buscador y exportación |
+| `src/components/logo.tsx` | El ánfora del logo |
 | `src/app/login/page.tsx` | Pantalla de ingreso |
 
 Las clases tipo `flex`, `gap-4`, `text-2xl` son de **Tailwind**: se escriben en el atributo
@@ -260,12 +275,22 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 | 10 | Despliegue en servidor propio | ⏳ pendiente |
 | 11 | Transcripción de audios (opcional) | 💡 idea |
 
-**Además de las etapas:** rediseño monocromático con logo de ánfora y modo claro/oscuro, gráficos del
-inicio (torta, acumulado, día de la semana), pantalla de gastos con lista por día, buscador y
-exportación, tarjetas y billeteras propias, y compras en cuotas.
+**Además de las etapas, ya está hecho:**
+- Rediseño monocromático (blanco y negro), tipografías Bricolage Grotesque e Instrument Sans,
+  logo de ánfora romana y modo claro/oscuro con interruptor.
+- Inicio con cuatro indicadores (total, proyección a fin de mes, gasto promedio y el más grande),
+  torta de categorías con detalle al tocar, acumulado contra el mes pasado, gasto por día y por día
+  de la semana.
+- Gastos: lista agrupada por día en el celular, tabla en escritorio, buscador instantáneo,
+  exportación a CSV y botón flotante para cargar.
+- Tarjetas y billeteras propias, compras en cuotas y desglose por tarjeta en el inicio.
+- Chop entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
+  acepta correcciones y repregunta cuando no entiende.
 
 **Ideas para más adelante:** presupuestos por categoría con aviso, gastos recurrentes (alquiler,
-Netflix), exportar a Excel, modo oscuro, foto de ticket, varias monedas con cotización del día.
+Netflix), foto de ticket, transcripción de audios, varias monedas con cotización del día,
+papelera para recuperar gastos borrados, invitación por WhatsApp con link `wa.me`, número de versión
+visible en la app.
 
 ---
 
@@ -276,4 +301,6 @@ Netflix), exportar a Excel, modo oscuro, foto de ticket, varias monedas con coti
 - [ ] Apuntar el webhook de Meta al dominio definitivo.
 - [ ] **La cuenta de WhatsApp Business (WABA) tiene que estar suscripta a la app** en Meta: no alcanza
       con configurar el webhook. Sin eso, los mensajes no llegan nunca.
-- [ ] Definir copias de seguridad de la base de datos.
+- [ ] Definir copias de seguridad de la base de datos (hoy no hay ninguna, y los borrados son definitivos).
+- [ ] Poner el proyecto en una versión (`package.json` dice 0.1.0) y etiquetarla en git (`git tag v1.0.0`).
+- [ ] Revisar el límite de gasto de la API de Anthropic y que el crédito alcance.
