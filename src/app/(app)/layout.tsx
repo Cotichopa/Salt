@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/dal";
 import { UserMenu } from "@/components/user-menu";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 
 // Layout de todas las páginas privadas: la carpeta "(app)" entre paréntesis agrupa
 // rutas sin agregar nada a la URL (/dashboard, no /app/dashboard).
@@ -19,8 +21,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <>
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-4 px-4">
-          <Link href="/dashboard" className="font-semibold">
-            🧂 Salt
+          <Link href="/dashboard" className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight">
+            <Logo className="size-5" />
+            Salt
           </Link>
           <nav className="flex flex-1 gap-1 overflow-x-auto">
             {links.map((l) => (
@@ -33,6 +36,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
               </Link>
             ))}
           </nav>
+          <ThemeToggle />
           <UserMenu name={user.name} email={user.email} />
         </div>
       </header>

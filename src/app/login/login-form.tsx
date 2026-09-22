@@ -13,20 +13,31 @@ export function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" autoComplete="email" required />
+        <Input id="email" name="email" type="email" autoComplete="email" className="h-11" required />
         <FieldError errors={state?.errors?.email} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Contraseña</Label>
-        <Input id="password" name="password" type="password" autoComplete="current-password" required />
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          className="h-11"
+          required
+        />
         <FieldError errors={state?.errors?.password} />
       </div>
-      {state?.message && <p className="text-sm text-destructive">{state.message}</p>}
-      <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Ingresando..." : "Ingresar"}
+      {state?.message && (
+        <p role="alert" className="text-sm text-destructive">
+          {state.message}
+        </p>
+      )}
+      <Button type="submit" size="lg" className="h-11 w-full" disabled={pending}>
+        {pending ? "Ingresando…" : "Ingresar"}
       </Button>
     </form>
   );
