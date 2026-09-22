@@ -17,23 +17,32 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-export function DeleteExpenseButton({ id, summary }: { id: string; summary: string }) {
+export function DeleteExpenseButton({
+  id,
+  summary,
+  onDeleted,
+}: {
+  id: string;
+  summary: string;
+  onDeleted?: () => void;
+}) {
   const [pending, startTransition] = useTransition();
 
   function confirm() {
     startTransition(async () => {
       const result = await removeExpense(id);
-      if (result?.ok) toast.success(result.message);
-      else toast.error(result?.message ?? "No se pudo eliminar");
+      if (result?.ok) {
+        toast.success(result.message);
+        onDeleted?.();
+      } else toast.error(result?.message ?? "No se pudo eliminar");
     });
   }
 
   return (
     <AlertDialog>
-      <AlertDialogTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label="Eliminar gasto" disabled={pending} />}
-      >
+      <AlertDialogTrigger render={<Button variant="destructive" disabled={pending} />}>
         <Trash2Icon />
+        Eliminar gasto
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
