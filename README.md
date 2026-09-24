@@ -32,6 +32,7 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 | `npm run db:up` / `db:down` | Prende / apaga la base de datos |
 | `npm run db:migrate` | Aplica cambios del esquema y regenera el cliente de Prisma. **Después hay que reiniciar `npm run dev`**: el servidor se queda con el cliente viejo en memoria |
 | `npm run db:seed` | Carga categorías base y la cuenta admin |
+| `npm run db:demo` | Crea (o recrea) la cuenta demo@salt.local con un año de gastos de ejemplo. Muestra la contraseña en la terminal |
 | `npm run db:studio` | Visor de las tablas en el navegador |
 | `npm run lint` | Revisa el código |
 | `npm run tunnel` | Expone el puerto 3001 en internet (ngrok) |
@@ -282,8 +283,11 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 - Inicio con saludo de Chop (un dato del mes o un aviso de presupuesto), cuatro indicadores (total, proyección a fin de mes, gasto promedio y el más grande),
   torta de categorías con detalle al tocar, acumulado contra el mes pasado, gasto por día y por día
   de la semana.
-- Gastos: lista agrupada por día en el celular, tabla en escritorio, buscador instantáneo,
-  exportación a CSV. La carga manual está solo en Gastos: en el resto de la app se carga con Chop.
+- Gastos: lista agrupada por día en el celular, tabla en escritorio, paginada de a 15 (con la
+  página en la URL). El buscador busca en todo el historial: texto sin importar tildes ni errores
+  de tipeo, montos ("15.000") y fechas ("24/09", "septiembre 2025") — ver `src/lib/expense-search.ts`.
+  Exportar a CSV baja todo lo filtrado. La carga manual está solo en Gastos: en el resto de la app
+  se carga con Chop.
 - Tarjetas y billeteras propias, compras en cuotas y desglose por tarjeta en el inicio.
 - Menú hamburguesa en el celular (panel lateral con todas las secciones).
 - Categorías con íconos en blanco y negro (el emoji queda para Chop en WhatsApp) y una pantalla
