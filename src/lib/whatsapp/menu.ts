@@ -24,7 +24,8 @@ import {
 import { listPaymentSources, kindForMethod } from "@/lib/services/payment-sources";
 import { budgetAlertFor, budgetAlertText, listBudgets, type BudgetAlert } from "@/lib/services/budgets";
 import { updateExpense } from "@/lib/services/expenses";
-import { sendButtons, sendList, sendText, type ListRow } from "@/lib/whatsapp/client";
+import type { ListRow, Outbox } from "@/lib/whatsapp/outbox";
+import type { Source } from "@/generated/prisma/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
 
 // Menú paso a paso de Chop, armado como una "máquina de estados":
@@ -38,7 +39,14 @@ import { clearSession, setSession, type Draft, type PendingExpense, type Session
 // Las respuestas pueden venir de un botón/lista (replyId, ej: "cur:USD") o escritas a mano
 // (text, ej: "dolares"): aceptamos las dos formas en cada paso.
 
-export type Ctx = { userId: string; name: string; phone: string };
+/**
+ * Con quién habla Chop y por dónde.
+ * - phone: identifica la conversación (para recordar en qué paso del menú está).
+ *   En WhatsApp es el teléfono; en el chat de la web es "web:<id de usuario>".
+ * - out: por dónde salen las respuestas (ver outbox.ts).
+ * - source: con qué origen se guardan los gastos (WHATSAPP o WEB).
+ */
+export type Ctx = { userId: string; name: string; phone: string; out: Outbox; source: Source };
 export type Input = { text?: string; replyId?: string };
 
 const BACK = "\n\nEscribí *menu* para volver al menú.";
@@ -90,7 +98,7 @@ const expected: Record<string, string[]> = {
 
 export async function showMainMenu(ctx: Ctx, intro?: string) {
   await setSession(ctx.phone, "main");
-  await sendButtons(ctx.phone, intro ?? `¿Qué hacemos, ${ctx.name}? Soy ${NAME}, decime:`, [
+  await ctx.out.buttons(intro ?? `¿Qué hacemos, ${ctx.name}? Soy ${NAME}, decime:`, [
     { id: "menu:add", title: "➕ Cargar gasto" },
     { id: "menu:query", title: "📊 Consultar" },
     { id: "menu:delete", title: "🗑️ Eliminar" },
@@ -169,14 +177,14 @@ const PAGE = 9; // 9 categorías + 1 fila de "ver más" = 10, el máximo de What
 async function sendCategoryList(ctx: Ctx, page: number, body: string) {
   const cats = await listCategories(ctx.userId);
   const rows: ListRow[] = cats.map((c) => ({ id: `cat:${c.id}`, title: label(c) }));
-  if (rows.length <= 10) return sendList(ctx.phone, body, "Ver categorías", rows, "Categorías");
+  if (rows.length <= 10) return ctx.out.list(body, "Ver categorías", rows, "Categorías");
 
   const pages = Math.ceil(rows.length / PAGE);
   const current = page % pages;
   const pageRows = rows.slice(current * PAGE, current * PAGE + PAGE);
   const next = (current + 1) % pages;
   pageRows.push({ id: `catpage:${next}`, title: next === 0 ? "⬅️ Volver al principio" : "➡️ Ver más categorías" });
-  return sendList(ctx.phone, body, "Ver categorías", pageRows, `Categorías (${current + 1}/${pages})`);
+  return ctx.out.list(body, "Ver categorías", pageRows, `Categorías (${current + 1}/${pages})`);
 }
 
 async function pickCategory(ctx: Ctx, input: Input, d: Draft, flow: "add" | "query") {
@@ -211,18 +219,18 @@ async function pickCategory(ctx: Ctx, input: Input, d: Draft, flow: "add" | "que
   }
   const next = { ...d, categoryId: cat.id, categoryLabel: label(cat) };
   await setSession(ctx.phone, "add:amount", next);
-  await sendText(ctx.phone, `💰 ¿Cuánto gastaste en ${next.categoryLabel}?\n(ej: 15000 o 15.000,50)`);
+  await ctx.out.text(`💰 ¿Cuánto gastaste en ${next.categoryLabel}?\n(ej: 15000 o 15.000,50)`);
   return true;
 }
 
 async function receiveAmount(ctx: Ctx, text: string, d: Draft) {
   const amount = parseAmount(text);
   if (!amount || amount <= 0 || amount >= 1_000_000_000_000) {
-    await sendText(ctx.phone, "Ese monto no lo agarro 🤔 Escribilo solo con números, por ejemplo: 15000 o 15.000,50");
+    await ctx.out.text("Ese monto no lo agarro 🤔 Escribilo solo con números, por ejemplo: 15000 o 15.000,50");
     return true;
   }
   await setSession(ctx.phone, "add:currency", { ...d, amount });
-  await sendButtons(ctx.phone, `¿En qué moneda son los ${text}?`, [
+  await ctx.out.buttons(`¿En qué moneda son los ${text}?`, [
     { id: "cur:ARS", title: "🇦🇷 Pesos" },
     { id: "cur:USD", title: "🇺🇸 Dólares" },
   ]);
@@ -237,7 +245,7 @@ async function receiveCurrency(ctx: Ctx, id: string | undefined, text: string, d
         ? "USD"
         : null;
   if (!currency) {
-    await sendButtons(ctx.phone, "Elegí la moneda:", [
+    await ctx.out.buttons("Elegí la moneda:", [
       { id: "cur:ARS", title: "🇦🇷 Pesos" },
       { id: "cur:USD", title: "🇺🇸 Dólares" },
     ]);
@@ -253,7 +261,7 @@ function sendMethodList(ctx: Ctx, body: string) {
     id: `pm:${m}`,
     title: paymentMethodLabels[m],
   }));
-  return sendList(ctx.phone, body, "Medios de pago", rows, "Medio de pago");
+  return ctx.out.list(body, "Medios de pago", rows, "Medio de pago");
 }
 
 async function receiveMethod(ctx: Ctx, id: string | undefined, text: string, d: Draft) {
@@ -266,7 +274,7 @@ async function receiveMethod(ctx: Ctx, id: string | undefined, text: string, d: 
     return true;
   }
   await setSession(ctx.phone, "add:description", { ...d, paymentMethod: method });
-  await sendButtons(ctx.phone, "📝 ¿Querés agregar una descripción? Escribila, o tocá el botón.", [
+  await ctx.out.buttons("📝 ¿Querés agregar una descripción? Escribila, o tocá el botón.", [
     { id: "desc:none", title: "Sin descripción" },
   ]);
   return true;
@@ -276,7 +284,7 @@ async function receiveDescription(ctx: Ctx, id: string | undefined, rawText: str
   const description = id === "desc:none" ? null : rawText.trim().slice(0, 200) || null;
   const next = { ...d, description, date: todayISO() };
   await setSession(ctx.phone, "add:confirm", next);
-  await sendButtons(ctx.phone, `¿Guardo este gasto?\n\n${describeDraft(next)}`, [
+  await ctx.out.buttons(`¿Guardo este gasto?\n\n${describeDraft(next)}`, [
     { id: "confirm:yes", title: "✅ Guardar" },
     { id: "confirm:no", title: "❌ Cancelar" },
   ]);
@@ -296,7 +304,7 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
   const yes = id === "confirm:yes" || ["si", "guardar", "ok", "dale"].includes(text);
   const no = id === "confirm:no" || ["no", "cancelar"].includes(text);
   if (!yes && !no) {
-    await sendButtons(ctx.phone, "¿Lo guardo?", [
+    await ctx.out.buttons("¿Lo guardo?", [
       { id: "confirm:yes", title: "✅ Guardar" },
       { id: "confirm:no", title: "❌ Cancelar" },
     ]);
@@ -304,7 +312,7 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
   }
   await clearSession(ctx.phone);
   if (no) {
-    await sendText(ctx.phone, `Dale, no guardé nada 👌${BACK}`);
+    await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
   const created = await createExpense(
@@ -317,10 +325,10 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
       description: d.description ?? null,
       date: d.date ?? todayISO(),
     },
-    "WHATSAPP",
+    ctx.source,
   );
   const alert = await budgetAlertFor(ctx.userId, created);
-  await sendText(ctx.phone, `✅ Gasto guardado\n\n${describeDraft(d)}${alertLines(alert ? [alert] : [])}${BACK}`);
+  await ctx.out.text(`✅ Gasto guardado\n\n${describeDraft(d)}${alertLines(alert ? [alert] : [])}${BACK}`);
   return true;
 }
 
@@ -328,7 +336,7 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
 
 async function showQueryMenu(ctx: Ctx) {
   await setSession(ctx.phone, "query");
-  await sendList(ctx.phone, "📊 ¿Qué querés ver?", "Ver opciones", [
+  await ctx.out.list("📊 ¿Qué querés ver?", "Ver opciones", [
     { id: "q:today", title: "Hoy" },
     { id: "q:week", title: "Esta semana", description: "Desde el lunes" },
     { id: "q:month", title: "Este mes" },
@@ -364,7 +372,7 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
   await clearSession(ctx.phone);
   const [expenses, budgets] = await Promise.all([listExpenses(ctx.userId, filters), budgetLines(ctx.userId, filters)]);
   if (expenses.length === 0) {
-    await sendText(ctx.phone, `No tenés gastos ${title} 🙌${budgets.join("\n")}${BACK}`);
+    await ctx.out.text(`No tenés gastos ${title} 🙌${budgets.join("\n")}${BACK}`);
     return;
   }
 
@@ -390,9 +398,7 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
 
   const lastLines = expenses.slice(0, 5).map(expenseLine);
 
-  await sendText(
-    ctx.phone,
-    [
+  await ctx.out.text([
       `📊 *Gastos ${title}*`,
       `Total: *${totalText}* (${expenses.length} ${expenses.length === 1 ? "gasto" : "gastos"})`,
       // Si hay una sola categoría, el desglose repetiría el total
@@ -415,13 +421,11 @@ async function showDeleteList(ctx: Ctx) {
   const last = await listExpenses(ctx.userId, { to: todayISO() }, 10);
   if (last.length === 0) {
     await clearSession(ctx.phone);
-    await sendText(ctx.phone, `No tenés gastos para eliminar.${BACK}`);
+    await ctx.out.text(`No tenés gastos para eliminar.${BACK}`);
     return;
   }
   await setSession(ctx.phone, "delete:pick");
-  await sendList(
-    ctx.phone,
-    "🗑️ ¿Cuál querés eliminar? Estos son tus últimos gastos:",
+  await ctx.out.list("🗑️ ¿Cuál querés eliminar? Estos son tus últimos gastos:",
     "Ver gastos",
     last.map((e) => ({
       id: `del:${e.id}`,
@@ -436,7 +440,7 @@ async function showDeleteList(ctx: Ctx) {
 export async function startDeleteLast(ctx: Ctx) {
   const [last] = await listExpenses(ctx.userId, { to: todayISO() }, 1);
   if (!last) {
-    await sendText(ctx.phone, `No tenés gastos para eliminar.${BACK}`);
+    await ctx.out.text(`No tenés gastos para eliminar.${BACK}`);
     return;
   }
   await askDeleteConfirm(ctx, last);
@@ -454,7 +458,7 @@ async function pickDelete(ctx: Ctx, id: string | undefined) {
 
 async function askDeleteConfirm(ctx: Ctx, e: ExpenseDTO) {
   await setSession(ctx.phone, "delete:confirm", { expenseId: e.id });
-  await sendButtons(ctx.phone, `¿Elimino este gasto?\n\n${expenseLine(e)}`, [
+  await ctx.out.buttons(`¿Elimino este gasto?\n\n${expenseLine(e)}`, [
     { id: "delconfirm:yes", title: "🗑️ Sí, eliminar" },
     { id: "delconfirm:no", title: "Cancelar" },
   ]);
@@ -464,7 +468,7 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
   const yes = id === "delconfirm:yes" || ["si", "eliminar", "borrar"].includes(text);
   const no = id === "delconfirm:no" || ["no", "cancelar"].includes(text);
   if (!yes && !no) {
-    await sendButtons(ctx.phone, "¿Lo elimino?", [
+    await ctx.out.buttons("¿Lo elimino?", [
       { id: "delconfirm:yes", title: "🗑️ Sí, eliminar" },
       { id: "delconfirm:no", title: "Cancelar" },
     ]);
@@ -472,14 +476,14 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
   }
   await clearSession(ctx.phone);
   if (no || !d.expenseId) {
-    await sendText(ctx.phone, `Tranqui, no eliminé nada 👌${BACK}`);
+    await ctx.out.text(`Tranqui, no eliminé nada 👌${BACK}`);
     return true;
   }
   try {
     await deleteExpense(ctx.userId, d.expenseId);
-    await sendText(ctx.phone, `🗑️ Listo, lo eliminé.${BACK}`);
+    await ctx.out.text(`🗑️ Listo, lo eliminé.${BACK}`);
   } catch {
-    await sendText(ctx.phone, `Ese gasto ya no existe (¿lo borraste desde la web?).${BACK}`);
+    await ctx.out.text(`Ese gasto ya no existe (¿lo borraste desde la web?).${BACK}`);
   }
   return true;
 }
@@ -539,7 +543,7 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
     .filter(Boolean)
     .join("\n");
 
-  await sendButtons(ctx.phone, body, [
+  await ctx.out.buttons(body, [
     { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
     ...(missing.length > 0 ? [{ id: "aiconfirm:complete", title: "✏️ Completar" }] : []),
     { id: "aiconfirm:no", title: "❌ Cancelar" },
@@ -557,15 +561,13 @@ async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
 
   await setSession(ctx.phone, "ai:missing", { ...d, missing: [next, ...rest] });
   if (next === "description") {
-    await sendText(ctx.phone, "📝 ¿Qué le ponemos de descripción? (o escribí *no* para dejarla vacía)");
+    await ctx.out.text("📝 ¿Qué le ponemos de descripción? (o escribí *no* para dejarla vacía)");
     return true;
   }
   const kind = kindForMethod(pending[0].paymentMethod);
   const sources = (await listPaymentSources(ctx.userId)).filter((s) => s.kind === kind);
   if (sources.length === 0) return skipMissing(ctx, d);
-  await sendList(
-    ctx.phone,
-    kind === "CARD" ? "💳 ¿Con qué tarjeta?" : "📲 ¿Con qué billetera?",
+  await ctx.out.list(kind === "CARD" ? "💳 ¿Con qué tarjeta?" : "📲 ¿Con qué billetera?",
     "Ver opciones",
     sources.map((s) => ({ id: `src:${s.id}`, title: s.name })),
     kind === "CARD" ? "Tarjetas" : "Billeteras",
@@ -603,7 +605,7 @@ async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
   if (missing.length > 0) return askMissing(ctx, d);
 
   await setSession(ctx.phone, "ai:confirm", { pending, missing: [] });
-  await sendButtons(ctx.phone, ["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [
+  await ctx.out.buttons(["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [
     { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
@@ -652,7 +654,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
         return true;
       }
     }
-    await sendButtons(ctx.phone, "¿Los guardo?", [
+    await ctx.out.buttons("¿Los guardo?", [
       { id: "aiconfirm:yes", title: "✅ Guardar" },
       { id: "aiconfirm:no", title: "❌ Cancelar" },
     ]);
@@ -660,7 +662,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
   }
   await clearSession(ctx.phone);
   if (no || pending.length === 0) {
-    await sendText(ctx.phone, `Dale, no guardé nada 👌${BACK}`);
+    await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
   let created = 0;
@@ -678,7 +680,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
         description: p.description,
         date: p.date,
       },
-      "WHATSAPP",
+      ctx.source,
     );
     created += p.installments ?? 1;
     // Se chequea después de cada uno: si dos gastos juntos cruzan el límite, avisa el que lo cruzó
@@ -691,7 +693,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
       : pending.length === 1
         ? "✅ Gasto guardado"
         : `✅ ${pending.length} gastos guardados`;
-  await sendText(ctx.phone, `${title}\n\n${pending.map(describePending).join("\n")}${alertLines(alerts)}${BACK}`);
+  await ctx.out.text(`${title}\n\n${pending.map(describePending).join("\n")}${alertLines(alerts)}${BACK}`);
   return true;
 }
 
@@ -755,7 +757,7 @@ async function findTarget(ctx: Ctx, target: Target) {
 export async function handleDelete(ctx: Ctx, target: Target) {
   const expense = await findTarget(ctx, target);
   if (!expense) {
-    await sendText(ctx.phone, `No encontré ese gasto entre los últimos 🤔${BACK}`);
+    await ctx.out.text(`No encontré ese gasto entre los últimos 🤔${BACK}`);
     return true;
   }
   await askDeleteConfirm(ctx, expense);
@@ -765,7 +767,7 @@ export async function handleDelete(ctx: Ctx, target: Target) {
 export async function handleEdit(ctx: Ctx, target: Target, changes: Partial<ParsedExpense>) {
   const expense = await findTarget(ctx, target);
   if (!expense) {
-    await sendText(ctx.phone, `No encontré ese gasto entre los últimos 🤔${BACK}`);
+    await ctx.out.text(`No encontré ese gasto entre los últimos 🤔${BACK}`);
     return true;
   }
 
@@ -800,7 +802,7 @@ export async function handleEdit(ctx: Ctx, target: Target, changes: Partial<Pars
   const after = describe(values, usableSource?.name ?? (keepsOldSource ? expense.paymentSource!.name : null));
 
   await setSession(ctx.phone, "ai:edit", { edit: { expenseId: expense.id, before, after, values } });
-  await sendButtons(ctx.phone, `¿Cambio este gasto?\n\n*Antes*\n${before}\n\n*Después*\n${after}`, [
+  await ctx.out.buttons(`¿Cambio este gasto?\n\n*Antes*\n${before}\n\n*Después*\n${after}`, [
     { id: "editconfirm:yes", title: "✅ Cambiar" },
     { id: "editconfirm:no", title: "❌ Cancelar" },
   ]);
@@ -811,7 +813,7 @@ async function confirmEdit(ctx: Ctx, id: string | undefined, text: string, d: Dr
   const yes = id === "editconfirm:yes" || ["si", "dale", "ok", "cambiar"].includes(text);
   const no = id === "editconfirm:no" || ["no", "cancelar"].includes(text);
   if (!yes && !no) {
-    await sendButtons(ctx.phone, "¿Lo cambio?", [
+    await ctx.out.buttons("¿Lo cambio?", [
       { id: "editconfirm:yes", title: "✅ Cambiar" },
       { id: "editconfirm:no", title: "❌ Cancelar" },
     ]);
@@ -820,14 +822,14 @@ async function confirmEdit(ctx: Ctx, id: string | undefined, text: string, d: Dr
   const edit = d.edit;
   await clearSession(ctx.phone);
   if (no || !edit) {
-    await sendText(ctx.phone, `Listo, lo dejé como estaba 👌${BACK}`);
+    await ctx.out.text(`Listo, lo dejé como estaba 👌${BACK}`);
     return true;
   }
   try {
     await updateExpense(ctx.userId, edit.expenseId, edit.values);
-    await sendText(ctx.phone, `✅ Gasto actualizado\n\n${edit.after}${BACK}`);
+    await ctx.out.text(`✅ Gasto actualizado\n\n${edit.after}${BACK}`);
   } catch {
-    await sendText(ctx.phone, `Ese gasto ya no existe 🤔${BACK}`);
+    await ctx.out.text(`Ese gasto ya no existe 🤔${BACK}`);
   }
   return true;
 }

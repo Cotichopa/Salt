@@ -279,11 +279,11 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 **Además de las etapas, ya está hecho:**
 - Rediseño monocromático (blanco y negro), tipografías Bricolage Grotesque e Instrument Sans,
   logo de ánfora romana y modo claro/oscuro con interruptor.
-- Inicio con cuatro indicadores (total, proyección a fin de mes, gasto promedio y el más grande),
+- Inicio con saludo de Chop (un dato del mes o un aviso de presupuesto), cuatro indicadores (total, proyección a fin de mes, gasto promedio y el más grande),
   torta de categorías con detalle al tocar, acumulado contra el mes pasado, gasto por día y por día
   de la semana.
 - Gastos: lista agrupada por día en el celular, tabla en escritorio, buscador instantáneo,
-  exportación a CSV y botón flotante para cargar.
+  exportación a CSV. La carga manual está solo en Gastos: en el resto de la app se carga con Chop.
 - Tarjetas y billeteras propias, compras en cuotas y desglose por tarjeta en el inicio.
 - Menú hamburguesa en el celular (panel lateral con todas las secciones).
 - Categorías con íconos en blanco y negro (el emoji queda para Chop en WhatsApp) y una pantalla
@@ -291,6 +291,11 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 - Presupuesto mensual por categoría: barra de progreso en la categoría, en la lista y en el inicio;
   aviso al llegar al 80 % y al pasarse (en la web al cargar y en la respuesta de Chop), y Chop
   responde "¿cuánto me queda del presupuesto de...?".
+- Chop dentro de la app: botón flotante con su cara de beagle (`public/chop.png`, `src/components/chop/`) que abre el
+  chat, en una ventanita en la compu y a pantalla completa en el celular. Mismo cerebro que WhatsApp (`handleInput` en
+  `src/lib/whatsapp/bot.ts`), con sus botones y listas. Las respuestas salen por una "salida"
+  intercambiable (`outbox.ts`). Tiene botón para grabar audio: la transcripción todavía no está
+  conectada (`src/lib/transcribe.ts`, pensado para Whisper).
 - Chop entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
   acepta correcciones y repregunta cuando no entiende.
 

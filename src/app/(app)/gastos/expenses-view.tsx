@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DownloadIcon, MessageCircleIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { DownloadIcon, MessageCircleIcon, SearchIcon } from "lucide-react";
 import { formatDay, formatMoney, isoToDate, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import type { ExpenseDTO } from "@/lib/services/expenses";
@@ -22,7 +22,6 @@ type Props = { expenses: ExpenseDTO[]; categories: CategoryOption[]; sources: So
 export function ExpensesView({ expenses, categories, sources, today }: Props) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<ExpenseDTO | null>(null);
-  const [creating, setCreating] = useState(false);
 
   // El buscador filtra acá mismo, sin ir al servidor: la respuesta es instantánea
   const filtered = useMemo(() => {
@@ -197,25 +196,6 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
           </Card>
         </>
       )}
-
-      {/* Botón flotante para cargar, solo en celular */}
-      <Button
-        size="icon-lg"
-        className="fixed right-5 bottom-5 z-10 size-14 rounded-full shadow-lg lg:hidden"
-        aria-label="Nuevo gasto"
-        onClick={() => setCreating(true)}
-      >
-        <PlusIcon className="size-6" />
-      </Button>
-
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nuevo gasto</DialogTitle>
-          </DialogHeader>
-          <ExpenseForm categories={categories} sources={sources} today={today} onDone={() => setCreating(false)} />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="sm:max-w-lg">

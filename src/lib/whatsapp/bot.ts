@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { normalize } from "@/lib/text";
 import { sendText } from "@/lib/whatsapp/client";
+import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
 import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
 import { listPaymentSources } from "@/lib/services/payment-sources";
@@ -19,13 +20,14 @@ import {
 import { clearSession, getSession } from "@/lib/whatsapp/session";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
 
-// El "cerebro" de Chop (el bot de Salt): identifica a la persona, atiende los comandos
-// que valen siempre (menu, cancelar...) y le pasa el resto al menú paso a paso.
+// Chop, el bot de Salt. handleMessage recibe lo que llega por WhatsApp y handleInput es el
+// "cerebro", que también usa el chat de la web (src/lib/actions/chop.ts).
 
 const MENU_WORDS = ["menu", "hola", "inicio", "ayuda", "buenas", "buen dia", "empezar"];
 const CANCEL_WORDS = ["cancelar", "salir", "chau"];
 const DELETE_LAST = ["borrar ultimo", "eliminar ultimo", "borrar el ultimo", "eliminar el ultimo"];
 
+/** Mensaje que llega por WhatsApp: identifica a la persona por su teléfono y se lo pasa a Chop */
 export async function handleMessage(msg: IncomingMessage) {
   // Solo atendemos a cuentas activas cuyo teléfono esté cargado en Salt
   const user = await db.user.findFirst({ where: { phone: msg.from, active: true }, select: { id: true, name: true } });
@@ -33,8 +35,6 @@ export async function handleMessage(msg: IncomingMessage) {
     await sendText(msg.from, "Hola 👋 Soy Chop, el asistente de gastos de Salt. Este número no está registrado, así que no puedo ayudarte todavía. Pedile al administrador que lo cargue en tu cuenta.");
     return;
   }
-  const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from };
-
   const input: Input = {
     text: msg.text?.body,
     replyId: msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id,
@@ -43,12 +43,20 @@ export async function handleMessage(msg: IncomingMessage) {
     await sendText(msg.from, "Todavía no escucho audios 🙉 Escribímelo y lo cargo al toque, o escribí *menu* para ver las opciones.");
     return;
   }
+  const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
+  await handleInput(ctx, input);
+}
 
+/**
+ * El "cerebro" de Chop, igual para WhatsApp y para el chat de la web: atiende los comandos
+ * que valen siempre (menu, cancelar...), sigue el menú paso a paso o le pregunta a la IA.
+ */
+export async function handleInput(ctx: Ctx, input: Input) {
   const text = normalize(input.text ?? "").replace(/[!¡?¿.]/g, "");
-  if (MENU_WORDS.includes(text)) return showMainMenu(ctx, `¡Hola ${user.name}! 👋 Soy *Chop*. Contame un gasto (ej: _"nafta 15000"_) o elegí una opción:`);
+  if (MENU_WORDS.includes(text)) return showMainMenu(ctx, `¡Hola ${ctx.name}! 👋 Soy *Chop*. Contame un gasto (ej: _"nafta 15000"_) o elegí una opción:`);
   if (CANCEL_WORDS.includes(text)) {
     await clearSession(ctx.phone);
-    return sendText(ctx.phone, "Listo, cancelado 👌 Escribime cuando quieras.");
+    return ctx.out.text("Listo, cancelado 👌 Escribime cuando quieras.");
   }
   if (DELETE_LAST.includes(text)) return startDeleteLast(ctx);
 
@@ -74,7 +82,7 @@ export async function handleMessage(msg: IncomingMessage) {
     if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));
     // No entendió del todo: repregunta en vez de tirar el menú de una
     if (parsed.intent === "otro" && parsed.question) {
-      await sendText(ctx.phone, `${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);
+      await ctx.out.text(`${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);
       return;
     }
   }

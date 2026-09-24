@@ -3,17 +3,15 @@ import Link from "next/link";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { requireUser } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
-import { listCategories } from "@/lib/services/categories";
-import { listPaymentSources } from "@/lib/services/payment-sources";
-import { getDashboard } from "@/lib/services/stats";
-import { listBudgets } from "@/lib/services/budgets";
+import { getDashboard, type Dashboard } from "@/lib/services/stats";
+import { listBudgets, type BudgetStatus } from "@/lib/services/budgets";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ChartDataTable } from "@/components/chart-data-table";
 import { CategoryIcon } from "@/components/category-icon";
 import { BudgetBar } from "@/components/budget-bar";
-import { ExpenseDialog } from "../gastos/expense-dialog";
+import { ChopAvatar } from "@/components/chop/chop-avatar";
 import { CategoryPie, CumulativeChart, DailyChart, PaymentMethodBar, WeekdayChart } from "./charts";
 
 export const metadata: Metadata = { title: "Inicio · Salt" };
@@ -21,6 +19,34 @@ export const metadata: Metadata = { title: "Inicio · Salt" };
 function shiftMonth(month: string, delta: number) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
+}
+
+/** Lo que Chop te dice arriba del inicio: primero un aviso de presupuesto si hay, si no un resumen */
+function chopGreeting(
+  data: Dashboard,
+  budgets: BudgetStatus[],
+  month: string,
+  currentMonth: string,
+  currency: CurrencyCode,
+) {
+  const gastos = (n: number) => `${n} ${n === 1 ? "gasto" : "gastos"}`;
+  const moneda = currency === "ARS" ? "pesos" : "dólares";
+
+  if (month !== currentMonth) {
+    const name = formatMonth(month).replace(/ de \d+$/, "").toLowerCase();
+    return data.count === 0
+      ? `En ${name} no cargaste gastos en ${moneda}.`
+      : `En ${name} gastaste ${formatMoney(data.total, currency)} en ${gastos(data.count)}.`;
+  }
+  if (data.count === 0) return `Todavía no hay gastos en ${moneda} este mes. Cuando gastes algo, contámelo.`;
+
+  // Los presupuestos son en pesos: solo avisamos mirando pesos
+  const exceeded = currency === "ARS" && budgets.find((b) => b.level === "exceeded");
+  if (exceeded) return `Ojo: te pasaste del presupuesto de ${exceeded.name}.`;
+  const warning = currency === "ARS" && budgets.find((b) => b.level === "warning");
+  if (warning) return `Te queda poco del presupuesto de ${warning.name}: ${formatMoney(warning.remaining, "ARS")}.`;
+
+  return `Llevás ${formatMoney(data.total, currency)} en ${gastos(data.count)} este mes.`;
 }
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
@@ -34,25 +60,20 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       : currentMonth;
   const currency: CurrencyCode = params.moneda === "USD" ? "USD" : "ARS";
 
-  const [data, categories, sources, budgets] = await Promise.all([
-    getDashboard(user.id, month, currency),
-    listCategories(user.id),
-    listPaymentSources(user.id),
-    listBudgets(user.id, month),
-  ]);
+  const [data, budgets] = await Promise.all([getDashboard(user.id, month, currency), listBudgets(user.id, month)]);
   const href = (m: string, c: CurrencyCode) => `/dashboard?mes=${m}&moneda=${c}`;
 
   const delta = data.previousTotal > 0 ? (data.total - data.previousTotal) / data.previousTotal : null;
 
   return (
     <div className="flex flex-col gap-4 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Hola, {user.name} 👋</h1>
-        <ExpenseDialog
-          categories={categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }))}
-          sources={sources}
-          today={today}
-        />
+      {/* Chop saluda con un dato del mes (sin botón de carga: los gastos se cargan con Chop o en Gastos) */}
+      <div className="flex items-center gap-3">
+        <ChopAvatar />
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold">Hola, {user.name}</h1>
+          <p className="text-sm text-muted-foreground">{chopGreeting(data, budgets, month, currentMonth, currency)}</p>
+        </div>
       </div>
 
       {/* Una sola fila de filtros que aplica a todo el dashboard */}
@@ -191,9 +212,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       {data.count === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            No hay gastos en {currency === "ARS" ? "pesos" : "dólares"} este mes.{" "}
+            No hay gastos en {currency === "ARS" ? "pesos" : "dólares"} este mes. Contáselo a Chop con el botón de
+            abajo, o cargalo en{" "}
             <Link href="/gastos" className="text-foreground underline underline-offset-4">
-              Cargá el primero
+              Gastos
             </Link>
             .
           </CardContent>

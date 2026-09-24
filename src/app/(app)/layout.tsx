@@ -4,6 +4,7 @@ import { UserMenu } from "@/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { DesktopNav, MobileNav } from "@/components/main-nav";
+import { ChopWidget } from "@/components/chop/chop-widget";
 
 // Layout de todas las páginas privadas: la carpeta "(app)" entre paréntesis agrupa
 // rutas sin agregar nada a la URL (/dashboard, no /app/dashboard).
@@ -28,7 +29,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <UserMenu name={user.name} email={user.email} />
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4">{children}</main>
+      {/* pb-24: espacio abajo para que el botón de Chop no tape lo último de la página */}
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24">{children}</main>
+      <ChopWidget userId={user.id} name={user.name} />
     </>
   );
 }
