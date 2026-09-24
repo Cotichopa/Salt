@@ -69,7 +69,7 @@ src/
 │   ├── (app)/                  Páginas privadas (requieren sesión)
 │   │   ├── dashboard/          Indicadores y gráficos  ← charts.tsx
 │   │   ├── gastos/             Lista por día / tabla, filtros, buscador, alta y edición
-│   │   ├── categorias/         Categorías propias
+│   │   ├── categorias/         Categorías propias y pantalla de cada una ([id])
 │   │   ├── medios/             Tarjetas y billeteras propias
 │   │   ├── cuenta/             Cambiar la contraseña
 │   │   ├── admin/usuarios/     Alta y administración de cuentas (solo admin)
@@ -118,7 +118,7 @@ prisma/
 | Tabla | Guarda |
 |---|---|
 | `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
-| `categories` | Nombre, emoji, palabras clave. Sin usuario = categoría base, compartida |
+| `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Sin usuario = categoría base, compartida |
 | `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, descripción, fecha, origen (WEB/WHATSAPP) |
 | `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
 | `wa_sessions` | En qué paso del menú está cada teléfono (expira a los 15 minutos) |
@@ -284,6 +284,9 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 - Gastos: lista agrupada por día en el celular, tabla en escritorio, buscador instantáneo,
   exportación a CSV y botón flotante para cargar.
 - Tarjetas y billeteras propias, compras en cuotas y desglose por tarjeta en el inicio.
+- Menú hamburguesa en el celular (panel lateral con todas las secciones).
+- Categorías con íconos en blanco y negro (el emoji queda para Chop en WhatsApp) y una pantalla
+  por categoría con lo gastado en la semana, el mes y el año, historial y sus gastos.
 - Chop entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
   acepta correcciones y repregunta cuando no entiende.
 

@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { resolveCategoryIcon } from "@/components/category-icon";
 import { dateToISO, monthRange, todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 
 // Números del dashboard. Las sumas las hace PostgreSQL con groupBy (agrupar y sumar
@@ -59,7 +60,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
         amount: true,
         description: true,
         date: true,
-        category: { select: { name: true, emoji: true } },
+        category: { select: { name: true } },
       },
     }),
     ]);
@@ -78,16 +79,21 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     }))
     .sort((a, b) => b.total - a.total);
 
-  // Categorías: sumar y ordenar de mayor a menor, con nombre y emoji
+  // Categorías: sumar y ordenar de mayor a menor, con nombre e ícono
   const categories = await db.category.findMany({
     where: { id: { in: byCategoryRaw.map((c) => c.categoryId) } },
-    select: { id: true, name: true, emoji: true },
+    select: { id: true, name: true, emoji: true, icon: true },
   });
   const catById = new Map(categories.map((c) => [c.id, c]));
   const byCategory = byCategoryRaw
     .map((c) => {
       const cat = catById.get(c.categoryId);
-      return { name: `${cat?.emoji ?? ""} ${cat?.name ?? "?"}`.trim(), total: c._sum.amount?.toNumber() ?? 0 };
+      return {
+        id: c.categoryId as string | null,
+        name: cat?.name ?? "?",
+        icon: resolveCategoryIcon(cat?.icon, cat?.emoji) as string | null,
+        total: c._sum.amount?.toNumber() ?? 0,
+      };
     })
     .sort((a, b) => b.total - a.total);
 
@@ -138,7 +144,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
         amount: biggestRaw.amount.toNumber(),
         description: biggestRaw.description,
         date: dateToISO(biggestRaw.date),
-        category: `${biggestRaw.category.emoji ?? ""} ${biggestRaw.category.name}`.trim(),
+        category: biggestRaw.category.name,
       }
     : null;
 

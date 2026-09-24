@@ -62,7 +62,8 @@ model User {
 model Category {
   id        String   @id @default(cuid())
   name      String
-  emoji     String?
+  emoji     String? // lo usa Chop en WhatsApp (ahí no hay íconos)
+  icon      String? // ícono en blanco y negro para la web (ver src/components/category-icon.tsx)
   keywords  String[] @default([]) // palabras que el bot de WhatsApp asocia a esta categoría
   userId    String? // null = categoría base, visible para todos
   createdAt DateTime @default(now())

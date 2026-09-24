@@ -44,7 +44,7 @@ export function ExpenseFilters({
     {
       key: "categoria",
       placeholder: "Categoría",
-      items: [{ value: ALL, label: "Todas las categorías" }, ...categories.map((c) => ({ value: c.id, label: `${c.emoji ?? ""} ${c.name}`.trim() }))],
+      items: [{ value: ALL, label: "Todas las categorías" }, ...categories.map((c) => ({ value: c.id, label: c.name }))],
     },
     {
       key: "moneda",

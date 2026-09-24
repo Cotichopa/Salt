@@ -6,6 +6,7 @@ import { formatDay, formatMoney, isoToDate, paymentMethodLabels, type CurrencyCo
 import { normalize } from "@/lib/text";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Button } from "@/components/ui/button";
+import { CategoryIcon } from "@/components/category-icon";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -117,10 +118,9 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
                       className="flex w-full items-center gap-3 border-b py-3 text-left last:border-0 hover:bg-muted/50"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 font-medium">
-                          <span className="truncate">
-                            {e.category.emoji} {e.category.name}
-                          </span>
+                        <div className="flex items-center gap-2 font-medium">
+                          <CategoryIcon icon={e.category.icon} emoji={e.category.emoji} size="sm" />
+                          <span className="truncate">{e.category.name}</span>
                           {e.source === "WHATSAPP" && (
                             <MessageCircleIcon className="size-3.5 shrink-0 text-green-600" aria-label="Cargado por WhatsApp" />
                           )}
@@ -169,8 +169,9 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
                         {formatDay(isoToDate(e.date))}
                       </TableCell>
                       <TableCell className="font-medium whitespace-nowrap">
-                        <span className="flex items-center gap-1.5">
-                          {e.category.emoji} {e.category.name}
+                        <span className="flex items-center gap-2">
+                          <CategoryIcon icon={e.category.icon} emoji={e.category.emoji} size="sm" />
+                          {e.category.name}
                           {e.source === "WHATSAPP" && (
                             <MessageCircleIcon className="size-3.5 text-green-600" aria-label="Cargado por WhatsApp" />
                           )}

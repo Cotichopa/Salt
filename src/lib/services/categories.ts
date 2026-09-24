@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { monthRange, todayISO } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import type { CategoryInput } from "@/lib/validators";
 
@@ -13,18 +14,37 @@ export function listCategories(userId: string) {
   return db.category.findMany({
     where: { OR: [{ userId: null }, { userId }] },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, emoji: true, keywords: true, userId: true },
+    select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
   });
 }
 
-/** Igual que listCategories, pero con cuántos gastos tiene el usuario en cada una */
+/** Una categoría que el usuario puede ver (base o propia), o null si no existe o es de otra cuenta */
+export function getCategory(userId: string, id: string) {
+  return db.category.findFirst({
+    where: { id, OR: [{ userId: null }, { userId }] },
+    select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
+  });
+}
+
+/** Igual que listCategories, pero con cuántos gastos tiene el usuario en cada una y cuánto lleva este mes (en pesos) */
 export async function listCategoriesWithUsage(userId: string) {
-  const [categories, counts] = await Promise.all([
+  const { from, to } = monthRange(todayISO().slice(0, 7));
+  const [categories, counts, month] = await Promise.all([
     listCategories(userId),
     db.expense.groupBy({ by: ["categoryId"], where: { userId }, _count: true }),
+    db.expense.groupBy({
+      by: ["categoryId"],
+      where: { userId, currency: "ARS", date: { gte: from, lt: to } },
+      _sum: { amount: true },
+    }),
   ]);
-  const byId = new Map(counts.map((c) => [c.categoryId, c._count]));
-  return categories.map((c) => ({ ...c, expenseCount: byId.get(c.id) ?? 0 }));
+  const countById = new Map(counts.map((c) => [c.categoryId, c._count]));
+  const monthById = new Map(month.map((c) => [c.categoryId, c._sum.amount?.toNumber() ?? 0]));
+  return categories.map((c) => ({
+    ...c,
+    expenseCount: countById.get(c.id) ?? 0,
+    monthTotal: monthById.get(c.id) ?? 0,
+  }));
 }
 
 /** Lanza error si la categoría no es base ni del usuario */

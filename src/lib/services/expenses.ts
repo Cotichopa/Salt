@@ -38,7 +38,7 @@ export type ExpenseDTO = {
   description: string | null;
   date: string; // "YYYY-MM-DD"
   source: Source;
-  category: { id: string; name: string; emoji: string | null };
+  category: { id: string; name: string; emoji: string | null; icon: string | null };
   paymentSource: { id: string; name: string } | null;
   installments: number;
   installmentNumber: number;
@@ -56,7 +56,7 @@ const expenseSelect = {
   installments: true,
   installmentNumber: true,
   purchaseId: true,
-  category: { select: { id: true, name: true, emoji: true } },
+  category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
 } satisfies Prisma.ExpenseSelect;
 

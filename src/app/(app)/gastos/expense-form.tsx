@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldError } from "@/components/field-error";
+import { CategoryIcon } from "@/components/category-icon";
 
-export type CategoryOption = { id: string; name: string; emoji: string | null };
+export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
 
 const currencies = Object.entries(currencyLabels).map(([value, label]) => ({ value, label }));
@@ -43,7 +44,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
 
   const kind = method === "TRANSFER" ? "WALLET" : method === "CASH" ? null : "CARD";
   const sourceOptions = sources.filter((s) => s.kind === kind).map((s) => ({ value: s.id, label: s.name }));
-  const categoryItems = categories.map((c) => ({ value: c.id, label: `${c.emoji ?? ""} ${c.name}`.trim() }));
+  const categoryItems = categories.map((c) => ({ value: c.id, label: c.name }));
   const errors = state?.errors;
 
   // Cuotas: mostramos cuánto queda cada una para que no haya sorpresas
@@ -93,9 +94,12 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
             <SelectValue placeholder="Elegí una categoría" />
           </SelectTrigger>
           <SelectContent>
-            {categoryItems.map((c) => (
-              <SelectItem key={c.value} value={c.value}>
-                {c.label}
+            {categories.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                <span className="flex items-center gap-2">
+                  <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                  {c.name}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

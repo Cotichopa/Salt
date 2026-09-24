@@ -35,7 +35,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
     listPaymentSources(user.id),
     listExpenses(user.id, filters),
   ]);
-  const categoryOptions = categories.map(({ id, name, emoji }) => ({ id, name, emoji }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
 
   return (
     <div className="flex flex-col gap-4 py-2">

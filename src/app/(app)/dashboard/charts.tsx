@@ -20,6 +20,7 @@ import {
 } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/category-icon";
 import { formatMoney, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
 import type { Dashboard } from "@/lib/services/stats";
 
@@ -154,7 +155,7 @@ export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"];
   const slices = useMemo(() => {
     const top = data.slice(0, 6).map((d, i) => ({ ...d, fill: SLICE_COLORS[i] }));
     const restTotal = data.slice(6).reduce((sum, d) => sum + d.total, 0);
-    return restTotal > 0 ? [...top, { name: "Otras", total: restTotal, fill: "var(--chart-5)" }] : top;
+    return restTotal > 0 ? [...top, { id: null, name: "Otras", icon: null, total: restTotal, fill: "var(--chart-5)" }] : top;
   }, [data]);
 
   const total = slices.reduce((sum, d) => sum + d.total, 0);
@@ -212,6 +213,7 @@ export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"];
               className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-muted aria-[current=true]:bg-muted"
             >
               <span className="size-3 shrink-0 rounded-sm" style={{ background: s.fill }} />
+              {s.icon && <CategoryIcon icon={s.icon} size="sm" />}
               <span className="flex-1 truncate">{s.name}</span>
               <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
               <span className="w-10 text-right text-muted-foreground tabular-nums">

@@ -9,6 +9,7 @@ import { getDashboard } from "@/lib/services/stats";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ChartDataTable } from "@/components/chart-data-table";
 import { ExpenseDialog } from "../gastos/expense-dialog";
 import { CategoryPie, CumulativeChart, DailyChart, PaymentMethodBar, WeekdayChart } from "./charts";
 
@@ -17,26 +18,6 @@ export const metadata: Metadata = { title: "Inicio · Salt" };
 function shiftMonth(month: string, delta: number) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
-}
-
-// Tabla simple escondida debajo de cada gráfico: permite leer los valores exactos
-// sin depender de los colores ni del mouse (accesibilidad)
-function DataTable({ rows, currency }: { rows: { label: string; total: number }[]; currency: CurrencyCode }) {
-  return (
-    <details className="mt-2 text-sm">
-      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Ver datos</summary>
-      <table className="mt-2 w-full">
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.label} className="border-b last:border-0">
-              <td className="py-1">{r.label}</td>
-              <td className="py-1 text-right tabular-nums">{formatMoney(r.total, currency)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </details>
-  );
 }
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
@@ -64,7 +45,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Hola, {user.name} 👋</h1>
         <ExpenseDialog
-          categories={categories.map(({ id, name, emoji }) => ({ id, name, emoji }))}
+          categories={categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }))}
           sources={sources}
           today={today}
         />
@@ -218,7 +199,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardHeader>
             <CardContent>
               <DailyChart data={data.byDay} currency={currency} month={month} />
-              <DataTable
+              <ChartDataTable
                 currency={currency}
                 rows={data.byDay.filter((d) => d.total > 0).map((d) => ({ label: `${d.day}/${month.slice(5)}`, total: d.total }))}
               />
@@ -231,7 +212,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardHeader>
             <CardContent>
               <WeekdayChart data={data.byWeekday} currency={currency} />
-              <DataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
+              <ChartDataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
             </CardContent>
           </Card>
 

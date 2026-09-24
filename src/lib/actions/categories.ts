@@ -7,7 +7,7 @@ import { CategoryError, createCategory, deleteCategory, updateCategory } from "@
 import { categorySchema, type FormState } from "@/lib/validators";
 
 function revalidate() {
-  revalidatePath("/categorias");
+  revalidatePath("/categorias", "layout"); // la lista y la pantalla de cada categoría
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
 }
