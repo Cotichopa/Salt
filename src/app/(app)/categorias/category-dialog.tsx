@@ -43,7 +43,13 @@ export function CategoryDialog({ category }: { category?: Category }) {
             esta categoría, el gasto va acá.
           </DialogDescription>
         </DialogHeader>
-        <CategoryForm category={category} onDone={() => setOpen(false)} />
+        {/* key: si al guardar llegan los datos nuevos mientras la ventana se cierra, React arma un
+            formulario nuevo en vez de cambiarle el valor inicial a los campos (Base UI no lo permite) */}
+        <CategoryForm
+          key={category ? [category.name, category.icon, category.keywords.join(",")].join("|") : "nueva"}
+          category={category}
+          onDone={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   );

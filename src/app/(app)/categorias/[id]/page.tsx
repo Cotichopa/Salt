@@ -9,6 +9,7 @@ import { getCategory, listCategoriesWithUsage } from "@/lib/services/categories"
 import { getCategoryStats, type CategoryPeriod } from "@/lib/services/category-stats";
 import { listExpenses } from "@/lib/services/expenses";
 import { listPaymentSources } from "@/lib/services/payment-sources";
+import { getBudget } from "@/lib/services/budgets";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CategoryIcon } from "@/components/category-icon";
@@ -17,9 +18,10 @@ import { ExpensesView } from "../../gastos/expenses-view";
 import { CategoryDialog } from "../category-dialog";
 import { DeleteCategoryButton } from "../delete-category-button";
 import { HistoryChart } from "./history-chart";
+import { BudgetCard } from "./budget-card";
 
 // Pantalla de una categoría (/categorias/<id>): cuánto va esta semana, este mes y este año,
-// un gráfico con el historial y los gastos del período elegido.
+// el presupuesto mensual, un gráfico con el historial y los gastos del período elegido.
 // El período y la moneda van en la URL (?periodo=semana&moneda=ARS), igual que en el inicio.
 
 const PERIODS = {
@@ -49,9 +51,10 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
 
   const today = todayISO();
   const stats = await getCategoryStats(user.id, id, currency, period);
-  const [expenses, sources] = await Promise.all([
+  const [expenses, sources, budget] = await Promise.all([
     listExpenses(user.id, { categoryId: id, currency, from: stats.periodStart, to: today }),
     listPaymentSources(user.id),
+    getBudget(user.id, id),
   ]);
   const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
   const href = (p: CategoryPeriod, c: CurrencyCode) => `/categorias/${id}?periodo=${p}&moneda=${c}`;
@@ -141,6 +144,9 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
           );
         })}
       </div>
+
+      {/* El presupuesto es en pesos: con "Dólares" elegido no lo mostramos */}
+      {currency === "ARS" && <BudgetCard budget={budget} categoryId={id} categoryName={category.name} today={today} />}
 
       <Card>
         <CardHeader>

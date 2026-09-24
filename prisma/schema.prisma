@@ -55,6 +55,7 @@ model User {
   expenses       Expense[]
   categories     Category[]
   paymentSources PaymentSource[]
+  budgets        Budget[]
 
   @@map("users")
 }
@@ -70,9 +71,28 @@ model Category {
 
   user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenses Expense[]
+  budgets  Budget[]
 
   @@unique([userId, name])
   @@map("categories")
+}
+
+// Presupuesto mensual (en pesos) que cada cuenta le pone a una categoría.
+// Aunque la categoría sea base, el presupuesto es de una sola persona.
+model Budget {
+  id         String   @id @default(cuid())
+  userId     String
+  categoryId String
+  amount     Decimal  @db.Decimal(14, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Si se borra la categoría, su presupuesto se borra con ella
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId]) // un solo presupuesto por categoría y por cuenta
+  @@map("budgets")
 }
 
 // Tarjetas y billeteras de cada usuario (Visa, Mercado Pago, ...)

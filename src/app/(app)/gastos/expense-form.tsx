@@ -32,6 +32,8 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
     const result = await saveExpense(prev, formData);
     if (result?.ok) {
       toast.success(result.message);
+      // Aviso de presupuesto: se queda más tiempo en pantalla para que se llegue a leer
+      if (result.warning) toast.warning(result.warning, { duration: 8000 });
       onDone();
     }
     return result;

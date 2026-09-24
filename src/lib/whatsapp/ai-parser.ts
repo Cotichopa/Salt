@@ -86,7 +86,7 @@ const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt. Interpretás me
 
 INTENCIONES:
 - "cargar": describe uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "zapatillas 120000 en 6 cuotas con la visa").
-- "consultar": pregunta por gastos ya cargados ("cuánto gasté en comida este mes", "qué gasté ayer", "cuánto llevo en la visa", "cómo venimos").
+- "consultar": pregunta por gastos ya cargados o por sus presupuestos ("cuánto gasté en comida este mes", "qué gasté ayer", "cuánto llevo en la visa", "cómo venimos", "cuánto me queda del presupuesto de salidas"). Los presupuestos son mensuales: si pregunta por presupuesto, periodo="mes".
 - "eliminar": pide borrar un gasto ("borrá el último", "eliminá el gasto de la nafta").
 - "editar": pide cambiar un gasto ya cargado ("el último eran 20000", "pasalo a efectivo", "cambiá la nafta a 18000").
 - "otro": saludos, agradecimientos, mensajes confusos o cualquier cosa que no encaje arriba. Escribí en "repregunta" una pregunta corta para aclarar (ej: "¿Querés cargar un gasto de $15.000? ¿En qué categoría?"). Si el mensaje no tiene nada que ver con gastos, dejá "repregunta" vacío.

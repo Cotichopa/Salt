@@ -22,6 +22,7 @@ import {
   type Target,
 } from "@/lib/whatsapp/ai-parser";
 import { listPaymentSources, kindForMethod } from "@/lib/services/payment-sources";
+import { budgetAlertFor, budgetAlertText, listBudgets, type BudgetAlert } from "@/lib/services/budgets";
 import { updateExpense } from "@/lib/services/expenses";
 import { sendButtons, sendList, sendText, type ListRow } from "@/lib/whatsapp/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
@@ -44,6 +45,30 @@ const BACK = "\n\nEscribí *menu* para volver al menú.";
 const NAME = "Chop";
 const shortDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 const label = (c: { emoji: string | null; name: string }) => `${c.emoji ?? ""} ${c.name}`.trim();
+
+/** Avisos de presupuesto para agregar al final de un mensaje (vacío si no hay) */
+const alertLines = (alerts: BudgetAlert[]) =>
+  alerts.map((a) => `\n\n${a.level === "exceeded" ? "🚨" : "⚠️"} ${budgetAlertText(a)}`).join("");
+
+/**
+ * Líneas de presupuesto para el resumen: solo si se consulta el mes en curso
+ * (todo el mes o una categoría). Con una categoría, solo el de esa categoría.
+ */
+async function budgetLines(userId: string, filters: ExpenseFilters) {
+  const onlyMonth = !filters.paymentMethod && !filters.paymentSourceId && !filters.currency;
+  if (filters.month !== todayISO().slice(0, 7) || !onlyMonth) return [];
+  const budgets = (await listBudgets(userId)).filter((b) => !filters.categoryId || b.categoryId === filters.categoryId);
+  if (budgets.length === 0) return [];
+
+  const line = (b: (typeof budgets)[number]) => {
+    const mark = b.level === "exceeded" ? " 🚨" : b.level === "warning" ? " ⚠️" : "";
+    const rest =
+      b.remaining >= 0 ? `quedan ${formatMoney(b.remaining, "ARS")}` : `te pasaste ${formatMoney(-b.remaining, "ARS")}`;
+    return `${formatMoney(b.spent, "ARS")} de ${formatMoney(b.amount, "ARS")} · ${rest}${mark}`;
+  };
+  if (filters.categoryId) return ["", `🎯 *Presupuesto:* ${line(budgets[0])}`];
+  return ["", "🎯 *Presupuestos*", ...budgets.map((b) => `${label(b)}: ${line(b)}`)];
+}
 
 // Qué prefijos de botón espera cada estado (para detectar botones viejos de otra conversación)
 const expected: Record<string, string[]> = {
@@ -282,7 +307,7 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
     await sendText(ctx.phone, `Dale, no guardé nada 👌${BACK}`);
     return true;
   }
-  await createExpense(
+  const created = await createExpense(
     ctx.userId,
     {
       categoryId: d.categoryId!,
@@ -294,7 +319,8 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
     },
     "WHATSAPP",
   );
-  await sendText(ctx.phone, `✅ Gasto guardado\n\n${describeDraft(d)}${BACK}`);
+  const alert = await budgetAlertFor(ctx.userId, created);
+  await sendText(ctx.phone, `✅ Gasto guardado\n\n${describeDraft(d)}${alertLines(alert ? [alert] : [])}${BACK}`);
   return true;
 }
 
@@ -336,9 +362,9 @@ async function receiveQuery(ctx: Ctx, id: string | undefined, text: string) {
 
 async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
   await clearSession(ctx.phone);
-  const expenses = await listExpenses(ctx.userId, filters);
+  const [expenses, budgets] = await Promise.all([listExpenses(ctx.userId, filters), budgetLines(ctx.userId, filters)]);
   if (expenses.length === 0) {
-    await sendText(ctx.phone, `No tenés gastos ${title} 🙌${BACK}`);
+    await sendText(ctx.phone, `No tenés gastos ${title} 🙌${budgets.join("\n")}${BACK}`);
     return;
   }
 
@@ -371,6 +397,7 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
       `Total: *${totalText}* (${expenses.length} ${expenses.length === 1 ? "gasto" : "gastos"})`,
       // Si hay una sola categoría, el desglose repetiría el total
       ...(catLines.length > 1 ? ["", "*Por categoría*", ...catLines] : []),
+      ...budgets,
       "",
       "*Últimos*",
       ...lastLines,
@@ -637,8 +664,9 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
     return true;
   }
   let created = 0;
+  const alerts: BudgetAlert[] = [];
   for (const p of pending) {
-    await createExpense(
+    const expense = await createExpense(
       ctx.userId,
       {
         categoryId: p.categoryId,
@@ -653,6 +681,9 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
       "WHATSAPP",
     );
     created += p.installments ?? 1;
+    // Se chequea después de cada uno: si dos gastos juntos cruzan el límite, avisa el que lo cruzó
+    const alert = await budgetAlertFor(ctx.userId, expense);
+    if (alert) alerts.push(alert);
   }
   const title =
     created > pending.length
@@ -660,7 +691,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
       : pending.length === 1
         ? "✅ Gasto guardado"
         : `✅ ${pending.length} gastos guardados`;
-  await sendText(ctx.phone, `${title}\n\n${pending.map(describePending).join("\n")}${BACK}`);
+  await sendText(ctx.phone, `${title}\n\n${pending.map(describePending).join("\n")}${alertLines(alerts)}${BACK}`);
   return true;
 }
 

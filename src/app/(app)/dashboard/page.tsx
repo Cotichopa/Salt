@@ -6,10 +6,13 @@ import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/for
 import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { getDashboard } from "@/lib/services/stats";
+import { listBudgets } from "@/lib/services/budgets";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ChartDataTable } from "@/components/chart-data-table";
+import { CategoryIcon } from "@/components/category-icon";
+import { BudgetBar } from "@/components/budget-bar";
 import { ExpenseDialog } from "../gastos/expense-dialog";
 import { CategoryPie, CumulativeChart, DailyChart, PaymentMethodBar, WeekdayChart } from "./charts";
 
@@ -31,10 +34,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       : currentMonth;
   const currency: CurrencyCode = params.moneda === "USD" ? "USD" : "ARS";
 
-  const [data, categories, sources] = await Promise.all([
+  const [data, categories, sources, budgets] = await Promise.all([
     getDashboard(user.id, month, currency),
     listCategories(user.id),
     listPaymentSources(user.id),
+    listBudgets(user.id, month),
   ]);
   const href = (m: string, c: CurrencyCode) => `/dashboard?mes=${m}&moneda=${c}`;
 
@@ -142,6 +146,47 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           </CardHeader>
         </Card>
       </div>
+
+      {/* Presupuestos del mes (son en pesos, así que con "Dólares" no se muestran) */}
+      {currency === "ARS" && budgets.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Presupuestos</CardTitle>
+            <CardDescription>Cuánto usaste de cada uno en {formatMonth(month).toLowerCase()}.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+              {budgets.map((b) => (
+                <li key={b.categoryId}>
+                  <Link
+                    href={`/categorias/${b.categoryId}`}
+                    className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
+                  >
+                    <CategoryIcon icon={b.icon} emoji={b.emoji} size="sm" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="truncate font-medium">{b.name}</span>
+                        <span
+                          className={cn(
+                            "whitespace-nowrap tabular-nums",
+                            b.level === "exceeded" && "font-medium text-red-700 dark:text-red-400",
+                            b.level === "warning" && "font-medium text-amber-700 dark:text-amber-400",
+                            b.level === "ok" && "text-muted-foreground",
+                          )}
+                        >
+                          {formatMoney(b.spent, "ARS")} de {formatMoney(b.amount, "ARS")}
+                          {b.level === "exceeded" && " · te pasaste"}
+                        </span>
+                      </div>
+                      <BudgetBar spent={b.spent} amount={b.amount} level={b.level} className="h-1.5" />
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {data.count === 0 ? (
         <Card>

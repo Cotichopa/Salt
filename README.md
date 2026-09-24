@@ -121,6 +121,7 @@ prisma/
 | `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Sin usuario = categoría base, compartida |
 | `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, descripción, fecha, origen (WEB/WHATSAPP) |
 | `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
+| `budgets` | Presupuesto mensual en pesos de cada usuario para una categoría (uno por categoría) |
 | `wa_sessions` | En qué paso del menú está cada teléfono (expira a los 15 minutos) |
 
 **Reglas que protegen los datos:**
@@ -287,10 +288,13 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 - Menú hamburguesa en el celular (panel lateral con todas las secciones).
 - Categorías con íconos en blanco y negro (el emoji queda para Chop en WhatsApp) y una pantalla
   por categoría con lo gastado en la semana, el mes y el año, historial y sus gastos.
+- Presupuesto mensual por categoría: barra de progreso en la categoría, en la lista y en el inicio;
+  aviso al llegar al 80 % y al pasarse (en la web al cargar y en la respuesta de Chop), y Chop
+  responde "¿cuánto me queda del presupuesto de...?".
 - Chop entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
   acepta correcciones y repregunta cuando no entiende.
 
-**Ideas para más adelante:** presupuestos por categoría con aviso, gastos recurrentes (alquiler,
+**Ideas para más adelante:** gastos recurrentes (alquiler,
 Netflix), foto de ticket, transcripción de audios, varias monedas con cotización del día,
 papelera para recuperar gastos borrados, invitación por WhatsApp con link `wa.me`, número de versión
 visible en la app.

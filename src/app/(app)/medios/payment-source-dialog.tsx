@@ -41,7 +41,9 @@ export function PaymentSourceDialog({ source }: { source?: Source }) {
             Las tarjetas aparecen cuando pagás con débito o crédito; las billeteras, cuando transferís.
           </DialogDescription>
         </DialogHeader>
-        <SourceForm source={source} onDone={() => setOpen(false)} />
+        {/* key: si al guardar llegan los datos nuevos mientras la ventana se cierra, React arma un
+            formulario nuevo en vez de cambiarle el valor inicial a los campos (Base UI no lo permite) */}
+        <SourceForm key={source ? `${source.name}|${source.kind}` : "nueva"} source={source} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );

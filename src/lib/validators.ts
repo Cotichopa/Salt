@@ -51,18 +51,21 @@ export const resetPasswordSchema = z.object({
   password: passwordRule,
 });
 
+// Monto escrito "a la argentina" ("15.000", "15000,50") → número positivo
+const amountRule = z
+  .string()
+  .transform((v, ctx) => {
+    const n = parseAmount(v);
+    if (n === null || n <= 0) {
+      ctx.addIssue({ code: "custom", message: "Monto inválido (ej: 15000 o 15.000,50)" });
+      return z.NEVER;
+    }
+    return n;
+  })
+  .refine((n) => n < 1_000_000_000_000, "Monto demasiado grande");
+
 export const expenseSchema = z.object({
-  amount: z
-    .string()
-    .transform((v, ctx) => {
-      const n = parseAmount(v);
-      if (n === null || n <= 0) {
-        ctx.addIssue({ code: "custom", message: "Monto inválido (ej: 15000 o 15.000,50)" });
-        return z.NEVER;
-      }
-      return n;
-    })
-    .refine((n) => n < 1_000_000_000_000, "Monto demasiado grande"),
+  amount: amountRule,
   currency: z.enum(["ARS", "USD"]),
   paymentMethod: z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER"]),
   categoryId: z.string().min(1, "Elegí una categoría"),
@@ -117,7 +120,17 @@ export const categorySchema = z
 
 export type CategoryInput = z.infer<typeof categorySchema>;
 
+export const budgetSchema = z.object({
+  categoryId: z.string().min(1),
+  amount: amountRule,
+});
+
 // Estado que devuelven las acciones de formularios para mostrar errores o avisos
 export type FormState =
-  | { ok?: boolean; message?: string; errors?: Record<string, string[] | undefined> }
+  | {
+      ok?: boolean;
+      message?: string;
+      warning?: string; // aviso extra, por ejemplo "te pasaste del presupuesto"
+      errors?: Record<string, string[] | undefined>;
+    }
   | undefined;
