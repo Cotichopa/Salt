@@ -13,6 +13,7 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "db:seed": "prisma db seed",
+    "db:demo": "tsx --conditions=react-server prisma/demo.ts",
     "tunnel": "ngrok http 3001"
   },
   "dependencies": {
