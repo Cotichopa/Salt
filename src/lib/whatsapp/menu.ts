@@ -15,7 +15,6 @@ import {
 import {
   isAiEnabled,
   matchByName,
-  matchCategory,
   parseMessage,
   type ParsedExpense,
   type QueryPeriod,
@@ -91,7 +90,7 @@ const expected: Record<string, string[]> = {
   "delete:confirm": ["delconfirm:"],
   "ai:confirm": ["aiconfirm:"],
   "ai:edit": ["editconfirm:"],
-  "ai:missing": [],
+  "ai:missing": ["cat:", "catpage:", "src:"],
 };
 
 // ---------- Menú principal ----------
@@ -152,7 +151,7 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
     case "ai:edit":
       return confirmEdit(ctx, id, text, d);
     case "ai:missing":
-      return receiveMissing(ctx, input.text ?? "", d);
+      return receiveMissing(ctx, input, d);
   }
   return false;
 }
@@ -187,6 +186,16 @@ async function sendCategoryList(ctx: Ctx, page: number, body: string) {
   return ctx.out.list(body, "Ver categorías", pageRows, `Categorías (${current + 1}/${pages})`);
 }
 
+/** Categoría escrita a mano: por nombre o por palabra clave, sin importar tildes ni mayúsculas */
+function findCategoryByText<T extends { name: string; keywords: string[] }>(cats: T[], text: string) {
+  const t = normalize(text);
+  return (
+    cats.find((c) => normalize(c.name) === t) ??
+    cats.find((c) => c.keywords.includes(t)) ??
+    cats.find((c) => normalize(c.name).startsWith(t) && t.length >= 3)
+  );
+}
+
 async function pickCategory(ctx: Ctx, input: Input, d: Draft, flow: "add" | "query") {
   const state = flow === "add" ? "add:category" : "query:category";
   const id = input.replyId;
@@ -200,14 +209,7 @@ async function pickCategory(ctx: Ctx, input: Input, d: Draft, flow: "add" | "que
 
   const cats = await listCategories(ctx.userId);
   let cat = id?.startsWith("cat:") ? cats.find((c) => c.id === id.slice(4)) : undefined;
-  if (!cat && input.text) {
-    // Escrita a mano: buscamos por nombre o por palabra clave, sin importar tildes ni mayúsculas
-    const t = normalize(input.text);
-    cat =
-      cats.find((c) => normalize(c.name) === t) ??
-      cats.find((c) => c.keywords.includes(t)) ??
-      cats.find((c) => normalize(c.name).startsWith(t) && t.length >= 3);
-  }
+  if (!cat && input.text) cat = findCategoryByText(cats, input.text);
   if (!cat) {
     await sendCategoryList(ctx, d.page ?? 0, "No tengo esa categoría 🤔 Elegila de la lista:");
     return true;
@@ -503,15 +505,15 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
 
   const pending: PendingExpense[] = [];
   for (const p of parsed) {
-    const cat = matchCategory(cats, p.categoryName);
-    if (!cat) continue;
+    // Si no hay una categoría que encaje, el gasto queda sin categoría y se la preguntamos
+    const cat = matchByName(cats, p.categoryName);
     const method = p.paymentMethod ?? fallbackMethod;
     // La tarjeta solo vale si es del tipo que corresponde al medio de pago
     const source = matchByName(sources, p.sourceName);
     const usable = source && source.kind === kindForMethod(method) ? source : null;
     pending.push({
-      categoryId: cat.id,
-      categoryLabel: label(cat),
+      categoryId: cat?.id ?? "",
+      categoryLabel: cat ? label(cat) : NO_CATEGORY,
       amount: p.amount,
       currency: p.currency,
       paymentMethod: method,
@@ -524,6 +526,15 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
     });
   }
   if (pending.length === 0) return false;
+  return showProposal(ctx, pending, heading);
+}
+
+/**
+ * Muestra los gastos propuestos con Guardar / Completar / Cancelar. Si alguno quedó sin
+ * categoría, antes pregunta cuál (sin categoría no se puede guardar).
+ */
+async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string) {
+  if (pending.some((p) => !p.categoryId)) return askMissing(ctx, { pending, missing: [] });
 
   // Qué datos faltan (solo preguntamos por los que realmente aportan)
   const first = pending[0];
@@ -551,12 +562,25 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
   return true;
 }
 
+const NO_CATEGORY = "❓ Sin categoría";
+
 const missingLabel = (m: "description" | "source") => (m === "description" ? "una descripción" : "la tarjeta");
 
-/** Pregunta, de a uno, los datos que faltan */
+/**
+ * Pregunta, de a uno, los datos que faltan. Primero la categoría (sin ella no se puede
+ * guardar); después, lo opcional que quedó en `missing`.
+ */
 async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
   const [next, ...rest] = d.missing ?? [];
   const pending = d.pending ?? [];
+
+  const uncategorized = pending.find((p) => !p.categoryId);
+  if (uncategorized) {
+    await setSession(ctx.phone, "ai:missing", d);
+    const what = [formatMoney(uncategorized.amount, uncategorized.currency), uncategorized.description].filter(Boolean).join(" · ");
+    await sendCategoryList(ctx, d.page ?? 0, `🏷️ ¿En qué categoría va *${what}*? Elegila de la lista o escribí el nombre.`);
+    return true;
+  }
   if (!next || pending.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
 
   await setSession(ctx.phone, "ai:missing", { ...d, missing: [next, ...rest] });
@@ -580,8 +604,24 @@ function skipMissing(ctx: Ctx, d: Draft): Promise<boolean> {
 }
 
 /** Recibe el dato que faltaba y sigue con el siguiente (o vuelve a la confirmación) */
-async function receiveMissing(ctx: Ctx, rawText: string, d: Draft): Promise<boolean> {
+async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
   const pending = [...(d.pending ?? [])];
+  const id = input.replyId;
+  const rawText = input.text ?? "";
+
+  const i = pending.findIndex((p) => !p.categoryId);
+  if (i >= 0) {
+    if (id?.startsWith("catpage:")) return askMissing(ctx, { ...d, page: Number(id.slice(8)) || 0 });
+    const cats = await listCategories(ctx.userId);
+    const cat = id?.startsWith("cat:") ? cats.find((c) => c.id === id.slice(4)) : findCategoryByText(cats, rawText);
+    if (!cat) {
+      await sendCategoryList(ctx, d.page ?? 0, "No tengo esa categoría 🤔 Elegila de la lista:");
+      return true;
+    }
+    pending[i] = { ...pending[i], categoryId: cat.id, categoryLabel: label(cat) };
+    return showProposal(ctx, pending);
+  }
+
   const [current, ...rest] = d.missing ?? [];
   if (!current || pending.length === 0) return false;
 
@@ -590,7 +630,7 @@ async function receiveMissing(ctx: Ctx, rawText: string, d: Draft): Promise<bool
     if (text && !["no", "No", "NO"].includes(text)) pending[0] = { ...pending[0], description: text.slice(0, 200) };
   } else {
     const sources = await listPaymentSources(ctx.userId);
-    const source = matchByName(sources, rawText.trim());
+    const source = id?.startsWith("src:") ? sources.find((s) => s.id === id.slice(4)) : matchByName(sources, rawText.trim());
     if (source && source.kind === kindForMethod(pending[0].paymentMethod)) {
       pending[0] = { ...pending[0], sourceId: source.id, sourceName: source.name };
     }
@@ -602,7 +642,7 @@ async function receiveMissing(ctx: Ctx, rawText: string, d: Draft): Promise<bool
 async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
   const pending = d.pending ?? [];
   const missing = d.missing ?? [];
-  if (missing.length > 0) return askMissing(ctx, d);
+  if (missing.length > 0 || pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
 
   await setSession(ctx.phone, "ai:confirm", { pending, missing: [] });
   await ctx.out.buttons(["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [

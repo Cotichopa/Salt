@@ -94,7 +94,7 @@ INTENCIONES:
 DATOS:
 - "luca"/"lucas" = miles (3 lucas = 3000). "k"/"mil" = miles. "palo" = millón.
 - Los puntos son separadores de miles y la coma es decimal: "15.000,50" = 15000.5.
-- Categoría y tarjeta: usá SIEMPRE un nombre exacto de las listas que te paso. Para cargar, si ninguna categoría encaja usá "Otros"; la tarjeta puede quedar vacía.
+- Categoría y tarjeta: usá SIEMPRE un nombre exacto de las listas que te paso. Para cargar, si ninguna categoría encaja usá "Otros" si está en la lista; si no está, dejá la categoría vacía (se la preguntamos a la persona). La tarjeta puede quedar vacía.
 - medioDePago: efectivo=CASH, débito=DEBIT, crédito/tarjeta/cuotas=CREDIT, transferencia/mercadopago/mp/cvu/alias=TRANSFER. DESCONOCIDO si no lo aclara.
 - Si nombra una tarjeta o billetera, completá "tarjeta" y deducí el medio (billetera ⇒ TRANSFER; tarjeta ⇒ DEBIT salvo que diga crédito o cuotas).
 - Cuotas: "en 6 cuotas" ⇒ cuotas=6 y medioDePago=CREDIT. El monto es el TOTAL de la compra.
@@ -219,7 +219,3 @@ export function matchByName<T extends { id: string; name: string }>(items: T[], 
   return items.find((i) => normalize(i.name) === n) ?? items.find((i) => normalize(i.name).includes(n)) ?? null;
 }
 
-/** Categoría por nombre, con "Otros" como red de contención */
-export function matchCategory<T extends { id: string; name: string }>(categories: T[], name: string) {
-  return matchByName(categories, name) ?? categories.find((c) => normalize(c.name) === "otros") ?? null;
-}

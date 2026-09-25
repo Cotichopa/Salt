@@ -66,8 +66,6 @@ function CategoryLink({ c }: { c: Row }) {
 export default async function CategoriesPage() {
   const user = await requireUser();
   const categories = await listCategoriesWithUsage(user.id);
-  const own = categories.filter((c) => c.userId === user.id);
-  const base = categories.filter((c) => c.userId === null);
 
   return (
     <div className="flex flex-col gap-6 py-2">
@@ -76,16 +74,16 @@ export default async function CategoriesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Mis categorías</CardTitle>
-          <CardDescription>Solo las ves y usás vos.</CardDescription>
+          <CardDescription>Solo las ves y usás vos: podés editarlas y borrarlas sin afectar a nadie más.</CardDescription>
           <CardAction>
             <CategoryDialog />
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col divide-y">
-          {own.length === 0 && (
-            <p className="py-4 text-center text-muted-foreground">Todavía no creaste ninguna categoría propia.</p>
+          {categories.length === 0 && (
+            <p className="py-4 text-center text-muted-foreground">No tenés categorías. Creá una para empezar a cargar gastos.</p>
           )}
-          {own.map((c) => (
+          {categories.map((c) => (
             <div key={c.id} className="flex items-center gap-1 py-1">
               <CategoryLink c={c} />
               <CategoryDialog category={c} />
@@ -94,20 +92,6 @@ export default async function CategoriesPage() {
                 expenseCount={c.expenseCount}
                 others={categories.filter((o) => o.id !== c.id)}
               />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Categorías base</CardTitle>
-          <CardDescription>Todas las cuentas tienen estas mismas categorías, pero cada una ve solo sus propios gastos.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col divide-y">
-          {base.map((c) => (
-            <div key={c.id} className="py-1">
-              <CategoryLink c={c} />
             </div>
           ))}
         </CardContent>

@@ -43,11 +43,10 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
   const period: CategoryPeriod = query.periodo === "semana" || query.periodo === "anio" ? query.periodo : "mes";
   const currency: CurrencyCode = query.moneda === "USD" ? "USD" : "ARS";
 
-  // Solo categorías base o propias: si el id es de otra cuenta, es como si no existiera
+  // Solo categorías propias: si el id es de otra cuenta, es como si no existiera
   const categories = await listCategoriesWithUsage(user.id);
   const category = categories.find((c) => c.id === id);
   if (!category) notFound();
-  const isOwn = category.userId === user.id;
 
   const today = todayISO();
   const stats = await getCategoryStats(user.id, id, currency, period);
@@ -66,24 +65,19 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
         Categorías
       </Link>
 
-      {/* Encabezado: ícono, nombre y (si es propia) editar / eliminar */}
+      {/* Encabezado: ícono, nombre, editar y eliminar */}
       <div className="flex items-center gap-3">
         <CategoryIcon icon={category.icon} emoji={category.emoji} size="lg" />
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold">{category.name}</h1>
-          <p className="text-sm text-muted-foreground">{isOwn ? "Categoría propia" : "Categoría base"}</p>
+        <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold">{category.name}</h1>
+        <div className="flex items-center gap-1">
+          <CategoryDialog category={category} />
+          <DeleteCategoryButton
+            category={category}
+            expenseCount={category.expenseCount}
+            others={categories.filter((o) => o.id !== id)}
+            redirectTo="/categorias"
+          />
         </div>
-        {isOwn && (
-          <div className="flex items-center gap-1">
-            <CategoryDialog category={category} />
-            <DeleteCategoryButton
-              category={category}
-              expenseCount={category.expenseCount}
-              others={categories.filter((o) => o.id !== id)}
-              redirectTo="/categorias"
-            />
-          </div>
-        )}
       </div>
 
       {category.keywords.length > 0 && (

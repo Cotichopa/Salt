@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 import { isoToDate, todayISO, type CurrencyCode, type PaymentMethodCode } from "../src/lib/format";
 import { createExpense } from "../src/lib/services/expenses";
+import { ensureDefaultCategories } from "../src/lib/services/categories";
 import { ensureDefaults } from "../src/lib/services/payment-sources";
 
 const DEMO_EMAIL = "demo@salt.local";
@@ -46,8 +47,9 @@ async function main() {
     data: { name: "Demo", email: DEMO_EMAIL, passwordHash: await bcrypt.hash(password, 10), role: "MEMBER" },
   });
   await ensureDefaults(user.id);
+  await ensureDefaultCategories(user.id);
 
-  // 3) Categorías propias (además de las base)
+  // 3) Categorías propias (además de las iniciales)
   await db.category.createMany({
     data: [
       { userId: user.id, name: "Café", icon: "coffee", emoji: "☕", keywords: ["cafe", "starbucks", "havanna", "medialunas"] },
@@ -56,7 +58,7 @@ async function main() {
     ],
   });
   const categories = await db.category.findMany({
-    where: { OR: [{ userId: null }, { userId: user.id }] },
+    where: { userId: user.id },
     select: { id: true, name: true },
   });
   const cat = (name: string) => categories.find((c) => c.name === name)!.id;

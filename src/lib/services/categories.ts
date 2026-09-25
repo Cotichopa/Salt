@@ -4,24 +4,47 @@ import { monthRange, todayISO } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import type { CategoryInput } from "@/lib/validators";
 
-// Categorías: las base (userId null) son de todos y no se tocan desde la app;
-// cada usuario puede crear, editar y borrar solo las suyas.
+// Categorías: cada cuenta tiene las suyas y puede crearlas, editarlas y borrarlas.
+// Al crear una cuenta se le cargan las iniciales (DEFAULT_CATEGORIES), que desde ese
+// momento son tan suyas como las que crea después: tocarlas no afecta a nadie más.
 
 export class CategoryError extends Error {}
 
-/** Categorías que puede usar un usuario: las base + las propias */
+// icon: ícono de la web (ver src/components/category-icon.tsx) · emoji: el que usa Chop en WhatsApp
+const DEFAULT_CATEGORIES = [
+  { name: "Comida", icon: "utensils", emoji: "🍔", keywords: ["almuerzo", "cena", "desayuno", "delivery", "pizza", "rotiseria"] },
+  { name: "Supermercado", icon: "cart", emoji: "🛒", keywords: ["super", "chino", "almacen", "verduleria", "carniceria"] },
+  { name: "Salidas", icon: "beer", emoji: "🍻", keywords: ["salida", "bar", "boliche", "cine", "birra", "cumple"] },
+  { name: "Nafta", icon: "fuel", emoji: "⛽", keywords: ["combustible", "gnc", "ypf", "shell", "axion"] },
+  { name: "Transporte", icon: "taxi", emoji: "🚕", keywords: ["taxi", "uber", "cabify", "colectivo", "sube", "peaje", "estacionamiento"] },
+  { name: "Servicios", icon: "lightbulb", emoji: "💡", keywords: ["luz", "gas", "agua", "internet", "celular", "expensas"] },
+  { name: "Salud", icon: "pill", emoji: "💊", keywords: ["farmacia", "medico", "remedios", "prepaga", "dentista"] },
+  { name: "Hogar", icon: "house", emoji: "🏠", keywords: ["alquiler", "ferreteria", "limpieza", "muebles"] },
+  { name: "Ropa", icon: "shirt", emoji: "👕", keywords: ["zapatillas", "remera", "pantalon"] },
+  { name: "Suscripciones", icon: "tv", emoji: "📺", keywords: ["netflix", "spotify", "disney", "youtube", "gimnasio"] },
+  { name: "Otros", icon: "package", emoji: "📦", keywords: [] },
+];
+
+/** Carga las categorías iniciales a una cuenta que todavía no tiene ninguna */
+export async function ensureDefaultCategories(userId: string) {
+  const count = await db.category.count({ where: { userId } });
+  if (count > 0) return;
+  await db.category.createMany({ data: DEFAULT_CATEGORIES.map((c) => ({ ...c, userId })) });
+}
+
+/** Categorías de un usuario */
 export function listCategories(userId: string) {
   return db.category.findMany({
-    where: { OR: [{ userId: null }, { userId }] },
+    where: { userId },
     orderBy: { name: "asc" },
     select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
   });
 }
 
-/** Una categoría que el usuario puede ver (base o propia), o null si no existe o es de otra cuenta */
+/** Una categoría del usuario, o null si no existe o es de otra cuenta */
 export function getCategory(userId: string, id: string) {
   return db.category.findFirst({
-    where: { id, OR: [{ userId: null }, { userId }] },
+    where: { id, userId },
     select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
   });
 }
@@ -53,12 +76,9 @@ export async function listCategoriesWithUsage(userId: string) {
   }));
 }
 
-/** Lanza error si la categoría no es base ni del usuario */
+/** Lanza error si la categoría no es del usuario */
 export async function assertCategoryUsable(userId: string, categoryId: string) {
-  const category = await db.category.findFirst({
-    where: { id: categoryId, OR: [{ userId: null }, { userId }] },
-    select: { id: true },
-  });
+  const category = await db.category.findFirst({ where: { id: categoryId, userId }, select: { id: true } });
   if (!category) throw new CategoryError("Categoría inválida");
 }
 
@@ -68,8 +88,8 @@ async function findOwn(userId: string, id: string) {
   return category;
 }
 
-// No permitimos dos categorías con el mismo nombre (ignorando mayúsculas y tildes)
-// entre las base y las propias: el bot no sabría cuál elegir.
+// No permitimos dos categorías con el mismo nombre (ignorando mayúsculas y tildes):
+// el bot no sabría cuál elegir.
 async function assertNameFree(userId: string, name: string, exceptId?: string) {
   const existing = await listCategories(userId);
   const clash = existing.find((c) => c.id !== exceptId && normalize(c.name) === normalize(name));
@@ -88,21 +108,28 @@ export async function updateCategory(userId: string, id: string, input: Category
 }
 
 /**
- * Borra una categoría propia. Si tiene gastos, hay que indicar a qué categoría moverlos
- * (la base no deja borrar una categoría con gastos, para no dejar gastos "huérfanos").
+ * Borra una categoría del usuario. Si tiene gastos, hay que decir qué hacer con ellos:
+ * moverlos a otra categoría (`moveTo`) o borrarlos también (`deleteExpenses`).
+ * La base no deja borrar una categoría con gastos, para no dejar gastos "huérfanos".
  */
-export async function deleteCategory(userId: string, id: string, moveTo?: string) {
+export async function deleteCategory(
+  userId: string,
+  id: string,
+  opts: { moveTo?: string; deleteExpenses?: boolean } = {},
+) {
   await findOwn(userId, id);
   const count = await db.expense.count({ where: { categoryId: id, userId } });
 
-  if (count > 0) {
-    if (!moveTo || moveTo === id) throw new CategoryError(`Tiene ${count} gastos: elegí a qué categoría moverlos`);
-    await assertCategoryUsable(userId, moveTo);
+  if (count > 0 && !opts.deleteExpenses) {
+    if (!opts.moveTo || opts.moveTo === id) throw new CategoryError(`Tiene ${count} gastos: elegí a qué categoría moverlos`);
+    await assertCategoryUsable(userId, opts.moveTo);
   }
   // Transacción: las dos operaciones se hacen juntas o ninguna (si falla el borrado,
-  // los gastos no quedan movidos a medias)
+  // los gastos no quedan movidos o borrados a medias)
   await db.$transaction([
-    db.expense.updateMany({ where: { categoryId: id, userId }, data: { categoryId: moveTo } }),
+    opts.deleteExpenses
+      ? db.expense.deleteMany({ where: { categoryId: id, userId } })
+      : db.expense.updateMany({ where: { categoryId: id, userId }, data: { categoryId: opts.moveTo } }),
     db.category.delete({ where: { id } }),
   ]);
   return count;
