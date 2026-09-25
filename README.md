@@ -34,7 +34,7 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 | `npm run build` | Compila para producción |
 | `npm run db:up` / `db:down` | Prende / apaga la base de datos |
 | `npm run db:migrate` | Aplica cambios del esquema y regenera el cliente de Prisma. **Después hay que reiniciar `npm run dev`** |
-| `npm run db:seed` | Carga las categorías base (con sus íconos) y la cuenta admin. ⚠️ **Resetea la contraseña del admin** a la del `.env` |
+| `npm run db:seed` | Crea la cuenta admin y les carga las categorías, tarjetas y billeteras iniciales a las cuentas que no tienen. ⚠️ **Resetea la contraseña del admin** a la del `.env` |
 | `npm run db:demo` | Crea (o recrea) la cuenta `demo@salt.local` con un año de gastos de ejemplo. Muestra la contraseña en la terminal |
 | `npm run db:studio` | Visor de las tablas en el navegador |
 | `npm run lint` | Revisa el código |
@@ -47,13 +47,12 @@ variables que hay que completar.
 > El servidor se queda con el cliente viejo en memoria y da errores del tipo
 > "Cannot read properties of undefined".
 
-> **Para arreglar datos a mano** (por ejemplo, cambiar algo de las categorías base) conviene un
+> **Para arreglar datos a mano** (por ejemplo, cambiar algo de las categorías de una cuenta) conviene un
 > `UPDATE` directo con `npx prisma db execute --stdin` en vez de volver a correr el seed, que pisa la
 > contraseña del admin.
 
 **En otra compu** (después de `git pull`): `npm install`, `npm run db:up`, `npm run db:migrate`,
-`npm run db:seed` y `npm run dev`. Sin el seed también anda: las categorías base sin ícono guardado
-usan el que corresponde a su emoji.
+`npm run db:seed` y `npm run dev`.
 
 ---
 
@@ -109,7 +108,7 @@ src/
 ├── lib/
 │   ├── services/                Lógica compartida (web + Chop)
 │   │   ├── expenses.ts          Crear (con cuotas), listar, editar y borrar gastos
-│   │   ├── categories.ts        Categorías base y propias
+│   │   ├── categories.ts        Categorías de cada cuenta (y las iniciales)
 │   │   ├── budgets.ts           Presupuestos y avisos del 80 % / 100 %
 │   │   ├── category-stats.ts    Números de la pantalla de una categoría
 │   │   ├── payment-sources.ts   Tarjetas y billeteras
@@ -137,7 +136,7 @@ src/
 prisma/
 ├── schema.prisma                Definición de las tablas
 ├── migrations/                  Historial de cambios de la base
-├── seed.ts                      Datos iniciales (categorías base y admin)
+├── seed.ts                      Datos iniciales (admin y sus categorías y medios de pago)
 └── demo.ts                      Cuenta demo con un año de gastos
 
 public/
@@ -151,7 +150,7 @@ public/
 | Tabla | Guarda |
 |---|---|
 | `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
-| `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Sin usuario = categoría base, compartida |
+| `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Cada cuenta tiene las suyas: las iniciales se copian al crearla |
 | `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, tarjeta, descripción, fecha, cuota, origen (WEB/WHATSAPP) |
 | `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
 | `budgets` | Presupuesto mensual en pesos de cada usuario para una categoría (uno por categoría) |
@@ -159,7 +158,7 @@ public/
 
 **Reglas que protegen los datos:**
 - Todas las consultas filtran por el usuario de la sesión: nadie puede ver ni tocar gastos ajenos.
-  Las categorías base son las mismas para todos, pero los gastos y presupuestos dentro de ellas son de cada uno.
+  Las categorías también son de cada cuenta: todas arrancan con las mismas 11, pero editarlas o borrarlas no afecta a nadie más.
 - Las contraseñas se guardan como hash (bcrypt), nunca en texto.
 - Los montos usan `Decimal`, no `Float`, para que no haya errores de redondeo.
 - Las fechas guardan solo el día, calculado con la zona horaria de Argentina.
@@ -351,17 +350,16 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
   URL). El buscador busca en todo el historial: texto sin tildes y con errores de tipeo ("carefour"),
   montos ("15.000") y fechas ("24/09", "septiembre 2025"). Exportar baja a CSV todo lo filtrado.
   La carga manual está solo acá; en el resto de la app se carga con Chop.
-- **Categorías:** íconos en blanco y negro (el emoji queda para WhatsApp) y una pantalla por
-  categoría con lo gastado en la semana, el mes y el año, el historial y sus gastos.
+- **Categorías:** cada cuenta arranca con 11 y las puede editar o borrar (moviendo sus gastos a otra
+  o borrándolos con ella) sin afectar a nadie. Íconos en blanco y negro (el emoji queda para
+  WhatsApp) y una pantalla por categoría con lo gastado en la semana, el mes y el año, el historial
+  y sus gastos.
 - **Presupuestos** mensuales por categoría, con barra de progreso y avisos al 80 % y al 100 %.
 - **Tarjetas y billeteras** propias, compras en cuotas y desglose por tarjeta en el inicio.
 - **Chop** en WhatsApp y dentro de la app (botón flotante con su cara de beagle), con el mismo
   cerebro: entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
   acepta correcciones y repregunta cuando no entiende.
 - **Cuenta demo** (`npm run db:demo`) para ver la app con un año de datos.
-
-**Pendiente fuera del código:** el token permanente de WhatsApp está frenado porque Meta no mandó el
-mail de confirmación de la cuenta. Mientras tanto, el token temporal hay que renovarlo cada día.
 
 **Ideas para más adelante:** gastos recurrentes (alquiler, Netflix), foto de ticket, varias monedas
 con cotización del día, papelera para recuperar gastos borrados, invitación por WhatsApp con link
@@ -372,7 +370,7 @@ versión visible en la app.
 
 ## Antes de desplegar
 
-- [ ] Cambiar el token temporal de WhatsApp por uno **permanente** (usuario del sistema en Meta).
+- [x] Cambiar el token temporal de WhatsApp por uno **permanente** (usuario del sistema en Meta).
 - [ ] Generar contraseñas nuevas para el `.env` del servidor (no reusar las locales).
 - [ ] Apuntar el webhook de Meta al dominio definitivo.
 - [ ] **La cuenta de WhatsApp Business (WABA) tiene que estar suscripta a la app** en Meta: no alcanza
