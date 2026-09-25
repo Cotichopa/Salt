@@ -42,10 +42,17 @@ webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con 
 1. **API key de Anthropic.** Felipe ya tiene una (no crear otra); la trae de la oficina. Cargarla
    en `ANTHROPIC_API_KEY`, poner `AI_PARSER_ENABLED=true` y probar texto libre por WhatsApp,
    incluido el caso "categoría que no existe" (debería preguntarla).
-2. **Bajar el consumo de tokens de Chop.** Medir primero con el log `[ai-parser] X+Y tokens`.
-   Ideas, de mayor a menor impacto: pre-filtro sin IA para mensajes simples ("nafta 15000") usando
-   las palabras clave; esquema de respuesta más corto (hoy devuelve todos los campos aunque no
-   apliquen); prompt más compacto; caché de prompt (verificar el mínimo de tokens del modelo).
+2. **Seguir bajando el consumo de tokens de Chop.** Ya hecho: pre-filtro sin IA
+   (`src/lib/whatsapp/quick-parser.ts`) que resuelve los mensajes simples de carga ("nafta 15000",
+   "ayer 5 lucas en el chino con la visa", "10 lucas de nafta descripcion nafta ypf pague efectivo")
+   sin llamar a la API; si queda una palabra que no conoce, pasa a la IA. La descripción va después
+   de "descripcion"/"desc"/"detalle" y se corta en "pague", un medio de pago o una tarjeta (no en
+   "con", para no romper "cena con amigos"). En el log aparece `[quick-parser] resuelto sin IA`. Con la key:
+   - Medir primero: mandar ~20 mensajes reales variados y anotar el `[ai-parser] X+Y tokens` de cada uno.
+   - Esquema de respuesta más corto: hoy la IA rellena `consulta`, `objetivo` y `cambios` aunque
+     no apliquen (hacerlos `nullable`), y acortar descripciones. Medir de nuevo y comparar.
+   - Prompt más compacto (sin perder los ejemplos que importan).
+   - La caché de prompt NO sirve: Haiku 4.5 solo cachea desde 4096 tokens y el prompt es más corto.
 3. **Audios con Whisper.** Solo hay que implementar `src/lib/transcribe.ts`. Se decide según el
    servidor: sin placa de video conviene Whisper por API; local solo si el servidor tiene GPU o
    CPU de sobra. Falta también descargar el audio de Meta (llega como id, formato OGG/Opus).
