@@ -59,24 +59,20 @@ export async function listCategoriesWithUsage(userId: string) {
   const [categories, counts, month, budgets] = await Promise.all([
     listCategories(userId),
     db.expense.groupBy({ by: ["categoryId"], where: { userId }, _count: true }),
-    // Por categoría y moneda: se cuentan todos los gastos del mes, pero se suman solo los pesos
+    // Los gastos en dólares suman con su valor en pesos
     db.expense.groupBy({
-      by: ["categoryId", "currency"],
+      by: ["categoryId"],
       where: { userId, date: { gte: from, lt: to } },
       _count: true,
-      _sum: { amount: true },
+      _sum: { amountArs: true },
     }),
     db.budget.findMany({ where: { userId }, select: { categoryId: true, amount: true } }),
   ]);
   const budgetById = new Map(budgets.map((b) => [b.categoryId, b.amount.toNumber()]));
   const countById = new Map(counts.map((c) => [c.categoryId, c._count]));
-  const monthById = new Map<string, { count: number; total: number }>();
-  for (const m of month) {
-    const acc = monthById.get(m.categoryId) ?? { count: 0, total: 0 };
-    acc.count += m._count;
-    if (m.currency === "ARS") acc.total += m._sum.amount?.toNumber() ?? 0;
-    monthById.set(m.categoryId, acc);
-  }
+  const monthById = new Map(
+    month.map((m) => [m.categoryId, { count: m._count, total: m._sum.amountArs?.toNumber() ?? 0 }]),
+  );
   return categories.map((c) => ({
     ...c,
     expenseCount: countById.get(c.id) ?? 0,

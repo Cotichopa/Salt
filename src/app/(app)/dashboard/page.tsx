@@ -30,15 +30,14 @@ function chopGreeting(
   currency: CurrencyCode,
 ) {
   const gastos = (n: number) => `${n} ${n === 1 ? "gasto" : "gastos"}`;
-  const moneda = currency === "ARS" ? "pesos" : "dólares";
 
   if (month !== currentMonth) {
     const name = formatMonth(month).replace(/ de \d+$/, "").toLowerCase();
     return data.count === 0
-      ? `En ${name} no cargaste gastos en ${moneda}.`
+      ? `En ${name} no cargaste gastos.`
       : `En ${name} gastaste ${formatMoney(data.total, currency)} en ${gastos(data.count)}.`;
   }
-  if (data.count === 0) return `Todavía no hay gastos en ${moneda} este mes. Cuando gastes algo, contámelo.`;
+  if (data.count === 0) return "Todavía no hay gastos este mes. Cuando gastes algo, contámelo.";
 
   // Los presupuestos son en pesos: solo avisamos mirando pesos
   const exceeded = currency === "ARS" && budgets.find((b) => b.level === "exceeded");
@@ -93,18 +92,20 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </span>
           )}
         </div>
+        {/* Los mismos gastos vistos en pesos o en dólares (cada uno convertido con la cotización de su día) */}
         <div className="flex rounded-lg border p-0.5">
           {(["ARS", "USD"] as const).map((c) => (
             <Link
               key={c}
               href={href(month, c)}
               aria-current={c === currency ? "true" : undefined}
+              title={c === "ARS" ? "Ver todo en pesos" : "Ver todo en dólares (al MEP del día de cada gasto)"}
               className={cn(
                 "rounded-md px-3 py-1 text-sm",
                 c === currency ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {c === "ARS" ? "Pesos" : "Dólares"}
+              {c === "ARS" ? "En pesos" : "En dólares"}
             </Link>
           ))}
         </div>
@@ -212,7 +213,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       {data.count === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            No hay gastos en {currency === "ARS" ? "pesos" : "dólares"} este mes. Contáselo a Chop con el botón de
+            No hay gastos este mes. Contáselo a Chop con el botón de
             abajo, o cargalo en{" "}
             <Link href="/gastos" className="text-foreground underline underline-offset-4">
               Gastos

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { DownloadIcon, SearchIcon } from "lucide-react";
 import { expensesToCsv } from "@/lib/csv";
 import { searchExpenses } from "@/lib/expense-search";
-import { formatMoney, type CurrencyCode } from "@/lib/format";
+import { totalInPesos } from "@/lib/expense-totals";
+import { formatMoney } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,7 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
         </Button>
       </div>
 
-      <TotalsLine count={filtered.length} totals={totalsOf(filtered)} />
+      <TotalsLine count={filtered.length} totals={totalInPesos(filtered)} />
 
       <ExpenseList
         expenses={filtered}
@@ -53,27 +54,20 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
   );
 }
 
-function totalsOf(expenses: ExpenseDTO[]) {
-  const totals: Record<CurrencyCode, number> = { ARS: 0, USD: 0 };
-  for (const e of expenses) totals[e.currency] += e.amount;
-  return totals;
-}
-
-/** "71 gastos · $ 2.600.000 · USD 45": solo las monedas que aparecen */
-export function TotalsLine({ count, totals }: { count: number; totals: Record<CurrencyCode, number> }) {
+/** "71 gastos · $ 2.600.000 (incluye USD 45)" */
+export function TotalsLine({ count, totals }: { count: number; totals: { ars: number; usd: number } }) {
   return (
     <p className="text-sm text-muted-foreground">
       <span className="font-medium text-foreground">
         {count} {count === 1 ? "gasto" : "gastos"}
       </span>
-      {(["ARS", "USD"] as const)
-        .filter((c) => totals[c] > 0)
-        .map((c) => (
-          <span key={c}>
-            {" · "}
-            <span className="font-medium text-foreground tabular-nums">{formatMoney(totals[c], c)}</span>
-          </span>
-        ))}
+      {count > 0 && (
+        <>
+          {" · "}
+          <span className="font-medium text-foreground tabular-nums">{formatMoney(totals.ars, "ARS")}</span>
+        </>
+      )}
+      {totals.usd > 0 && ` (incluye ${formatMoney(totals.usd, "USD")})`}
     </p>
   );
 }

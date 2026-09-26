@@ -1,12 +1,23 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { dateToISO, isoToDate, monthRange, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
+import {
+  dateToISO,
+  defaultDollarType,
+  isoToDate,
+  monthRange,
+  type CurrencyCode,
+  type DollarTypeCode,
+  type PaymentMethodCode,
+} from "@/lib/format";
 import type { ExpenseInput } from "@/lib/validators";
+import { getRate, RateUnavailableError, tryGetRate } from "@/lib/services/exchange-rates";
 
 // Los campos nuevos son opcionales para quien llama (el bot todavía no los manda)
-type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId"> & {
+type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate"> & {
   installments?: number;
   paymentSourceId?: string;
+  dollarType?: DollarTypeCode;
+  rate?: number;
 };
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
@@ -43,6 +54,10 @@ export type ExpenseDTO = {
   installments: number;
   installmentNumber: number;
   purchaseId: string | null;
+  dollarType: DollarTypeCode | null; // solo en USD: a qué dólar se pagó
+  rate: number | null; // cotización usada
+  amountArs: number | null; // el gasto en pesos (null en gastos viejos sin convertir)
+  amountUsd: number | null; // el gasto en dólares
 };
 
 const expenseSelect = {
@@ -56,12 +71,23 @@ const expenseSelect = {
   installments: true,
   installmentNumber: true,
   purchaseId: true,
+  dollarType: true,
+  rate: true,
+  amountArs: true,
+  amountUsd: true,
   category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
 } satisfies Prisma.ExpenseSelect;
 
 function toDTO(e: Prisma.ExpenseGetPayload<{ select: typeof expenseSelect }>): ExpenseDTO {
-  return { ...e, amount: e.amount.toNumber(), date: dateToISO(e.date) };
+  return {
+    ...e,
+    amount: e.amount.toNumber(),
+    date: dateToISO(e.date),
+    rate: e.rate?.toNumber() ?? null,
+    amountArs: e.amountArs?.toNumber() ?? null,
+    amountUsd: e.amountUsd?.toNumber() ?? null,
+  };
 }
 
 export async function listExpenses(userId: string, filters: ExpenseFilters = {}, limit?: number) {
@@ -90,7 +116,7 @@ export async function listExpenses(userId: string, filters: ExpenseFilters = {},
   return rows.map(toDTO);
 }
 
-/** Totales por moneda (ARS y USD nunca se suman entre sí) */
+/** Totales por moneda, sin convertir (los usa el resumen de Chop) */
 export function totalsByCurrency(expenses: ExpenseDTO[]) {
   const totals: Record<CurrencyCode, number> = { ARS: 0, USD: 0 };
   for (const e of expenses) totals[e.currency] += e.amount;
@@ -116,6 +142,43 @@ async function assertSourceAllowed(userId: string, input: ExpenseData) {
   }
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Con qué cotización se convierte el gasto:
+ * - USD: el dólar elegido (o el que corresponde al medio de pago, si no se eligió, como pasa
+ *   con Chop) y su cotización de ese día, o la que se cargó a mano.
+ * - ARS: el MEP del día, solo para poder mostrar el gasto en dólares.
+ * Desde la web (con dólar elegido) no se guarda un USD sin cotización: se pide a mano.
+ */
+async function conversionFor(input: ExpenseData) {
+  if (input.currency === "ARS") {
+    const mep = await tryGetRate("MEP", input.date);
+    return { dollarType: null, rate: null, mep: mep?.sell ?? null };
+  }
+  const dollarType = input.dollarType ?? defaultDollarType(input.paymentMethod);
+  if (input.rate) return { dollarType, rate: input.rate, mep: null };
+  try {
+    const rate = input.dollarType ? await getRate(dollarType, input.date) : await tryGetRate(dollarType, input.date);
+    return { dollarType, rate: rate?.sell ?? null, mep: null };
+  } catch (e) {
+    if (e instanceof RateUnavailableError) throw new ExpenseError(e.message);
+    throw e;
+  }
+}
+
+type Conversion = Awaited<ReturnType<typeof conversionFor>>;
+
+/** Las columnas de conversión para un monto (cada cuota usa la cotización del día de la compra) */
+function convertAmount(amount: number, currency: CurrencyCode, c: Conversion) {
+  return {
+    dollarType: c.dollarType,
+    rate: c.rate,
+    amountArs: currency === "ARS" ? amount : c.rate ? round2(amount * c.rate) : null,
+    amountUsd: currency === "USD" ? amount : c.mep ? round2(amount / c.mep) : null,
+  };
+}
+
 /** Suma meses a una fecha "YYYY-MM-DD" quedándose en el último día si el mes es más corto */
 function addMonths(iso: string, months: number) {
   const [y, m, d] = iso.split("-").map(Number);
@@ -133,9 +196,17 @@ export async function createExpense(userId: string, input: ExpenseData, source: 
   await assertSourceAllowed(userId, input);
 
   const installments = Math.max(1, Math.min(input.installments ?? 1, 36));
+  const conversion = await conversionFor(input);
   if (installments === 1) {
     const row = await db.expense.create({
-      data: { ...input, installments: 1, date: isoToDate(input.date), userId, source },
+      data: {
+        ...input,
+        ...convertAmount(input.amount, input.currency, conversion),
+        installments: 1,
+        date: isoToDate(input.date),
+        userId,
+        source,
+      },
       select: expenseSelect,
     });
     return toDTO(row);
@@ -146,17 +217,21 @@ export async function createExpense(userId: string, input: ExpenseData, source: 
   const baseCents = Math.floor(totalCents / installments);
   const purchaseId = crypto.randomUUID();
 
-  const rows = Array.from({ length: installments }, (_, i) => ({
-    ...input,
+  const rows = Array.from({ length: installments }, (_, i) => {
     // La última cuota se lleva los centavos que sobraron del reparto
-    amount: (i === installments - 1 ? totalCents - baseCents * (installments - 1) : baseCents) / 100,
-    date: addMonths(input.date, i),
-    installments,
-    installmentNumber: i + 1,
-    purchaseId,
-    userId,
-    source,
-  }));
+    const amount = (i === installments - 1 ? totalCents - baseCents * (installments - 1) : baseCents) / 100;
+    return {
+      ...input,
+      ...convertAmount(amount, input.currency, conversion),
+      amount,
+      date: addMonths(input.date, i),
+      installments,
+      installmentNumber: i + 1,
+      purchaseId,
+      userId,
+      source,
+    };
+  });
   await db.expense.createMany({ data: rows });
 
   const first = await db.expense.findFirstOrThrow({
@@ -169,6 +244,23 @@ export async function createExpense(userId: string, input: ExpenseData, source: 
 export async function updateExpense(userId: string, id: string, input: ExpenseData) {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
+  const current = await db.expense.findFirst({
+    where: { id, userId },
+    select: { amount: true, currency: true, date: true, dollarType: true, rate: true },
+  });
+  if (!current) throw new ExpenseError("Gasto no encontrado");
+
+  // La conversión se recalcula solo si cambió algo que la afecta: si no, queda la del día que se cargó
+  const dollarType = input.currency === "USD" ? (input.dollarType ?? current.dollarType ?? undefined) : undefined;
+  const changed =
+    current.amount.toNumber() !== input.amount ||
+    current.currency !== input.currency ||
+    dateToISO(current.date) !== input.date ||
+    (input.currency === "USD" && (current.dollarType !== dollarType || (input.rate ?? null) !== (current.rate?.toNumber() ?? null)));
+  const conversion = changed
+    ? convertAmount(input.amount, input.currency, await conversionFor({ ...input, dollarType }))
+    : {};
+
   // updateMany con userId en el filtro: si el gasto no es tuyo, no actualiza nada
   // Al editar no se tocan las cuotas: se cambia solo ese movimiento
   const { count } = await db.expense.updateMany({
@@ -181,6 +273,7 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
       description: input.description,
       paymentSourceId: input.paymentSourceId ?? null,
       date: isoToDate(input.date),
+      ...conversion,
     },
   });
   if (count === 0) throw new ExpenseError("Gasto no encontrado");

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { MessageCircleIcon } from "lucide-react";
-import { formatDay, formatMoney, isoToDate, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
+import { dollarTypeLabels, formatDay, formatMoney, isoToDate, paymentMethodLabels } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,17 +25,14 @@ type Props = {
 export function ExpenseList({ expenses, categories, sources, today, emptyMessage }: Props) {
   const [editing, setEditing] = useState<ExpenseDTO | null>(null);
 
-  // Agrupamos por día, con el subtotal de cada uno
+  // Agrupamos por día, con el subtotal de cada uno en pesos (los dólares, convertidos)
   const days = useMemo(() => {
     const map = new Map<string, ExpenseDTO[]>();
     for (const e of expenses) map.set(e.date, [...(map.get(e.date) ?? []), e]);
     return [...map.entries()].map(([date, items]) => ({
       date,
       items,
-      subtotals: items.reduce(
-        (acc, e) => ({ ...acc, [e.currency]: (acc[e.currency] ?? 0) + e.amount }),
-        {} as Partial<Record<CurrencyCode, number>>,
-      ),
+      subtotal: items.reduce((acc, e) => acc + (e.amountArs ?? 0), 0),
     }));
   }, [expenses]);
 
@@ -56,11 +53,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
             <CardContent className="flex flex-col">
               <div className="flex items-baseline justify-between gap-2 border-b pb-2">
                 <span className="font-medium capitalize">{dayLabel(day.date, today)}</span>
-                <span className="text-sm text-muted-foreground tabular-nums">
-                  {(Object.entries(day.subtotals) as [CurrencyCode, number][])
-                    .map(([c, v]) => formatMoney(v, c))
-                    .join(" · ")}
-                </span>
+                <span className="text-sm text-muted-foreground tabular-nums">{formatMoney(day.subtotal, "ARS")}</span>
               </div>
               {day.items.map((e) => (
                 <button
@@ -79,7 +72,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                     </div>
                     <div className="truncate text-sm text-muted-foreground">{detailLine(e)}</div>
                   </div>
-                  <span className="font-medium whitespace-nowrap tabular-nums">{formatMoney(e.amount, e.currency)}</span>
+                  <Amount e={e} />
                 </button>
               ))}
             </CardContent>
@@ -134,8 +127,8 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                     {paymentMethodLabels[e.paymentMethod]}
                     {e.paymentSource && <span className="text-muted-foreground"> · {e.paymentSource.name}</span>}
                   </TableCell>
-                  <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                    {formatMoney(e.amount, e.currency)}
+                  <TableCell className="text-right">
+                    <Amount e={e} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -192,4 +185,19 @@ function dayLabel(date: string, today: string) {
   const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
   if (date === yesterday) return "Ayer";
   return formatDay(isoToDate(date));
+}
+
+/** Monto del gasto. Si es en dólares, abajo va cuánto fue en pesos y a qué cotización */
+function Amount({ e }: { e: ExpenseDTO }) {
+  return (
+    <span className="flex flex-col items-end whitespace-nowrap tabular-nums">
+      <span className="font-medium">{formatMoney(e.amount, e.currency)}</span>
+      {e.currency === "USD" && e.amountArs !== null && (
+        <span className="text-xs text-muted-foreground">
+          {formatMoney(e.amountArs, "ARS")}
+          {e.dollarType && e.rate && ` · ${dollarTypeLabels[e.dollarType]} ${formatMoney(e.rate, "ARS")}`}
+        </span>
+      )}
+    </span>
+  );
 }

@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/dal";
 import { createExpense, deleteExpense, ExpenseError, updateExpense } from "@/lib/services/expenses";
 import { budgetAlertFor, budgetAlertText } from "@/lib/services/budgets";
+import { tryGetRate } from "@/lib/services/exchange-rates";
+import { dollarTypeLabels, type DollarTypeCode } from "@/lib/format";
 import { expenseSchema, type FormState } from "@/lib/validators";
 
 // Acciones de la web: verifican la sesión, validan y delegan en el servicio de gastos.
@@ -33,6 +35,13 @@ export async function saveExpense(_prev: FormState, formData: FormData): Promise
   revalidatePath("/dashboard");
   revalidatePath("/categorias", "layout"); // la lista y la pantalla de cada categoría
   return { ok: true, message: id ? "Gasto actualizado" : "Gasto cargado", warning };
+}
+
+/** Cotización de un dólar en una fecha, para precargarla en el formulario (null si no hay) */
+export async function getRateAction(type: string, date: string) {
+  await requireUser();
+  if (!(type in dollarTypeLabels) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return tryGetRate(type as DollarTypeCode, date);
 }
 
 export async function removeExpense(id: string, scope: "one" | "purchase" = "one"): Promise<FormState> {

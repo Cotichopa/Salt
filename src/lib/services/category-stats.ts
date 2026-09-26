@@ -51,14 +51,16 @@ function bucketLabel(period: CategoryPeriod, start: string) {
 export async function getCategoryStats(userId: string, categoryId: string, currency: CurrencyCode, period: CategoryPeriod) {
   const today = todayISO();
 
+  // Todos los gastos de la categoría, en la moneda en que se quiere ver (cada uno ya tiene
+  // guardado su valor en pesos y en dólares, convertido con la cotización de su día)
   const rows = await db.expense.findMany({
     where: { userId, categoryId },
-    select: { date: true, amount: true, currency: true },
+    select: { date: true, amountArs: true, amountUsd: true },
   });
-  const hasUsd = rows.some((r) => r.currency === "USD");
-  const expenses = rows
-    .filter((r) => r.currency === currency)
-    .map((r) => ({ date: dateToISO(r.date), amount: r.amount.toNumber() }));
+  const expenses = rows.map((r) => ({
+    date: dateToISO(r.date),
+    amount: (currency === "ARS" ? r.amountArs : r.amountUsd)?.toNumber() ?? 0,
+  }));
 
   /** Suma y cantidad de gastos entre dos fechas (from incluida, to excluida) */
   const sum = (from: string, to: string) => {
@@ -100,7 +102,7 @@ export async function getCategoryStats(userId: string, categoryId: string, curre
     current: start === currentStart, // el período en curso todavía no terminó
   }));
 
-  return { summary, history, hasUsd, periodStart: currentStart, today };
+  return { summary, history, periodStart: currentStart, today };
 }
 
 export type CategoryStats = Awaited<ReturnType<typeof getCategoryStats>>;

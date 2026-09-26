@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { resolveCategoryIcon } from "@/components/category-icon";
 import { dateToISO, monthRange, todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 
@@ -16,20 +17,30 @@ function daysInMonth(month: string) {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
+// Se suman TODOS los gastos, en la moneda en que se quiere ver: cada gasto guarda su valor en
+// pesos y en dólares (convertido con la cotización de su día, ver services/expenses.ts)
+type Sum = { _sum: { amountArs: Prisma.Decimal | null; amountUsd: Prisma.Decimal | null } };
+const SUM = { amountArs: true, amountUsd: true } as const;
+
 async function sumBetween(userId: string, currency: CurrencyCode, from: Date, to: Date) {
   const r = await db.expense.aggregate({
-    where: { userId, currency, date: { gte: from, lt: to } },
-    _sum: { amount: true },
+    where: { userId, date: { gte: from, lt: to } },
+    _sum: SUM,
     _count: true,
   });
-  return { total: r._sum.amount?.toNumber() ?? 0, count: r._count };
+  return { total: pick(r, currency), count: r._count };
+}
+
+/** El total de un grupo en la moneda elegida */
+function pick(r: Sum, currency: CurrencyCode) {
+  return (currency === "ARS" ? r._sum.amountArs : r._sum.amountUsd)?.toNumber() ?? 0;
 }
 
 export async function getDashboard(userId: string, month: string, currency: CurrencyCode) {
   const today = todayISO();
   const isCurrentMonth = month === today.slice(0, 7);
   const { from, to } = monthRange(month);
-  const where = { userId, currency, date: { gte: from, lt: to } };
+  const where = { userId, date: { gte: from, lt: to } };
 
   // Si es el mes en curso comparamos contra los mismos días del mes pasado
   // (del 1 al día de hoy); si es un mes cerrado, contra el mes anterior completo.
@@ -44,20 +55,21 @@ export async function getDashboard(userId: string, month: string, currency: Curr
     await Promise.all([
     sumBetween(userId, currency, from, to),
     sumBetween(userId, currency, prev.from, prevTo),
-    db.expense.groupBy({ by: ["categoryId"], where, _sum: { amount: true } }),
-    db.expense.groupBy({ by: ["paymentMethod"], where, _sum: { amount: true } }),
-    db.expense.groupBy({ by: ["paymentSourceId"], where, _sum: { amount: true } }),
-    db.expense.groupBy({ by: ["date"], where, _sum: { amount: true } }),
+    db.expense.groupBy({ by: ["categoryId"], where, _sum: SUM }),
+    db.expense.groupBy({ by: ["paymentMethod"], where, _sum: SUM }),
+    db.expense.groupBy({ by: ["paymentSourceId"], where, _sum: SUM }),
+    db.expense.groupBy({ by: ["date"], where, _sum: SUM }),
     db.expense.groupBy({
       by: ["date"],
-      where: { userId, currency, date: { gte: prev.from, lt: prev.to } },
-      _sum: { amount: true },
+      where: { userId, date: { gte: prev.from, lt: prev.to } },
+      _sum: SUM,
     }),
     db.expense.findFirst({
       where,
-      orderBy: { amount: "desc" },
+      orderBy: { [currency === "ARS" ? "amountArs" : "amountUsd"]: { sort: "desc", nulls: "last" } },
       select: {
-        amount: true,
+        amountArs: true,
+        amountUsd: true,
         description: true,
         date: true,
         category: { select: { name: true } },
@@ -75,7 +87,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
   const bySource = bySourceRaw
     .map((r) => ({
       name: r.paymentSourceId ? (sourceById.get(r.paymentSourceId) ?? "?") : "Sin especificar",
-      total: r._sum.amount?.toNumber() ?? 0,
+      total: pick(r, currency),
     }))
     .sort((a, b) => b.total - a.total);
 
@@ -92,19 +104,19 @@ export async function getDashboard(userId: string, month: string, currency: Curr
         id: c.categoryId as string | null,
         name: cat?.name ?? "?",
         icon: resolveCategoryIcon(cat?.icon, cat?.emoji) as string | null,
-        total: c._sum.amount?.toNumber() ?? 0,
+        total: pick(c, currency),
       };
     })
     .sort((a, b) => b.total - a.total);
 
   const methodOrder: PaymentMethodCode[] = ["DEBIT", "CREDIT", "CASH", "TRANSFER"];
-  const byMethod = methodOrder.map((m) => ({
-    method: m,
-    total: byMethodRaw.find((r) => r.paymentMethod === m)?._sum.amount?.toNumber() ?? 0,
-  }));
+  const byMethod = methodOrder.map((m) => {
+    const row = byMethodRaw.find((r) => r.paymentMethod === m);
+    return { method: m, total: row ? pick(row, currency) : 0 };
+  });
 
   // Un punto por cada día del mes (los días sin gastos quedan en 0, no desaparecen)
-  const dayTotals = new Map(byDayRaw.map((d) => [dateToISO(d.date), d._sum.amount?.toNumber() ?? 0]));
+  const dayTotals = new Map(byDayRaw.map((d) => [dateToISO(d.date), pick(d, currency)]));
   const byDay = Array.from({ length: daysInMonth(month) }, (_, i) => {
     const iso = `${month}-${String(i + 1).padStart(2, "0")}`;
     return { day: i + 1, total: dayTotals.get(iso) ?? 0, future: iso > today };
@@ -112,7 +124,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
 
   // Acumulado día a día: cuánto llevás gastado al día N, este mes y el mes pasado
   const prevDayTotals = new Map<number, number>();
-  for (const d of prevDayRaw) prevDayTotals.set(d.date.getUTCDate(), d._sum.amount?.toNumber() ?? 0);
+  for (const d of prevDayRaw) prevDayTotals.set(d.date.getUTCDate(), pick(d, currency));
   let runNow = 0;
   let runPrev = 0;
   const prevDays = daysInMonth(prevMonth);
@@ -131,7 +143,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
   const weekdayTotals = new Array(7).fill(0);
   for (const d of byDayRaw) {
     const jsDay = d.date.getUTCDay(); // 0 = domingo
-    weekdayTotals[(jsDay + 6) % 7] += d._sum.amount?.toNumber() ?? 0;
+    weekdayTotals[(jsDay + 6) % 7] += pick(d, currency);
   }
   const byWeekday = weekdayNames.map((name, i) => ({ name, total: weekdayTotals[i] }));
 
@@ -141,7 +153,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
 
   const biggest = biggestRaw
     ? {
-        amount: biggestRaw.amount.toNumber(),
+        amount: (currency === "ARS" ? biggestRaw.amountArs : biggestRaw.amountUsd)?.toNumber() ?? 0,
         description: biggestRaw.description,
         date: dateToISO(biggestRaw.date),
         category: biggestRaw.category.name,

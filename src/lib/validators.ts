@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseAmount, todayISO } from "@/lib/format";
+import { dollarTypeLabels, parseAmount, todayISO, type DollarTypeCode } from "@/lib/format";
 import { parseKeywords } from "@/lib/text";
 import { CATEGORY_ICON_KEYS, CATEGORY_ICONS } from "@/components/category-icon";
 
@@ -51,6 +51,8 @@ export const resetPasswordSchema = z.object({
   password: passwordRule,
 });
 
+const DOLLAR_TYPES = Object.keys(dollarTypeLabels) as [DollarTypeCode, ...DollarTypeCode[]];
+
 // Monto escrito "a la argentina" ("15.000", "15000,50") → número positivo
 const amountRule = z
   .string()
@@ -80,6 +82,20 @@ export const expenseSchema = z.object({
     .string()
     .optional()
     .transform((v) => v || undefined),
+  // Gastos en USD: a qué dólar y a qué cotización (vacía = la del día, se busca sola)
+  dollarType: z.preprocess((v) => v || undefined, z.enum(DOLLAR_TYPES).optional()),
+  rate: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v?.trim()) return undefined;
+      const n = parseAmount(v);
+      if (n === null || n <= 0) {
+        ctx.addIssue({ code: "custom", message: "Cotización inválida (ej: 1557 o 1.557,30)" });
+        return z.NEVER;
+      }
+      return n;
+    }),
   // Cuotas: se crea un gasto por cuota, uno por mes
   installments: z.coerce
     .number()
@@ -96,6 +112,10 @@ export const expenseSchema = z.object({
   .refine((d) => !d.paymentSourceId || d.paymentMethod !== "CASH", {
     path: ["paymentSourceId"],
     message: "El efectivo no lleva tarjeta ni billetera",
+  })
+  .refine((d) => d.currency !== "USD" || d.dollarType, {
+    path: ["dollarType"],
+    message: "Elegí qué dólar usaste",
   });
 
 export const paymentSourceSchema = z.object({

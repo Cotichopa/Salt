@@ -151,9 +151,10 @@ public/
 |---|---|
 | `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
 | `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Cada cuenta tiene las suyas: las iniciales se copian al crearla |
-| `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, tarjeta, descripción, fecha, cuota, origen (WEB/WHATSAPP) |
+| `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, tarjeta, descripción, fecha, cuota, origen (WEB/WHATSAPP). Además, su valor en pesos y en dólares (`amountArs`/`amountUsd`) y, si es en USD, a qué dólar y cotización se convirtió |
 | `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
 | `budgets` | Presupuesto mensual en pesos de cada usuario para una categoría (uno por categoría) |
+| `exchange_rates` | Cotización (compra y venta) de cada dólar (MEP, Blue, Oficial, Tarjeta, Cripto) por día. Se completa sola desde DolarApi y ArgentinaDatos |
 | `wa_sessions` | En qué paso del menú está cada conversación (el teléfono, o `web:<usuario>` en el chat de la web). Expira a los 15 minutos |
 
 **Reglas que protegen los datos:**
@@ -166,6 +167,10 @@ public/
 - Borrar un usuario borra sus gastos; una categoría con gastos no se puede borrar.
 - Borrar una tarjeta NO borra los gastos: quedan sin tarjeta.
 - Una compra en cuotas son varios gastos con el mismo `purchaseId`, uno por mes.
+- La conversión a pesos/dólares se calcula **una vez, al guardar**, con la cotización del día del
+  gasto (venta), y no cambia después. Toda la app suma `amountArs` (o `amountUsd` al ver "En
+  dólares"). Los gastos en pesos se pasan a dólares al MEP. Los gastos anteriores a esta función
+  solo tienen su propia moneda (la otra queda vacía y suma 0).
 
 ---
 
@@ -365,6 +370,16 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
 con cotización del día, papelera para recuperar gastos borrados, invitación por WhatsApp con link
 `wa.me`, historial del chat de Chop guardado en la base (hoy queda en el navegador), número de
 versión visible en la app.
+
+- **Ingresos y ahorro:** cargar el sueldo y otros ingresos para ver cuánto queda o cuánto se ahorró
+  cada mes. Cambia bastante la app (deja de ser solo de gastos): pensarlo con calma.
+- **Foto del ticket por WhatsApp:** Chop lee monto y comercio de la foto. Ojo con el costo: una
+  imagen gasta bastantes más tokens que un texto.
+- **Chop te escribe primero:** resumen semanal/mensual ("gastaste 12% más que el mes pasado, lo que
+  más subió fue Comida"). Meta solo deja iniciar la charla con **plantillas aprobadas** (fuera de las
+  24 h desde el último mensaje del usuario), así que hay que pasar por esa aprobación.
+- **Consultas más ricas a Chop:** "¿cuánto gasté en nafta este año?", "¿en qué gasté más en agosto?".
+  Revisar hasta dónde llega hoy `handleQuery` (`src/lib/whatsapp/menu.ts`).
 
 ---
 

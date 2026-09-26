@@ -3,11 +3,11 @@ import { requireUser } from "@/lib/dal";
 import { todayISO } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
-import { totalsByCurrency } from "@/lib/services/expenses";
 import { Pagination } from "@/components/pagination";
 import { ExpenseDialog } from "./expense-dialog";
 import { ExpenseFilters } from "./expense-filters";
 import { ExpenseList } from "./expense-list";
+import { totalInPesos } from "@/lib/expense-totals";
 import { TotalsLine } from "./expenses-view";
 import { findExpenses, PAGE_SIZE, readExpenseParams } from "./query";
 
@@ -50,7 +50,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
 
       <ExpenseFilters categories={categoryOptions} sources={sources} month={month} maxMonth={currentMonth} />
 
-      <TotalsLine count={expenses.length} totals={totalsByCurrency(expenses)} />
+      <TotalsLine count={expenses.length} totals={totalInPesos(expenses)} />
 
       <ExpenseList
         expenses={pageItems}

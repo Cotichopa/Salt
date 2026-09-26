@@ -34,6 +34,15 @@ enum Source {
   WHATSAPP
 }
 
+// A qué dólar se pagó un gasto en USD (cada uno tiene su cotización)
+enum DollarType {
+  MEP // dólar bolsa
+  BLUE
+  OFICIAL
+  TARJETA // oficial + impuestos: el que cobra la tarjeta si pagás el resumen en pesos
+  CRIPTO
+}
+
 enum PaymentSourceKind {
   CARD // tarjetas: Visa, Mastercard, Cabal...
   WALLET // billeteras y bancos: Mercado Pago, MODO, Ualá...
@@ -125,6 +134,12 @@ model Expense {
   installments      Int     @default(1)
   installmentNumber Int     @default(1)
   purchaseId        String?
+  // Conversión, calculada al guardar con la cotización del día del gasto (no se recalcula
+  // después): así la app suma todo en pesos y también puede mostrarlo en dólares.
+  dollarType DollarType? // solo en gastos en USD: a qué dólar se pagó
+  rate       Decimal?    @db.Decimal(14, 2) // cotización (venta) usada para convertir
+  amountArs  Decimal?    @db.Decimal(14, 2) // el gasto en pesos (en los ARS, igual a amount)
+  amountUsd  Decimal?    @db.Decimal(14, 2) // el gasto en dólares (en los ARS, al MEP del día)
   source        Source        @default(WEB)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -137,6 +152,19 @@ model Expense {
   @@index([userId, date])
   @@index([purchaseId])
   @@map("expenses")
+}
+
+// Cotización de cada tipo de dólar por día. Se completa sola desde DolarApi (hoy) y
+// ArgentinaDatos (historial): ver src/lib/services/exchange-rates.ts
+model ExchangeRate {
+  type      DollarType
+  date      DateTime   @db.Date
+  buy       Decimal    @db.Decimal(14, 2) // compra
+  sell      Decimal    @db.Decimal(14, 2) // venta (la que usamos: a cuánto comprás dólares)
+  updatedAt DateTime   @updatedAt
+
+  @@id([type, date])
+  @@map("exchange_rates")
 }
 
 // En qué paso del menú de WhatsApp está cada teléfono (etapa 8)

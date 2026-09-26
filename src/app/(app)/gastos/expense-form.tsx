@@ -1,9 +1,19 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { toast } from "sonner";
-import { saveExpense } from "@/lib/actions/expenses";
-import { currencyLabels, formatMoney, paymentMethodLabels, parseAmount, type PaymentMethodCode } from "@/lib/format";
+import { getRateAction, saveExpense } from "@/lib/actions/expenses";
+import {
+  currencyLabels,
+  defaultDollarType,
+  dollarTypeLabels,
+  formatMoney,
+  parseAmount,
+  paymentMethodLabels,
+  type CurrencyCode,
+  type DollarTypeCode,
+  type PaymentMethodCode,
+} from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import type { FormState } from "@/lib/validators";
 import { Button } from "@/components/ui/button";
@@ -18,6 +28,7 @@ export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" }
 
 const currencies = Object.entries(currencyLabels).map(([value, label]) => ({ value, label }));
 const paymentMethods = Object.entries(paymentMethodLabels).map(([value, label]) => ({ value, label }));
+const dollarTypes = Object.entries(dollarTypeLabels).map(([value, label]) => ({ value, label }));
 
 type Props = {
   categories: CategoryOption[];
@@ -43,6 +54,50 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   const [method, setMethod] = useState<PaymentMethodCode>(expense?.paymentMethod ?? "DEBIT");
   const [amount, setAmount] = useState(expense ? String(expense.amount).replace(".", ",") : "");
   const [installments, setInstallments] = useState("1");
+  const [date, setDate] = useState(expense?.date ?? today);
+
+  // Dólares: a qué dólar y a qué cotización. La cotización se busca sola al elegir el dólar o
+  // cambiar la fecha, salvo que la hayas escrito a mano (rateTouched).
+  const [currency, setCurrency] = useState<CurrencyCode>(expense?.currency ?? "ARS");
+  const [dollarType, setDollarType] = useState<DollarTypeCode>(expense?.dollarType ?? defaultDollarType(method));
+  const [dollarTouched, setDollarTouched] = useState(!!expense?.dollarType);
+  const [rate, setRate] = useState(expense?.rate ? String(expense.rate).replace(".", ",") : "");
+  const [rateTouched, setRateTouched] = useState(false);
+  const [rateLoading, setRateLoading] = useState(false);
+  const rateRequest = useRef(0); // si se piden dos seguidas, gana la última
+
+  async function loadRate(type: DollarTypeCode, day: string) {
+    if (rateTouched) return;
+    const request = ++rateRequest.current;
+    setRateLoading(true);
+    const found = await getRateAction(type, day);
+    if (request !== rateRequest.current) return;
+    setRateLoading(false);
+    setRate(found ? String(found.sell).replace(".", ",") : "");
+  }
+
+  function changeCurrency(value: CurrencyCode) {
+    setCurrency(value);
+    if (value === "USD" && !rate) loadRate(dollarType, date);
+  }
+  function changeDollarType(value: DollarTypeCode) {
+    setDollarType(value);
+    setDollarTouched(true);
+    if (currency === "USD") loadRate(value, date);
+  }
+  function changeMethod(value: PaymentMethodCode) {
+    setMethod(value);
+    // Si no elegiste el dólar a mano, te proponemos el que corresponde (con crédito, el tarjeta)
+    const proposed = defaultDollarType(value);
+    if (!dollarTouched && proposed !== dollarType) {
+      setDollarType(proposed);
+      if (currency === "USD") loadRate(proposed, date);
+    }
+  }
+  function changeDate(value: string) {
+    setDate(value);
+    if (currency === "USD" && value) loadRate(dollarType, value);
+  }
 
   const kind = method === "TRANSFER" ? "WALLET" : method === "CASH" ? null : "CARD";
   const sourceOptions = sources.filter((s) => s.kind === kind).map((s) => ({ value: s.id, label: s.name }));
@@ -53,6 +108,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   const installmentCount = Number(installments) || 1;
   const parsedAmount = parseAmount(amount);
   const perInstallment = parsedAmount && installmentCount > 1 ? parsedAmount / installmentCount : null;
+  const parsedRate = parseAmount(rate);
 
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
@@ -75,7 +131,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
 
       <div className="flex flex-col gap-2">
         <Label>Moneda</Label>
-        <Select name="currency" items={currencies} defaultValue={expense?.currency ?? "ARS"}>
+        <Select name="currency" items={currencies} value={currency} onValueChange={(v) => changeCurrency(v as CurrencyCode)}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -88,6 +144,57 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
           </SelectContent>
         </Select>
       </div>
+
+      {/* Dólares: a qué dólar y a cuánto (así el gasto también se guarda en pesos) */}
+      {currency === "USD" && (
+        <>
+          <div className="flex flex-col gap-2">
+            <Label>¿Qué dólar?</Label>
+            <Select
+              name="dollarType"
+              items={dollarTypes}
+              value={dollarType}
+              onValueChange={(v) => changeDollarType(v as DollarTypeCode)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {dollarTypes.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldError errors={errors?.dollarType} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rate">Cotización</Label>
+            <Input
+              id="rate"
+              name="rate"
+              inputMode="decimal"
+              placeholder={rateLoading ? "Buscando..." : "1.557"}
+              value={rate}
+              onChange={(e) => {
+                setRate(e.target.value);
+                setRateTouched(true);
+              }}
+            />
+            {parsedAmount && parsedRate ? (
+              <p className="text-sm text-muted-foreground">
+                {formatMoney(parsedAmount, "USD")} × {formatMoney(parsedRate, "ARS")} ={" "}
+                <span className="font-medium text-foreground">{formatMoney(Math.round(parsedAmount * parsedRate * 100) / 100, "ARS")}</span>
+              </p>
+            ) : (
+              !rateLoading && <p className="text-sm text-muted-foreground">Vacía = la del día, si se consigue.</p>
+            )}
+            <FieldError errors={errors?.rate} />
+          </div>
+        </>
+      )}
 
       <div className="flex flex-col gap-2">
         <Label>Categoría</Label>
@@ -115,7 +222,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
           name="paymentMethod"
           items={paymentMethods}
           value={method}
-          onValueChange={(v) => setMethod(v as PaymentMethodCode)}
+          onValueChange={(v) => changeMethod(v as PaymentMethodCode)}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -170,7 +277,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
           />
           {perInstallment && (
             <p className="text-sm text-muted-foreground">
-              {installmentCount} cuotas de {formatMoney(Math.round(perInstallment * 100) / 100, "ARS")}, una por mes
+              {installmentCount} cuotas de {formatMoney(Math.round(perInstallment * 100) / 100, currency)}, una por mes
             </p>
           )}
           <FieldError errors={errors?.installments} />
@@ -179,7 +286,15 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="date">Fecha {installmentCount > 1 && "de la compra"}</Label>
-        <Input id="date" name="date" type="date" max={today} defaultValue={expense?.date ?? today} required />
+        <Input
+          id="date"
+          name="date"
+          type="date"
+          max={today}
+          value={date}
+          onChange={(e) => changeDate(e.target.value)}
+          required
+        />
         <FieldError errors={errors?.date} />
       </div>
 

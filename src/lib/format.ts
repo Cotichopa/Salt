@@ -11,8 +11,22 @@ export const paymentMethodLabels = {
   TRANSFER: "Transferencia",
 } as const;
 
+export const dollarTypeLabels = {
+  MEP: "MEP",
+  BLUE: "Blue",
+  OFICIAL: "Oficial",
+  TARJETA: "Tarjeta",
+  CRIPTO: "Cripto",
+} as const;
+
 export type CurrencyCode = keyof typeof currencyLabels;
 export type PaymentMethodCode = keyof typeof paymentMethodLabels;
+export type DollarTypeCode = keyof typeof dollarTypeLabels;
+
+/** El dólar que se propone para un gasto en USD: con crédito, el que cobra la tarjeta */
+export function defaultDollarType(method: PaymentMethodCode): DollarTypeCode {
+  return method === "CREDIT" ? "TARJETA" : "MEP";
+}
 
 /**
  * Convierte un monto escrito "a la argentina" a número.

@@ -32,15 +32,15 @@ export type BudgetStatus = {
   level: BudgetLevel;
 };
 
-/** Cuánto va gastado (en pesos) en esas categorías en un mes */
+/** Cuánto va gastado (en pesos, con los dólares convertidos) en esas categorías en un mes */
 async function spentByCategory(userId: string, categoryIds: string[], month: string) {
   const { from, to } = monthRange(month);
   const rows = await db.expense.groupBy({
     by: ["categoryId"],
-    where: { userId, currency: "ARS", categoryId: { in: categoryIds }, date: { gte: from, lt: to } },
-    _sum: { amount: true },
+    where: { userId, categoryId: { in: categoryIds }, date: { gte: from, lt: to } },
+    _sum: { amountArs: true },
   });
-  return new Map(rows.map((r) => [r.categoryId, r._sum.amount?.toNumber() ?? 0]));
+  return new Map(rows.map((r) => [r.categoryId, r._sum.amountArs?.toNumber() ?? 0]));
 }
 
 /** Todos los presupuestos del usuario con lo gastado en el mes, de más a menos usado */
@@ -109,12 +109,13 @@ export type BudgetAlert = BudgetStatus & { level: "warning" | "exceeded" };
  */
 export async function budgetAlertFor(userId: string, expense: ExpenseDTO): Promise<BudgetAlert | null> {
   const month = todayISO().slice(0, 7);
-  if (expense.currency !== "ARS" || !expense.date.startsWith(month)) return null;
+  // Los gastos en dólares cuentan con su valor en pesos (si no se pudieron convertir, no avisamos)
+  if (expense.amountArs === null || !expense.date.startsWith(month)) return null;
 
   const status = await getBudget(userId, expense.category.id);
   if (!status || status.level === "ok") return null;
 
-  const before = budgetLevel(status.spent - expense.amount, status.amount);
+  const before = budgetLevel(status.spent - expense.amountArs, status.amount);
   if (before === status.level) return null; // ya estaba en ese nivel: no repetimos el aviso
   return status as BudgetAlert;
 }

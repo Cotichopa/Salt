@@ -22,7 +22,7 @@ import { BudgetCard } from "./budget-card";
 
 // Pantalla de una categoría (/categorias/<id>): cuánto va esta semana, este mes y este año,
 // el presupuesto mensual, un gráfico con el historial y los gastos del período elegido.
-// El período y la moneda van en la URL (?periodo=semana&moneda=ARS), igual que en el inicio.
+// El período y la moneda en que se ve van en la URL (?periodo=semana&moneda=ARS), igual que en el inicio.
 
 const PERIODS = {
   semana: { tile: "Esta semana", previous: "Semana pasada", list: "esta semana", history: "Últimas 12 semanas" },
@@ -51,7 +51,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
   const today = todayISO();
   const stats = await getCategoryStats(user.id, id, currency, period);
   const [expenses, sources, budget] = await Promise.all([
-    listExpenses(user.id, { categoryId: id, currency, from: stats.periodStart, to: today }),
+    listExpenses(user.id, { categoryId: id, from: stats.periodStart, to: today }),
     listPaymentSources(user.id),
     getBudget(user.id, id),
   ]);
@@ -91,24 +91,23 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
         </div>
       )}
 
-      {/* Pesos / Dólares: solo si hay gastos en dólares en esta categoría */}
-      {(stats.hasUsd || currency === "USD") && (
-        <div className="flex w-fit rounded-lg border p-0.5">
-          {(["ARS", "USD"] as const).map((c) => (
-            <Link
-              key={c}
-              href={href(period, c)}
-              aria-current={c === currency ? "true" : undefined}
-              className={cn(
-                "rounded-md px-3 py-1 text-sm",
-                c === currency ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {c === "ARS" ? "Pesos" : "Dólares"}
-            </Link>
-          ))}
-        </div>
-      )}
+      {/* Los mismos gastos vistos en pesos o en dólares, como en el inicio */}
+      <div className="flex w-fit rounded-lg border p-0.5">
+        {(["ARS", "USD"] as const).map((c) => (
+          <Link
+            key={c}
+            href={href(period, c)}
+            aria-current={c === currency ? "true" : undefined}
+            title={c === "ARS" ? "Ver todo en pesos" : "Ver todo en dólares (al MEP del día de cada gasto)"}
+            className={cn(
+              "rounded-md px-3 py-1 text-sm",
+              c === currency ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {c === "ARS" ? "En pesos" : "En dólares"}
+          </Link>
+        ))}
+      </div>
 
       {/* Semana / mes / año: cada tarjeta también elige qué período ver abajo */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">

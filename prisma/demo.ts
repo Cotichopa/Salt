@@ -5,8 +5,17 @@ import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
-import { isoToDate, todayISO, type CurrencyCode, type PaymentMethodCode } from "../src/lib/format";
+import {
+  dateToISO,
+  defaultDollarType,
+  isoToDate,
+  todayISO,
+  type CurrencyCode,
+  type DollarTypeCode,
+  type PaymentMethodCode,
+} from "../src/lib/format";
 import { createExpense } from "../src/lib/services/expenses";
+import { tryGetRate } from "../src/lib/services/exchange-rates";
 import { ensureDefaultCategories } from "../src/lib/services/categories";
 import { ensureDefaults } from "../src/lib/services/payment-sources";
 
@@ -149,7 +158,28 @@ async function main() {
   for (const [date, amount] of [["2026-03-09", 34], ["2026-03-10", 52], ["2026-03-11", 41], ["2026-03-12", 58], ["2026-03-13", 27]] as const)
     add(date, "Comida", amount, CARD("Visa", "CREDIT"), "Comida en el viaje", { usd: true });
 
-  await db.expense.createMany({ data: rows });
+  // Conversión de cada gasto con la cotización de su día, igual que hace la app al cargarlo:
+  // los USD al dólar que corresponde a su medio de pago, los pesos al MEP (para verlos en dólares)
+  const rates = new Map<string, number | null>();
+  async function rateOf(type: DollarTypeCode, iso: string) {
+    const key = `${type}|${iso}`;
+    if (!rates.has(key)) rates.set(key, (await tryGetRate(type, iso))?.sell ?? null);
+    return rates.get(key)!;
+  }
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const converted = [];
+  for (const r of rows) {
+    const iso = dateToISO(r.date);
+    if (r.currency === "USD") {
+      const dollarType = defaultDollarType(r.paymentMethod);
+      const rate = await rateOf(dollarType, iso);
+      converted.push({ ...r, dollarType, rate, amountArs: rate ? round2(r.amount * rate) : null, amountUsd: r.amount });
+    } else {
+      const mep = await rateOf("MEP", iso);
+      converted.push({ ...r, amountArs: r.amount, amountUsd: mep ? round2(r.amount / mep) : null });
+    }
+  }
+  await db.expense.createMany({ data: converted });
 
   // 5) Compras en cuotas: con el mismo servicio que la app, que arma una cuota por mes
   const cuotas = [
@@ -175,10 +205,10 @@ async function main() {
   const monthStart = isoToDate(`${today.slice(0, 7)}-01`);
   const spent = await db.expense.groupBy({
     by: ["categoryId"],
-    where: { userId: user.id, currency: "ARS", date: { gte: monthStart } },
-    _sum: { amount: true },
+    where: { userId: user.id, date: { gte: monthStart } },
+    _sum: { amountArs: true },
   });
-  const spentIn = (name: string) => spent.find((s) => s.categoryId === cat(name))?._sum.amount?.toNumber() ?? 0;
+  const spentIn = (name: string) => spent.find((s) => s.categoryId === cat(name))?._sum.amountArs?.toNumber() ?? 0;
   const round = (n: number) => Math.max(10000, Math.round(n / 10000) * 10000);
   const budgets = [
     { name: "Salidas", amount: round(spentIn("Salidas") * 0.85) }, // pasado

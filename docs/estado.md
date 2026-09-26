@@ -59,8 +59,28 @@ webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con 
 4. **Subir al servidor** (todavía no está definido cuál). Ver "Antes de desplegar" en el README;
    lo más importante: backups de la base, dominio con HTTPS, número real de WhatsApp.
 
+## En curso: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
+
+Plan completo en 3 etapas (cada una se revisa y commitea por separado):
+1. **Dólar a pesos** — hecha, falta commit. Cada gasto guarda su valor en pesos y en dólares con
+   la cotización de su día (`src/lib/services/exchange-rates.ts`). Toda la app suma en pesos, y
+   "En dólares" muestra lo mismo convertido. Los gastos viejos no se convirtieron (decisión de Felipe).
+2. **Resumen de cada tarjeta de crédito** (cierre/vencimiento por día fijo, corregible por resumen;
+   pesos y dólares por separado; dólares al dólar tarjeta del vencimiento). Pantalla `/medios/[id]`.
+3. **Gastos fijos** que se cargan solos cada mes, con un solo aviso. Página `/fijos`.
+
+**Para cuando esté la API key (todo lo de Chop):**
+- Al cargar un gasto en USD, que Chop pregunte "¿Qué dólar usaste?" (hoy el servicio pone
+  Tarjeta si es crédito y MEP si no).
+- Aviso por WhatsApp de los gastos fijos cargados, en un solo mensaje (ventana de 24 h de Meta).
+- Decirle a Chop que un fijo aumentó ("Netflix aumentó a 12.000") → ¿desde este mes o el próximo?
+- Resumen de la tarjeta por Chop ("¿cuánto me viene en la Visa?").
+- Totales de Chop en pesos (hoy `sendSummary` en `menu.ts` dice "$ X + USD Y").
+
 ## Pendientes chicos
 
+- **Docker sin sudo:** el usuario `laptop` no está en el grupo `docker`, así que `npm run db:up`
+  falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
 - `npm run db:seed` **pisa la contraseña del admin** con la del `.env`. Felipe decidió no tocarlo por
   ahora (no hay datos importantes), pero no hay que correrlo en el servidor con datos reales.
 - No hay tests automáticos: las pruebas de esta sesión se hicieron con scripts temporales.
