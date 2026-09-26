@@ -33,7 +33,7 @@ export default function LoginPage() {
         </div>
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-8">
           <div className="flex flex-col gap-2">
-            <h2 className="font-display text-3xl font-semibold tracking-tight">Entrá a tu cuenta</h2>
+            <h2 className="font-display text-3xl font-semibold tracking-tight">¡Hola! Entrá a tu cuenta</h2>
             <p className="text-sm text-muted-foreground">
               Si todavía no tenés una, pedísela a quien administra Salt en tu casa.
             </p>
