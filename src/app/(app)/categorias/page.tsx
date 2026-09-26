@@ -19,6 +19,7 @@ type Row = Awaited<ReturnType<typeof listCategoriesWithUsage>>[number];
 /** Fila tocable: lleva a la pantalla de la categoría (/categorias/<id>) */
 function CategoryLink({ c }: { c: Row }) {
   const level = c.budget ? budgetLevel(c.monthTotal, c.budget) : null;
+  const count = `${c.monthCount} ${c.monthCount === 1 ? "gasto" : "gastos"}`;
   return (
     <Link
       href={`/categorias/${c.id}`}
@@ -28,26 +29,25 @@ function CategoryLink({ c }: { c: Row }) {
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{c.name}</div>
         {c.budget && level ? (
-          // Con presupuesto: barrita + cuánto queda (o cuánto se pasó)
+          // Con presupuesto: barrita + cuánto queda (o cuánto se pasó) + cuántos gastos van este mes
           <div className="mt-1 flex flex-col gap-1">
             <BudgetBar spent={c.monthTotal} amount={c.budget} level={level} className="h-1.5 max-w-48" />
-            <span
-              className={cn(
-                "text-xs",
-                level === "exceeded" && "font-medium text-red-700 dark:text-red-400",
-                level === "warning" && "font-medium text-amber-700 dark:text-amber-400",
-                level === "ok" && "text-muted-foreground",
-              )}
-            >
-              {level === "exceeded"
-                ? `Te pasaste por ${formatMoney(c.monthTotal - c.budget, "ARS")}`
-                : `Quedan ${formatMoney(c.budget - c.monthTotal, "ARS")}`}
+            <span className="text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  level === "exceeded" && "font-medium text-red-700 dark:text-red-400",
+                  level === "warning" && "font-medium text-amber-700 dark:text-amber-400",
+                )}
+              >
+                {level === "exceeded"
+                  ? `Te pasaste por ${formatMoney(c.monthTotal - c.budget, "ARS")}`
+                  : `Quedan ${formatMoney(c.budget - c.monthTotal, "ARS")}`}
+              </span>
+              {` · ${count}`}
             </span>
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground">
-            {c.expenseCount} {c.expenseCount === 1 ? "gasto" : "gastos"}
-          </div>
+          <div className="text-sm text-muted-foreground">{count}</div>
         )}
       </div>
       <div className="text-right">

@@ -50,28 +50,38 @@ export function getCategory(userId: string, id: string) {
 }
 
 /**
- * Igual que listCategories, pero con cuántos gastos tiene el usuario en cada una,
- * cuánto lleva este mes (en pesos) y su presupuesto mensual si le puso uno
+ * Igual que listCategories, pero con cuántos gastos tiene el usuario en cada una (en total,
+ * para avisar al borrarla, y este mes), cuánto lleva este mes (en pesos) y su presupuesto
+ * mensual si le puso uno
  */
 export async function listCategoriesWithUsage(userId: string) {
   const { from, to } = monthRange(todayISO().slice(0, 7));
   const [categories, counts, month, budgets] = await Promise.all([
     listCategories(userId),
     db.expense.groupBy({ by: ["categoryId"], where: { userId }, _count: true }),
+    // Por categoría y moneda: se cuentan todos los gastos del mes, pero se suman solo los pesos
     db.expense.groupBy({
-      by: ["categoryId"],
-      where: { userId, currency: "ARS", date: { gte: from, lt: to } },
+      by: ["categoryId", "currency"],
+      where: { userId, date: { gte: from, lt: to } },
+      _count: true,
       _sum: { amount: true },
     }),
     db.budget.findMany({ where: { userId }, select: { categoryId: true, amount: true } }),
   ]);
   const budgetById = new Map(budgets.map((b) => [b.categoryId, b.amount.toNumber()]));
   const countById = new Map(counts.map((c) => [c.categoryId, c._count]));
-  const monthById = new Map(month.map((c) => [c.categoryId, c._sum.amount?.toNumber() ?? 0]));
+  const monthById = new Map<string, { count: number; total: number }>();
+  for (const m of month) {
+    const acc = monthById.get(m.categoryId) ?? { count: 0, total: 0 };
+    acc.count += m._count;
+    if (m.currency === "ARS") acc.total += m._sum.amount?.toNumber() ?? 0;
+    monthById.set(m.categoryId, acc);
+  }
   return categories.map((c) => ({
     ...c,
     expenseCount: countById.get(c.id) ?? 0,
-    monthTotal: monthById.get(c.id) ?? 0,
+    monthCount: monthById.get(c.id)?.count ?? 0,
+    monthTotal: monthById.get(c.id)?.total ?? 0,
     budget: budgetById.get(c.id) ?? null,
   }));
 }
