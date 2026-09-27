@@ -111,9 +111,14 @@ model PaymentSource {
   kind      PaymentSourceKind
   userId    String
   createdAt DateTime          @default(now())
+  // Solo tarjetas de crédito: qué día del mes cierra y vence el resumen (opcionales)
+  closingDay Int?
+  dueDay     Int?
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expenses Expense[]
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses   Expense[]
+  statements CardStatement[]
+  payments   CardPayment[]
 
   @@unique([userId, name])
   @@map("payment_sources")
@@ -152,6 +157,41 @@ model Expense {
   @@index([userId, date])
   @@index([purchaseId])
   @@map("expenses")
+}
+
+// Resúmenes de tarjeta con fechas corregidas a mano (el banco a veces mueve el cierre unos días).
+// Los demás resúmenes usan el día fijo de la tarjeta: ver src/lib/services/card-statements.ts
+model CardStatement {
+  id              String   @id @default(cuid())
+  paymentSourceId String
+  month           String // "2026-09": el mes en que cierra ese resumen
+  closingDate     DateTime @db.Date
+  dueDate         DateTime @db.Date
+
+  // Si se borra la tarjeta, se borran sus correcciones
+  paymentSource PaymentSource @relation(fields: [paymentSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentSourceId, month])
+  @@map("card_statements")
+}
+
+// Resúmenes de tarjeta marcados como pagados (uno por resumen, pago completo).
+// No es un gasto: los gastos de la tarjeta ya están cargados uno por uno.
+model CardPayment {
+  id              String   @id @default(cuid())
+  paymentSourceId String
+  month           String // "2026-09": el resumen que se pagó (el mes en que cierra)
+  paidOn          DateTime @db.Date
+  usdPaidIn       Currency @default(ARS) // los dólares del resumen se pagaron en pesos o en dólares
+  rate            Decimal? @db.Decimal(14, 2) // dólar con que se pagaron en pesos (si aplica)
+  totalArs        Decimal  @db.Decimal(14, 2) // cuánto se pagó en pesos (lo que dijo el banco)
+  totalUsd        Decimal  @default(0) @db.Decimal(14, 2) // cuánto se pagó en dólares
+  createdAt       DateTime @default(now())
+
+  paymentSource PaymentSource @relation(fields: [paymentSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentSourceId, month])
+  @@map("card_payments")
 }
 
 // Cotización de cada tipo de dólar por día. Se completa sola desde DolarApi (hoy) y

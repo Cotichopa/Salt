@@ -62,12 +62,23 @@ webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con 
 ## En curso: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
 
 Plan completo en 3 etapas (cada una se revisa y commitea por separado):
-1. **Dólar a pesos** — hecha, falta commit. Cada gasto guarda su valor en pesos y en dólares con
+1. **Dólar a pesos** — hecha y commiteada (`f0559b3`). Cada gasto guarda su valor en pesos y en dólares con
    la cotización de su día (`src/lib/services/exchange-rates.ts`). Toda la app suma en pesos, y
    "En dólares" muestra lo mismo convertido. Los gastos viejos no se convirtieron (decisión de Felipe).
-2. **Resumen de cada tarjeta de crédito** (cierre/vencimiento por día fijo, corregible por resumen;
-   pesos y dólares por separado; dólares al dólar tarjeta del vencimiento). Pantalla `/medios/[id]`.
-3. **Gastos fijos** que se cargan solos cada mes, con un solo aviso. Página `/fijos`.
+2. **Resumen de cada tarjeta de crédito** — hecha y commiteada. Cierre y vencimiento por día fijo
+   (en el diálogo de la tarjeta), corregibles por resumen; pesos y dólares por separado; dólares al
+   dólar tarjeta del vencimiento. Pantalla `/medios/[id]`: abre en el resumen a pagar (o el abierto).
+   Se marca como **pagado** (pago completo, no parcial; no se registra como gasto, decisión de
+   Felipe) y muestra **en qué cuota va** cada compra en cuotas y cuánto queda.
+   En la demo, la Visa tiene cierre 25 y vencimiento 7 (la Mastercard, sin configurar).
+3. **Gastos fijos** — falta empezar. Se cargan solos cada mes (al abrir Inicio o Gastos), con un
+   **solo aviso** que lista todos los cargados. Tabla `recurring_expenses`, `recurringId` en cada
+   gasto (único por día, para no duplicar), página `/fijos`. Editables a mano; al cambiar el monto:
+   "¿desde este mes o desde el próximo?". Los fijos en USD guardan su tipo de dólar.
+
+**Al retomar (sesión del 2026-09-26):** seguir con la etapa 3. En la demo, el resumen de
+septiembre de la Visa quedó marcado como pagado con fecha 11/09 (de una prueba, antes de agregar
+la validación "no antes del cierre"): se puede desmarcar desde la pantalla.
 
 **Para cuando esté la API key (todo lo de Chop):**
 - Al cargar un gasto en USD, que Chop pregunte "¿Qué dólar usaste?" (hoy el servicio pone

@@ -34,6 +34,7 @@ export async function saveExpense(_prev: FormState, formData: FormData): Promise
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
   revalidatePath("/categorias", "layout"); // la lista y la pantalla de cada categoría
+  revalidatePath("/medios", "layout"); // los resúmenes de cada tarjeta
   return { ok: true, message: id ? "Gasto actualizado" : "Gasto cargado", warning };
 }
 
@@ -56,5 +57,6 @@ export async function removeExpense(id: string, scope: "one" | "purchase" = "one
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
   revalidatePath("/categorias", "layout"); // la lista y la pantalla de cada categoría
+  revalidatePath("/medios", "layout"); // los resúmenes de cada tarjeta
   return { ok: true, message: deleted > 1 ? `${deleted} cuotas eliminadas` : "Gasto eliminado" };
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { normalize } from "@/lib/text";
 import type { PaymentMethodCode } from "@/lib/format";
+import type { PaymentSourceInput } from "@/lib/validators";
 import type { PaymentSourceKind } from "@/generated/prisma/client";
 
 // Tarjetas (Visa, Cabal...) y billeteras (Mercado Pago, MODO...) de cada usuario.
@@ -41,7 +42,7 @@ export function listPaymentSources(userId: string) {
   return db.paymentSource.findMany({
     where: { userId },
     orderBy: [{ kind: "asc" }, { name: "asc" }],
-    select: { id: true, name: true, kind: true },
+    select: { id: true, name: true, kind: true, closingDay: true, dueDay: true },
   });
 }
 
@@ -70,16 +71,16 @@ async function assertNameFree(userId: string, name: string, exceptId?: string) {
   if (clash) throw new PaymentSourceError(`Ya tenés "${clash.name}"`);
 }
 
-export async function createPaymentSource(userId: string, name: string, kind: PaymentSourceKind) {
-  await assertNameFree(userId, name);
-  return db.paymentSource.create({ data: { userId, name, kind } });
+export async function createPaymentSource(userId: string, data: PaymentSourceInput) {
+  await assertNameFree(userId, data.name);
+  return db.paymentSource.create({ data: { ...data, userId } });
 }
 
-export async function updatePaymentSource(userId: string, id: string, name: string, kind: PaymentSourceKind) {
+export async function updatePaymentSource(userId: string, id: string, data: PaymentSourceInput) {
   const own = await db.paymentSource.findFirst({ where: { id, userId } });
   if (!own) throw new PaymentSourceError("No encontré esa tarjeta o billetera");
-  await assertNameFree(userId, name, id);
-  return db.paymentSource.update({ where: { id }, data: { name, kind } });
+  await assertNameFree(userId, data.name, id);
+  return db.paymentSource.update({ where: { id }, data });
 }
 
 /** Al borrarla, los gastos que la usaban quedan sin tarjeta (no se borran) */

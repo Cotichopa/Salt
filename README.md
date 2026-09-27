@@ -152,7 +152,9 @@ public/
 | `users` | Nombre, email, contraseña (hash), teléfono de WhatsApp, rol (ADMIN/MEMBER), activo |
 | `categories` | Nombre, ícono (web), emoji (WhatsApp), palabras clave. Cada cuenta tiene las suyas: las iniciales se copian al crearla |
 | `expenses` | Monto (decimal), moneda (ARS/USD), medio de pago, tarjeta, descripción, fecha, cuota, origen (WEB/WHATSAPP). Además, su valor en pesos y en dólares (`amountArs`/`amountUsd`) y, si es en USD, a qué dólar y cotización se convirtió |
-| `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...) |
+| `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...). Las tarjetas pueden tener día de cierre y de vencimiento, para armar el resumen |
+| `card_statements` | Solo los resúmenes de tarjeta con fechas corregidas a mano (cuando el banco mueve el cierre). Los demás usan el día fijo |
+| `card_payments` | Resúmenes marcados como pagados: fecha, si los dólares se pagaron en pesos (y a qué dólar) o en dólares, y cuánto se pagó. No es un gasto |
 | `budgets` | Presupuesto mensual en pesos de cada usuario para una categoría (uno por categoría) |
 | `exchange_rates` | Cotización (compra y venta) de cada dólar (MEP, Blue, Oficial, Tarjeta, Cripto) por día. Se completa sola desde DolarApi y ArgentinaDatos |
 | `wa_sessions` | En qué paso del menú está cada conversación (el teléfono, o `web:<usuario>` en el chat de la web). Expira a los 15 minutos |
@@ -171,6 +173,11 @@ public/
   gasto (venta), y no cambia después. Toda la app suma `amountArs` (o `amountUsd` al ver "En
   dólares"). Los gastos en pesos se pasan a dólares al MEP. Los gastos anteriores a esta función
   solo tienen su propia moneda (la otra queda vacía y suma 0).
+- El resumen de una tarjeta (`src/lib/services/card-statements.ts`) junta los gastos con **crédito**
+  desde el día siguiente al cierre anterior hasta su cierre. Pesos y dólares van por separado; los
+  dólares se pasan a pesos al dólar tarjeta del vencimiento (o al de hoy, como estimado, si todavía
+  no venció). Al marcarlo como pagado se guardan los números reales del pago, que reemplazan al
+  estimado. El pago no se carga como gasto (los gastos ya están uno por uno).
 
 ---
 

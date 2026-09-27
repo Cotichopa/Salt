@@ -12,7 +12,7 @@ import {
 import { paymentSourceSchema, type FormState } from "@/lib/validators";
 
 function revalidate() {
-  revalidatePath("/medios");
+  revalidatePath("/medios", "layout"); // la lista y la pantalla de cada tarjeta
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
 }
@@ -24,8 +24,8 @@ export async function savePaymentSource(_prev: FormState, formData: FormData): P
 
   const id = formData.get("id");
   try {
-    if (typeof id === "string" && id) await updatePaymentSource(user.id, id, parsed.data.name, parsed.data.kind);
-    else await createPaymentSource(user.id, parsed.data.name, parsed.data.kind);
+    if (typeof id === "string" && id) await updatePaymentSource(user.id, id, parsed.data);
+    else await createPaymentSource(user.id, parsed.data);
   } catch (e) {
     if (e instanceof PaymentSourceError) return { errors: { name: [e.message] } };
     throw e;

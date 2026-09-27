@@ -118,9 +118,63 @@ export const expenseSchema = z.object({
     message: "Elegí qué dólar usaste",
   });
 
-export const paymentSourceSchema = z.object({
-  name: z.string().trim().min(2, "Mínimo 2 caracteres").max(30, "Máximo 30 caracteres"),
-  kind: z.enum(["CARD", "WALLET"]),
+// Día del mes (1 a 31), opcional: el formulario manda "" cuando se deja vacío
+const dayOfMonth = z.preprocess(
+  (v) => (v === "" || v === undefined ? null : v),
+  z.coerce.number().int("Día inválido").min(1, "Entre 1 y 31").max(31, "Entre 1 y 31").nullable(),
+);
+
+export const paymentSourceSchema = z
+  .object({
+    name: z.string().trim().min(2, "Mínimo 2 caracteres").max(30, "Máximo 30 caracteres"),
+    kind: z.enum(["CARD", "WALLET"]),
+    // Solo tarjetas: para armar el resumen de cada mes
+    closingDay: dayOfMonth,
+    dueDay: dayOfMonth,
+  })
+  .refine((d) => (d.closingDay === null) === (d.dueDay === null), {
+    path: ["dueDay"],
+    message: "Completá los dos días (o ninguno)",
+  })
+  // Las billeteras no tienen resumen
+  .transform((d) => (d.kind === "CARD" ? d : { ...d, closingDay: null, dueDay: null }));
+
+export type PaymentSourceInput = z.infer<typeof paymentSourceSchema>;
+
+// Fechas de un resumen puntual, cuando el banco las mueve
+export const statementDatesSchema = z
+  .object({
+    cardId: z.string().min(1),
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    closingDate: z.iso.date("Fecha inválida"),
+    dueDate: z.iso.date("Fecha inválida"),
+  })
+  .refine((d) => d.dueDate > d.closingDate, { path: ["dueDate"], message: "El vencimiento va después del cierre" });
+
+// Monto opcional a la argentina (vacío = no vino). `allowZero`: el total pagado puede ser 0
+// (si todo el resumen era en dólares y se pagó en dólares).
+const optionalAmount = (label: string, allowZero = false) =>
+  z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v?.trim()) return undefined;
+      const n = v.trim() === "0" ? 0 : parseAmount(v);
+      if (n === null || n < 0 || (!allowZero && n === 0)) {
+        ctx.addIssue({ code: "custom", message: `${label} inválido` });
+        return z.NEVER;
+      }
+      return n;
+    });
+
+// Marcar un resumen de tarjeta como pagado
+export const statementPaymentSchema = z.object({
+  cardId: z.string().min(1),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+  paidOn: z.iso.date("Fecha inválida").refine((d) => d <= todayISO(), "La fecha no puede ser futura"),
+  usdPaidIn: z.preprocess((v) => v || "ARS", z.enum(["ARS", "USD"])),
+  rate: optionalAmount("Dólar"),
+  totalArs: optionalAmount("Total", true).refine((n) => n !== undefined, "Poné cuánto pagaste en pesos"),
 });
 
 export type ExpenseInput = z.infer<typeof expenseSchema>;

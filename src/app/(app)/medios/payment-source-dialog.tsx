@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 
-type Source = { id: string; name: string; kind: "CARD" | "WALLET" };
+type Source = { id: string; name: string; kind: "CARD" | "WALLET"; closingDay: number | null; dueDay: number | null };
 
 const kinds = [
   { value: "CARD", label: "Tarjeta" },
@@ -43,7 +43,11 @@ export function PaymentSourceDialog({ source }: { source?: Source }) {
         </DialogHeader>
         {/* key: si al guardar llegan los datos nuevos mientras la ventana se cierra, React arma un
             formulario nuevo en vez de cambiarle el valor inicial a los campos (Base UI no lo permite) */}
-        <SourceForm key={source ? `${source.name}|${source.kind}` : "nueva"} source={source} onDone={() => setOpen(false)} />
+        <SourceForm
+          key={source ? `${source.name}|${source.kind}|${source.closingDay}|${source.dueDay}` : "nueva"}
+          source={source}
+          onDone={() => setOpen(false)}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -58,6 +62,7 @@ function SourceForm({ source, onDone }: { source?: Source; onDone: () => void })
     }
     return result;
   }, undefined);
+  const [kind, setKind] = useState(source?.kind ?? "CARD");
 
   return (
     <form action={action} className="flex flex-col gap-4">
@@ -69,7 +74,7 @@ function SourceForm({ source, onDone }: { source?: Source; onDone: () => void })
       </div>
       <div className="flex flex-col gap-2">
         <Label>Tipo</Label>
-        <Select name="kind" items={kinds} defaultValue={source?.kind ?? "CARD"}>
+        <Select name="kind" items={kinds} value={kind} onValueChange={(v) => setKind(v as "CARD" | "WALLET")}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -82,6 +87,35 @@ function SourceForm({ source, onDone }: { source?: Source; onDone: () => void })
           </SelectContent>
         </Select>
       </div>
+      {/* Solo tarjetas: con estos dos días se arma el resumen de cada mes (si pagás con crédito) */}
+      {kind === "CARD" && (
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="closingDay">Día de cierre</Label>
+              <Input
+                id="closingDay"
+                name="closingDay"
+                type="number"
+                min={1}
+                max={31}
+                placeholder="25"
+                defaultValue={source?.closingDay ?? ""}
+              />
+              <FieldError errors={state?.errors?.closingDay} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="dueDay">Día de vencimiento</Label>
+              <Input id="dueDay" name="dueDay" type="number" min={1} max={31} placeholder="7" defaultValue={source?.dueDay ?? ""} />
+              <FieldError errors={state?.errors?.dueDay} />
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Opcional. Sirve para ver el resumen de la tarjeta de crédito. Si el banco mueve las fechas un mes, las
+            corregís en ese resumen.
+          </p>
+        </div>
+      )}
       <Button type="submit" disabled={pending}>
         {pending ? "Guardando..." : source ? "Guardar cambios" : "Agregar"}
       </Button>
