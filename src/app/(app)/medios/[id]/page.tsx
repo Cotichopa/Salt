@@ -89,6 +89,8 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
   if (!statement?.configured) notFound();
   // Compras en cuotas: en qué cuota va cada una en este resumen y cuánto queda
   const cuotas = await installmentPurchases(user.id, id, statement.from, statement.closing);
+  // Mirando el resumen a pagar, las compras nuevas van al abierto: lo mostramos en una línea
+  const open = statement.status === "a pagar" && month !== current ? await getStatement(user.id, id, current) : null;
   const today = todayISO();
 
   const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
@@ -201,6 +203,23 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
           )}
         </CardContent>
       </Card>
+
+      {open?.configured && (
+        <Link href={href(current)} className="group">
+          <Card size="sm" className="transition-colors group-hover:bg-muted/50">
+            <CardContent className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium">Resumen abierto de {formatMonth(current).toLowerCase()}</div>
+                <div className="text-sm text-muted-foreground">
+                  Acá van las compras nuevas · cierra el {shortDate(open.closing)}
+                </div>
+              </div>
+              <span className="font-medium tabular-nums">{formatMoney(open.total, "ARS")}</span>
+              <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+            </CardContent>
+          </Card>
+        </Link>
+      )}
 
       {cuotas.purchases.length > 0 && (
         <Card>

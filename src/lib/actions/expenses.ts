@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/dal";
 import { createExpense, deleteExpense, ExpenseError, updateExpense } from "@/lib/services/expenses";
 import { budgetAlertFor, budgetAlertText } from "@/lib/services/budgets";
+import { cardWithoutClosingDay } from "@/lib/services/payment-sources";
 import { tryGetRate } from "@/lib/services/exchange-rates";
 import { dollarTypeLabels, type DollarTypeCode } from "@/lib/format";
 import { expenseSchema, type FormState } from "@/lib/validators";
@@ -31,6 +32,14 @@ export async function saveExpense(_prev: FormState, formData: FormData): Promise
     if (e instanceof ExpenseError) return { message: e.message };
     throw e;
   }
+  // Con crédito en una tarjeta sin día de cierre, el gasto no aparece en ningún resumen: avisamos
+  const { paymentMethod, paymentSourceId } = parsed.data;
+  const card = paymentMethod === "CREDIT" && paymentSourceId ? await cardWithoutClosingDay(user.id, paymentSourceId) : null;
+  if (card) {
+    const hint = `Para verlo en el resumen de ${card}, poné su día de cierre en Tarjetas.`;
+    warning = warning ? `${warning} ${hint}` : hint;
+  }
+
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
   revalidatePath("/categorias", "layout"); // la lista y la pantalla de cada categoría

@@ -83,6 +83,15 @@ export async function updatePaymentSource(userId: string, id: string, data: Paym
   return db.paymentSource.update({ where: { id }, data });
 }
 
+/** Nombre de la tarjeta si todavía no tiene día de cierre (sin él no se arma su resumen), o null */
+export async function cardWithoutClosingDay(userId: string, id: string) {
+  const card = await db.paymentSource.findFirst({
+    where: { id, userId, kind: "CARD", closingDay: null },
+    select: { name: true },
+  });
+  return card?.name ?? null;
+}
+
 /** Al borrarla, los gastos que la usaban quedan sin tarjeta (no se borran) */
 export async function deletePaymentSource(userId: string, id: string) {
   const { count } = await db.paymentSource.deleteMany({ where: { id, userId } });
