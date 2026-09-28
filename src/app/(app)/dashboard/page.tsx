@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
 import { getDashboard, type Dashboard } from "@/lib/services/stats";
 import { listBudgets, type BudgetStatus } from "@/lib/services/budgets";
+import { loadDueRecurring } from "@/lib/services/recurring";
+import { RecurringNotice } from "@/components/recurring-notice";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -59,6 +61,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       : currentMonth;
   const currency: CurrencyCode = params.moneda === "USD" ? "USD" : "ARS";
 
+  // Primero se cargan los gastos fijos que ya llegaron a su día, así entran en los totales
+  const loaded = await loadDueRecurring(user.id, today);
   const [data, budgets] = await Promise.all([getDashboard(user.id, month, currency), listBudgets(user.id, month)]);
   const href = (m: string, c: CurrencyCode) => `/dashboard?mes=${m}&moneda=${c}`;
 
@@ -66,6 +70,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   return (
     <div className="flex flex-col gap-4 py-2">
+      <RecurringNotice items={loaded} />
       {/* Chop saluda con un dato del mes (sin botón de carga: los gastos se cargan con Chop o en Gastos) */}
       <div className="flex items-center gap-3">
         <ChopAvatar />

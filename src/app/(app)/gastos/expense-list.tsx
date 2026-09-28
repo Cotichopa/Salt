@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircleIcon } from "lucide-react";
+import { MessageCircleIcon, RepeatIcon } from "lucide-react";
 import { dollarTypeLabels, formatDay, formatMoney, isoToDate, paymentMethodLabels } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,6 +69,9 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                       {e.source === "WHATSAPP" && (
                         <MessageCircleIcon className="size-3.5 shrink-0 text-green-600" aria-label="Cargado por WhatsApp" />
                       )}
+                      {e.recurringId && (
+                        <RepeatIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Gasto fijo" />
+                      )}
                     </div>
                     <div className="truncate text-sm text-muted-foreground">{detailLine(e)}</div>
                   </div>
@@ -116,6 +119,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                       {e.source === "WHATSAPP" && (
                         <MessageCircleIcon className="size-3.5 text-green-600" aria-label="Cargado por WhatsApp" />
                       )}
+                      {e.recurringId && <RepeatIcon className="size-3.5 text-muted-foreground" aria-label="Gasto fijo" />}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-64 truncate text-muted-foreground">

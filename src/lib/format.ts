@@ -23,9 +23,13 @@ export type CurrencyCode = keyof typeof currencyLabels;
 export type PaymentMethodCode = keyof typeof paymentMethodLabels;
 export type DollarTypeCode = keyof typeof dollarTypeLabels;
 
-/** El dólar que se propone para un gasto en USD: con crédito, el que cobra la tarjeta */
-export function defaultDollarType(method: PaymentMethodCode): DollarTypeCode {
-  return method === "CREDIT" ? "TARJETA" : "MEP";
+/**
+ * A qué dólar se convierte un gasto en USD. Con crédito no se elige: el banco cobra el resumen
+ * al dólar OFICIAL del día. Con los demás medios, el que elegiste (o el MEP si no se eligió,
+ * como pasa con Chop).
+ */
+export function dollarTypeFor(method: PaymentMethodCode, chosen?: DollarTypeCode | null): DollarTypeCode {
+  return method === "CREDIT" ? "OFICIAL" : (chosen ?? "MEP");
 }
 
 /**

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { getRateAction, saveExpense } from "@/lib/actions/expenses";
 import {
   currencyLabels,
-  defaultDollarType,
+  dollarTypeFor,
   dollarTypeLabels,
   formatMoney,
   parseAmount,
@@ -56,12 +56,21 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   const [installments, setInstallments] = useState("1");
   const [date, setDate] = useState(expense?.date ?? today);
 
-  // Dólares: a qué dólar y a qué cotización. La cotización se busca sola al elegir el dólar o
-  // cambiar la fecha, salvo que la hayas escrito a mano (rateTouched).
+  // Dólares: a qué dólar y a qué cotización. Con crédito siempre es el oficial (no se elige);
+  // con los demás medios, el que elijas (chosenDollar). La cotización se busca sola al cambiar
+  // el dólar o la fecha, salvo que la hayas escrito a mano (rateTouched).
   const [currency, setCurrency] = useState<CurrencyCode>(expense?.currency ?? "ARS");
-  const [dollarType, setDollarType] = useState<DollarTypeCode>(expense?.dollarType ?? defaultDollarType(method));
-  const [dollarTouched, setDollarTouched] = useState(!!expense?.dollarType);
-  const [rate, setRate] = useState(expense?.rate ? String(expense.rate).replace(".", ",") : "");
+  const [chosenDollar, setChosenDollar] = useState<DollarTypeCode>(
+    expense?.dollarType && expense.paymentMethod !== "CREDIT" ? expense.dollarType : "MEP",
+  );
+  const dollarType = dollarTypeFor(method, chosenDollar);
+  // La cotización guardada solo sirve si es del mismo dólar (un gasto viejo con crédito puede
+  // estar al dólar tarjeta: al editarlo pasa al oficial y la cotización se busca de nuevo)
+  const [rate, setRate] = useState(
+    expense?.rate && expense.dollarType === dollarTypeFor(expense.paymentMethod, expense.dollarType)
+      ? String(expense.rate).replace(".", ",")
+      : "",
+  );
   const [rateTouched, setRateTouched] = useState(false);
   const [rateLoading, setRateLoading] = useState(false);
   const rateRequest = useRef(0); // si se piden dos seguidas, gana la última
@@ -81,18 +90,14 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
     if (value === "USD" && !rate) loadRate(dollarType, date);
   }
   function changeDollarType(value: DollarTypeCode) {
-    setDollarType(value);
-    setDollarTouched(true);
+    setChosenDollar(value);
     if (currency === "USD") loadRate(value, date);
   }
   function changeMethod(value: PaymentMethodCode) {
     setMethod(value);
-    // Si no elegiste el dólar a mano, te proponemos el que corresponde (con crédito, el tarjeta)
-    const proposed = defaultDollarType(value);
-    if (!dollarTouched && proposed !== dollarType) {
-      setDollarType(proposed);
-      if (currency === "USD") loadRate(proposed, date);
-    }
+    // Pasar a crédito (o salir de crédito) cambia el dólar: se busca su cotización
+    const next = dollarTypeFor(value, chosenDollar);
+    if (next !== dollarType && currency === "USD") loadRate(next, date);
   }
   function changeDate(value: string) {
     setDate(value);
@@ -145,30 +150,42 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
         </Select>
       </div>
 
-      {/* Dólares: a qué dólar y a cuánto (así el gasto también se guarda en pesos) */}
+      {/* Dólares: a qué dólar y a cuánto (así el gasto también se guarda en pesos).
+          Con crédito no se elige: el banco cobra al oficial. */}
       {currency === "USD" && (
         <>
-          <div className="flex flex-col gap-2">
-            <Label>¿Qué dólar?</Label>
-            <Select
-              name="dollarType"
-              items={dollarTypes}
-              value={dollarType}
-              onValueChange={(v) => changeDollarType(v as DollarTypeCode)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {dollarTypes.map((d) => (
-                  <SelectItem key={d.value} value={d.value}>
-                    {d.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FieldError errors={errors?.dollarType} />
-          </div>
+          {method === "CREDIT" ? (
+            <div className="flex flex-col gap-2">
+              <Label>Dólar</Label>
+              <input type="hidden" name="dollarType" value="OFICIAL" />
+              <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                Con crédito es el <span className="font-medium text-foreground">dólar oficial</span>: el banco
+                te lo cobra al oficial del día en que pagás el resumen.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Label>¿A qué dólar lo pagaste?</Label>
+              <Select
+                name="dollarType"
+                items={dollarTypes}
+                value={dollarType}
+                onValueChange={(v) => changeDollarType(v as DollarTypeCode)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dollarTypes.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError errors={errors?.dollarType} />
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="rate">Cotización</Label>

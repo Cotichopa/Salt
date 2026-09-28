@@ -132,10 +132,14 @@ export async function deleteCategory(
   }
   // Transacción: las dos operaciones se hacen juntas o ninguna (si falla el borrado,
   // los gastos no quedan movidos o borrados a medias)
+  // Los gastos fijos siguen a los gastos: se mueven con ellos, o se borran con la categoría
   await db.$transaction([
     opts.deleteExpenses
       ? db.expense.deleteMany({ where: { categoryId: id, userId } })
       : db.expense.updateMany({ where: { categoryId: id, userId }, data: { categoryId: opts.moveTo } }),
+    ...(count > 0 && !opts.deleteExpenses
+      ? [db.recurringExpense.updateMany({ where: { categoryId: id, userId }, data: { categoryId: opts.moveTo } })]
+      : []),
     db.category.delete({ where: { id } }),
   ]);
   return count;

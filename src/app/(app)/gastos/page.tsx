@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/dal";
 import { todayISO } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
+import { loadDueRecurring } from "@/lib/services/recurring";
+import { RecurringNotice } from "@/components/recurring-notice";
 import { Pagination } from "@/components/pagination";
 import { ExpenseDialog } from "./expense-dialog";
 import { ExpenseFilters } from "./expense-filters";
@@ -19,6 +21,8 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
   const today = todayISO();
   const { month, currentMonth, query, page: askedPage } = readExpenseParams(params, today);
 
+  // Primero se cargan los gastos fijos que ya llegaron a su día, así aparecen en la lista
+  const loaded = await loadDueRecurring(user.id, today);
   const [categories, sources, expenses] = await Promise.all([
     listCategories(user.id),
     listPaymentSources(user.id),
@@ -43,6 +47,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
 
   return (
     <div className="flex flex-col gap-4 py-2">
+      <RecurringNotice items={loaded} />
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Gastos</h1>
         <ExpenseDialog categories={categoryOptions} sources={sources} today={today} />

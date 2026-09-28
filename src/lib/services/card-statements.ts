@@ -12,7 +12,7 @@ import { tryGetRate } from "@/lib/services/exchange-rates";
 // Las fechas salen del día fijo de la tarjeta (closingDay / dueDay), salvo que ese resumen
 // tenga las fechas corregidas a mano (tabla card_statements).
 //
-// Los dólares se muestran aparte y se pasan a pesos al DÓLAR TARJETA del día del vencimiento
+// Los dólares se muestran aparte y se pasan a pesos al DÓLAR OFICIAL (el banco cobra al oficial del día)
 // (que es cuando se paga): si todavía no venció, con el de hoy, como estimado.
 //
 // Cuando lo pagás, lo marcás como pagado (tabla card_payments): desde ahí se muestran los
@@ -124,13 +124,13 @@ export async function getStatement(userId: string, cardId: string, month: string
       }
     : null;
 
-  // Los dólares en pesos: pagado en pesos → con el dólar del pago. Sin pagar → al dólar tarjeta
+  // Los dólares en pesos: pagado en pesos → con el dólar del pago. Sin pagar → al dólar oficial
   // del vencimiento si ya pasó, o al de hoy (estimado). Pagado en dólares → no se convierten.
   let rate: { sell: number; date: string; estimated: boolean } | null = null;
   if (usd > 0 && payment) {
     if (payment.usdPaidIn === "ARS" && payment.rate) rate = { sell: payment.rate, date: payment.paidOn, estimated: false };
   } else if (usd > 0) {
-    const found = await tryGetRate("TARJETA", status === "vencido" ? due : today);
+    const found = await tryGetRate("OFICIAL", status === "vencido" ? due : today);
     if (found) rate = { ...found, estimated: status !== "vencido" };
   }
   const usdInPesos = rate ? round2(usd * rate.sell) : null;

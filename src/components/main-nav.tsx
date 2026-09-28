@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, TagIcon, UsersIcon } from "lucide-react";
+import { CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 const LINKS = [
   { href: "/dashboard", label: "Inicio", icon: HouseIcon },
   { href: "/gastos", label: "Gastos", icon: ReceiptIcon },
+  { href: "/fijos", label: "Fijos", icon: RepeatIcon },
   { href: "/categorias", label: "Categorías", icon: TagIcon },
   { href: "/medios", label: "Tarjetas", icon: CreditCardIcon },
 ];

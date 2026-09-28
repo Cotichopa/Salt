@@ -86,6 +86,7 @@ src/
 │   │   │   └── exportar/        GET /gastos/exportar: descarga el CSV de todo lo filtrado
 │   │   ├── categorias/          Lista de categorías
 │   │   │   └── [id]/            Pantalla de una categoría: semana/mes/año, presupuesto, historial
+│   │   ├── fijos/               Gastos fijos: lista, alta, edición, pausa
 │   │   ├── medios/              Tarjetas y billeteras propias
 │   │   ├── cuenta/              Cambiar la contraseña
 │   │   ├── admin/usuarios/      Alta y administración de cuentas (solo admin)
@@ -112,6 +113,7 @@ src/
 │   │   ├── budgets.ts           Presupuestos y avisos del 80 % / 100 %
 │   │   ├── category-stats.ts    Números de la pantalla de una categoría
 │   │   ├── payment-sources.ts   Tarjetas y billeteras
+│   │   ├── recurring.ts         Gastos fijos y su carga automática de cada mes
 │   │   └── stats.ts             Números del inicio
 │   ├── actions/                 Puente entre los formularios y los servicios (chop.ts = chat web)
 │   ├── whatsapp/                Chop
@@ -155,6 +157,7 @@ public/
 | `payment_sources` | Tarjetas y billeteras de cada usuario (Visa, Mercado Pago...). Las tarjetas pueden tener día de cierre y de vencimiento, para armar el resumen |
 | `card_statements` | Solo los resúmenes de tarjeta con fechas corregidas a mano (cuando el banco mueve el cierre). Los demás usan el día fijo |
 | `card_payments` | Resúmenes marcados como pagados: fecha, si los dólares se pagaron en pesos (y a qué dólar) o en dólares, y cuánto se pagó. No es un gasto |
+| `recurring_expenses` | Gastos fijos: como un gasto, pero con día del mes. `lastMonth` = último mes ya cargado; `nextAmount`/`nextAmountFrom` = monto nuevo que empieza a valer más adelante |
 | `budgets` | Presupuesto mensual en pesos de cada usuario para una categoría (uno por categoría) |
 | `exchange_rates` | Cotización (compra y venta) de cada dólar (MEP, Blue, Oficial, Tarjeta, Cripto) por día. Se completa sola desde DolarApi y ArgentinaDatos |
 | `wa_sessions` | En qué paso del menú está cada conversación (el teléfono, o `web:<usuario>` en el chat de la web). Expira a los 15 minutos |
@@ -165,17 +168,22 @@ public/
 - Las contraseñas se guardan como hash (bcrypt), nunca en texto.
 - Los montos usan `Decimal`, no `Float`, para que no haya errores de redondeo.
 - Las fechas guardan solo el día, calculado con la zona horaria de Argentina.
-- Borrar una categoría con gastos obliga a moverlos a otra (en una transacción). Su presupuesto se borra con ella.
+- Borrar una categoría con gastos obliga a moverlos a otra (en una transacción). Sus gastos fijos
+  van con los gastos (se mueven o se borran); su presupuesto se borra con ella.
 - Borrar un usuario borra sus gastos; una categoría con gastos no se puede borrar.
 - Borrar una tarjeta NO borra los gastos: quedan sin tarjeta.
 - Una compra en cuotas son varios gastos con el mismo `purchaseId`, uno por mes.
+- Un gasto cargado por un fijo guarda su `recurringId`, único por día: aunque dos pestañas lo
+  carguen a la vez, no se duplica. Borrar el fijo no borra los gastos que ya cargó.
 - La conversión a pesos/dólares se calcula **una vez, al guardar**, con la cotización del día del
   gasto (venta), y no cambia después. Toda la app suma `amountArs` (o `amountUsd` al ver "En
   dólares"). Los gastos en pesos se pasan a dólares al MEP. Los gastos anteriores a esta función
   solo tienen su propia moneda (la otra queda vacía y suma 0).
+- A qué dólar va un gasto en USD (`dollarTypeFor` en `src/lib/format.ts`): con **crédito**, siempre
+  el oficial (no se elige); con los demás medios, el que elijas (o MEP si no se eligió, como en Chop).
 - El resumen de una tarjeta (`src/lib/services/card-statements.ts`) junta los gastos con **crédito**
   desde el día siguiente al cierre anterior hasta su cierre. Pesos y dólares van por separado; los
-  dólares se pasan a pesos al dólar tarjeta del vencimiento (o al de hoy, como estimado, si todavía
+  dólares se pasan a pesos al dólar **oficial** del vencimiento (el banco cobra al oficial del día) (o al de hoy, como estimado, si todavía
   no venció). Al marcarlo como pagado se guardan los números reales del pago, que reemplazan al
   estimado. El pago no se carga como gasto (los gastos ya están uno por uno).
 
@@ -368,13 +376,15 @@ algo se rompe, `git diff` te muestra qué tocaste y `git checkout -- <archivo>` 
   y sus gastos.
 - **Presupuestos** mensuales por categoría, con barra de progreso y avisos al 80 % y al 100 %.
 - **Tarjetas y billeteras** propias, compras en cuotas y desglose por tarjeta en el inicio.
+- **Gastos fijos** (`/fijos`): se cargan solos cada mes, el día elegido, al abrir Inicio, Gastos o
+  Fijos, con un solo aviso que lista todo lo cargado. Si pasaste meses sin entrar, carga los que
+  faltan. Se pausan, y al cambiar el monto se elige si vale desde este mes o desde el próximo.
 - **Chop** en WhatsApp y dentro de la app (botón flotante con su cara de beagle), con el mismo
   cerebro: entiende intenciones (cargar, consultar, eliminar, editar), pide los datos que faltan,
   acepta correcciones y repregunta cuando no entiende.
 - **Cuenta demo** (`npm run db:demo`) para ver la app con un año de datos.
 
-**Ideas para más adelante:** gastos recurrentes (alquiler, Netflix), foto de ticket, varias monedas
-con cotización del día, papelera para recuperar gastos borrados, invitación por WhatsApp con link
+**Ideas para más adelante:** foto de ticket, papelera para recuperar gastos borrados, invitación por WhatsApp con link
 `wa.me`, historial del chat de Chop guardado en la base (hoy queda en el navegador), número de
 versión visible en la app.
 

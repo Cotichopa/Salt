@@ -155,16 +155,16 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
                     ? "Pagados en dólares"
                     : statement.rate && statement.usdInPesos !== null
                       ? `${statement.payment ? "=" : "≈"} ${formatMoney(statement.usdInPesos, "ARS")} al dólar ${
-                          statement.payment ? "del pago" : statement.rate.estimated ? "tarjeta de hoy" : "tarjeta del vencimiento"
+                          statement.payment ? "del pago" : statement.rate.estimated ? "oficial de hoy" : "oficial del vencimiento"
                         } (${formatMoney(statement.rate.sell, "ARS")})`
-                      : "Sin cotización del dólar tarjeta: no se suma al total"}
+                      : "Sin cotización del dólar oficial: no se suma al total"}
                 </span>
               )}
             </span>
           </div>
           {statement.usd > 0 && !statement.payment && (
             <p className="text-xs text-muted-foreground">
-              El banco pasa los dólares a pesos con el dólar del día en que pagás
+              El banco pasa los dólares a pesos con el dólar oficial del día en que pagás
               {statement.rate?.estimated ? ": el total es un estimado." : "."}
             </p>
           )}

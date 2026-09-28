@@ -39,7 +39,7 @@ enum DollarType {
   MEP // dólar bolsa
   BLUE
   OFICIAL
-  TARJETA // oficial + impuestos: el que cobra la tarjeta si pagás el resumen en pesos
+  TARJETA // oficial + percepciones. Ya no se usa con crédito (el banco cobra al oficial): queda para gastos viejos o si se elige a mano
   CRIPTO
 }
 
@@ -65,6 +65,7 @@ model User {
   categories     Category[]
   paymentSources PaymentSource[]
   budgets        Budget[]
+  recurring      RecurringExpense[]
 
   @@map("users")
 }
@@ -79,8 +80,9 @@ model Category {
   createdAt DateTime @default(now())
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expenses Expense[]
-  budgets  Budget[]
+  expenses  Expense[]
+  budgets   Budget[]
+  recurring RecurringExpense[]
 
   @@unique([userId, name])
   @@map("categories")
@@ -115,10 +117,11 @@ model PaymentSource {
   closingDay Int?
   dueDay     Int?
 
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenses   Expense[]
   statements CardStatement[]
   payments   CardPayment[]
+  recurring  RecurringExpense[]
 
   @@unique([userId, name])
   @@map("payment_sources")
@@ -145,6 +148,8 @@ model Expense {
   rate       Decimal?    @db.Decimal(14, 2) // cotización (venta) usada para convertir
   amountArs  Decimal?    @db.Decimal(14, 2) // el gasto en pesos (en los ARS, igual a amount)
   amountUsd  Decimal?    @db.Decimal(14, 2) // el gasto en dólares (en los ARS, al MEP del día)
+  // Gasto fijo que lo cargó solo (null si se cargó a mano)
+  recurringId String?
   source        Source        @default(WEB)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -153,10 +158,44 @@ model Expense {
   category      Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   // Si se borra la tarjeta, los gastos quedan sin tarjeta (no se borran)
   paymentSource PaymentSource? @relation(fields: [paymentSourceId], references: [id], onDelete: SetNull)
+  // Si se borra el gasto fijo, los gastos que ya cargó quedan (como cargados a mano)
+  recurring     RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
 
+  @@unique([recurringId, date]) // un fijo no puede cargar dos gastos el mismo día
   @@index([userId, date])
   @@index([purchaseId])
   @@map("expenses")
+}
+
+// Gastos fijos (alquiler, Netflix, gimnasio...): se cargan solos una vez por mes, el día
+// elegido, al abrir Inicio o Gastos. Ver src/lib/services/recurring.ts
+model RecurringExpense {
+  id              String        @id @default(cuid())
+  userId          String
+  categoryId      String
+  amount          Decimal       @db.Decimal(14, 2)
+  currency        Currency      @default(ARS)
+  dollarType      DollarType? // solo en USD: a qué dólar se paga (la cotización se busca el día que se carga)
+  paymentMethod   PaymentMethod @default(DEBIT)
+  paymentSourceId String?
+  description     String
+  day             Int // día del mes (si el mes es más corto, se carga el último día)
+  active          Boolean       @default(true) // pausado = no se carga
+  lastMonth       String // "2026-09": último mes ya cargado (o salteado); se carga desde el siguiente
+  // Cambio de monto "desde el próximo mes" cuando el de este mes todavía no se cargó
+  nextAmount      Decimal?      @db.Decimal(14, 2)
+  nextAmountFrom  String? // "2026-10": desde qué mes vale nextAmount
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Al borrar una categoría, sus fijos se mueven con los gastos o se borran (ver categories.ts)
+  category      Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  paymentSource PaymentSource? @relation(fields: [paymentSourceId], references: [id], onDelete: SetNull)
+  expenses      Expense[]
+
+  @@index([userId])
+  @@map("recurring_expenses")
 }
 
 // Resúmenes de tarjeta con fechas corregidas a mano (el banco a veces mueve el cierre unos días).

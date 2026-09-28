@@ -113,7 +113,8 @@ export const expenseSchema = z.object({
     path: ["paymentSourceId"],
     message: "El efectivo no lleva tarjeta ni billetera",
   })
-  .refine((d) => d.currency !== "USD" || d.dollarType, {
+  // Con crédito no se elige: siempre es el oficial (ver dollarTypeFor en format.ts)
+  .refine((d) => d.currency !== "USD" || d.paymentMethod === "CREDIT" || d.dollarType, {
     path: ["dollarType"],
     message: "Elegí qué dólar usaste",
   });
@@ -178,6 +179,37 @@ export const statementPaymentSchema = z.object({
 });
 
 export type ExpenseInput = z.infer<typeof expenseSchema>;
+
+// Gasto fijo: como un gasto, pero con día del mes en vez de fecha (y sin cotización: se usa
+// la del día en que se carga cada mes)
+export const recurringSchema = z
+  .object({
+    description: z.string().trim().min(2, "Mínimo 2 caracteres").max(60, "Máximo 60 caracteres"),
+    amount: amountRule,
+    currency: z.enum(["ARS", "USD"]),
+    dollarType: z.preprocess((v) => v || undefined, z.enum(DOLLAR_TYPES).optional()),
+    paymentMethod: z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER"]),
+    paymentSourceId: z
+      .string()
+      .optional()
+      .transform((v) => v || undefined),
+    categoryId: z.string().min(1, "Elegí una categoría"),
+    day: z.coerce.number("Día inválido").int("Día inválido").min(1, "Entre 1 y 31").max(31, "Entre 1 y 31"),
+    // Al crearlo, si el día de este mes ya pasó: ¿cargar también el de este mes? (checkbox: "on")
+    loadThisMonth: z.preprocess((v) => v === "on", z.boolean()),
+    // Al cambiar el monto: ¿desde este mes o desde el próximo?
+    from: z.preprocess((v) => v || "this", z.enum(["this", "next"])),
+  })
+  .refine((d) => !d.paymentSourceId || d.paymentMethod !== "CASH", {
+    path: ["paymentSourceId"],
+    message: "El efectivo no lleva tarjeta ni billetera",
+  })
+  .refine((d) => d.currency !== "USD" || d.paymentMethod === "CREDIT" || d.dollarType, {
+    path: ["dollarType"],
+    message: "Elegí qué dólar usás",
+  });
+
+export type RecurringInput = z.infer<typeof recurringSchema>;
 
 export const categorySchema = z
   .object({

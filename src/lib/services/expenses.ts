@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import {
   dateToISO,
-  defaultDollarType,
+  dollarTypeFor,
   isoToDate,
   monthRange,
   type CurrencyCode,
@@ -18,6 +18,7 @@ type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "doll
   paymentSourceId?: string;
   dollarType?: DollarTypeCode;
   rate?: number;
+  recurringId?: string; // lo cargó un gasto fijo (ver recurring.ts)
 };
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
@@ -58,6 +59,7 @@ export type ExpenseDTO = {
   rate: number | null; // cotización usada
   amountArs: number | null; // el gasto en pesos (null en gastos viejos sin convertir)
   amountUsd: number | null; // el gasto en dólares
+  recurringId: string | null; // lo cargó solo un gasto fijo
 };
 
 const expenseSelect = {
@@ -75,6 +77,7 @@ const expenseSelect = {
   rate: true,
   amountArs: true,
   amountUsd: true,
+  recurringId: true,
   category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
 } satisfies Prisma.ExpenseSelect;
@@ -146,8 +149,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Con qué cotización se convierte el gasto:
- * - USD: el dólar elegido (o el que corresponde al medio de pago, si no se eligió, como pasa
- *   con Chop) y su cotización de ese día, o la que se cargó a mano.
+ * - USD: con crédito, el oficial; si no, el dólar elegido (o el MEP, si no se eligió, como pasa
+ *   con Chop). Con su cotización de ese día, o la que se cargó a mano.
  * - ARS: el MEP del día, solo para poder mostrar el gasto en dólares.
  * Desde la web (con dólar elegido) no se guarda un USD sin cotización: se pide a mano.
  */
@@ -156,7 +159,7 @@ async function conversionFor(input: ExpenseData) {
     const mep = await tryGetRate("MEP", input.date);
     return { dollarType: null, rate: null, mep: mep?.sell ?? null };
   }
-  const dollarType = input.dollarType ?? defaultDollarType(input.paymentMethod);
+  const dollarType = dollarTypeFor(input.paymentMethod, input.dollarType);
   if (input.rate) return { dollarType, rate: input.rate, mep: null };
   try {
     const rate = input.dollarType ? await getRate(dollarType, input.date) : await tryGetRate(dollarType, input.date);
@@ -251,7 +254,8 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
   if (!current) throw new ExpenseError("Gasto no encontrado");
 
   // La conversión se recalcula solo si cambió algo que la afecta: si no, queda la del día que se cargó
-  const dollarType = input.currency === "USD" ? (input.dollarType ?? current.dollarType ?? undefined) : undefined;
+  const dollarType =
+    input.currency === "USD" ? dollarTypeFor(input.paymentMethod, input.dollarType ?? current.dollarType) : undefined;
   const changed =
     current.amount.toNumber() !== input.amount ||
     current.currency !== input.currency ||

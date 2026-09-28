@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FieldError } from "@/components/field-error";
 
 // Ventana para marcar un resumen como pagado (pago completo). Los dólares se pagan en pesos
-// (al dólar del día del pago, que se busca solo) o en dólares. El total en pesos se calcula
+// (al dólar oficial del día del pago, que se busca solo) o en dólares. El total en pesos se calcula
 // solo, pero se puede corregir con lo que realmente cobró el banco.
 
 type Props = { cardId: string; month: string; closing: string; ars: number; usd: number; rate: number | null; today: string };
@@ -54,7 +54,7 @@ export function MarkPaidDialog({ cardId, month, closing, ars, usd, rate: initial
     setPaidOn(value);
     if (usd === 0 || rateTouched || !value) return;
     const request = ++rateRequest.current;
-    const found = await getRateAction("TARJETA", value);
+    const found = await getRateAction("OFICIAL", value);
     if (request === rateRequest.current && found) setRate(toInput(found.sell));
   }
 
@@ -103,7 +103,7 @@ export function MarkPaidDialog({ cardId, month, closing, ars, usd, rate: initial
               </div>
               {usdPaidIn === "ARS" && (
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="rate">A qué dólar</Label>
+                  <Label htmlFor="rate">Dólar oficial del pago</Label>
                   <Input
                     id="rate"
                     name="rate"

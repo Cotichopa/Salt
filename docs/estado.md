@@ -67,22 +67,41 @@ Plan completo en 3 etapas (cada una se revisa y commitea por separado):
    "En dólares" muestra lo mismo convertido. Los gastos viejos no se convirtieron (decisión de Felipe).
 2. **Resumen de cada tarjeta de crédito** — hecha y commiteada. Cierre y vencimiento por día fijo
    (en el diálogo de la tarjeta), corregibles por resumen; pesos y dólares por separado; dólares al
-   dólar tarjeta del vencimiento. Pantalla `/medios/[id]`: abre en el resumen a pagar (o el abierto).
+   dólar oficial del vencimiento (antes era el dólar tarjeta; se cambió el 2026-09-28 porque el
+   banco cobra al oficial del día). Pantalla `/medios/[id]`: abre en el resumen a pagar (o el abierto).
    Se marca como **pagado** (pago completo, no parcial; no se registra como gasto, decisión de
    Felipe) y muestra **en qué cuota va** cada compra en cuotas y cuánto queda.
    En la demo, la Visa tiene cierre 25 y vencimiento 7 (la Mastercard, sin configurar).
-3. **Gastos fijos** — falta empezar. Se cargan solos cada mes (al abrir Inicio o Gastos), con un
-   **solo aviso** que lista todos los cargados. Tabla `recurring_expenses`, `recurringId` en cada
-   gasto (único por día, para no duplicar), página `/fijos`. Editables a mano; al cambiar el monto:
-   "¿desde este mes o desde el próximo?". Los fijos en USD guardan su tipo de dólar.
+**Dólar oficial con crédito (2026-09-28, decisión de Felipe):** el banco cobra al oficial del día.
+El resumen de la tarjeta usa el oficial (de hoy como estimado, del vencimiento si venció, del día
+del pago al marcarlo pagado). Un gasto en USD con crédito va siempre al oficial y el formulario lo
+avisa en vez de preguntar; con otro medio se elige el dólar. Los gastos viejos quedaron como estaban
+(al editar uno con crédito, pasa al oficial).
 
-**Al retomar (sesión del 2026-09-26):** seguir con la etapa 3. En la demo, el resumen de
-septiembre de la Visa quedó marcado como pagado con fecha 11/09 (de una prueba, antes de agregar
-la validación "no antes del cierre"): se puede desmarcar desde la pantalla.
+3. **Gastos fijos** — hecha (2026-09-28). Se cargan solos cada mes al abrir Inicio, Gastos o Fijos
+   (`loadDueRecurring` en `src/lib/services/recurring.ts`), con un **solo aviso** que lista todo lo
+   cargado (`src/components/recurring-notice.tsx`). Tabla `recurring_expenses`; cada gasto cargado
+   guarda `recurringId` (único por día). Página `/fijos` (menú "Fijos"). Decisiones tomadas por
+   defecto (Felipe puede cambiarlas):
+   - Al crear un fijo cuyo día ya pasó este mes, empieza el mes que viene, salvo que se marque
+     "Cargar también el de este mes".
+   - Si pasás meses sin entrar, al volver carga todos los que faltan (cada uno con su fecha).
+   - Borrar el gasto que cargó un fijo no hace que se vuelva a cargar. Borrar el fijo no borra
+     sus gastos.
+   - Se pueden **pausar**: al reanudar no se cargan los meses pausados.
+   - Al cambiar el monto: "desde este mes" corrige también el gasto de este mes si ya se cargó;
+     "desde el próximo" lo deja (y si todavía no se cargó, se carga con el monto viejo).
+     Los demás cambios (categoría, medio, día...) valen para los meses que vienen.
+   - Los fijos en USD guardan su dólar; la cotización es la del día en que se carga. Si no se
+     consigue, no se carga y se reintenta la próxima vez.
+
+**Al retomar:** las 3 etapas están commiteadas. Quedan por confirmar con Felipe las decisiones por
+defecto de los fijos (lista de arriba). En la demo, los gastos en USD con crédito viejos siguen al
+dólar tarjeta; `npm run db:demo` los regenera al oficial (cambia la contraseña de la demo).
 
 **Para cuando esté la API key (todo lo de Chop):**
-- Al cargar un gasto en USD, que Chop pregunte "¿Qué dólar usaste?" (hoy el servicio pone
-  Tarjeta si es crédito y MEP si no).
+- Al cargar un gasto en USD que **no** sea con crédito, que Chop pregunte "¿A qué dólar lo pagaste?"
+  (hoy pone MEP). Con crédito no pregunta: siempre es el oficial (`dollarTypeFor`), pero que lo avise.
 - Aviso por WhatsApp de los gastos fijos cargados, en un solo mensaje (ventana de 24 h de Meta).
 - Decirle a Chop que un fijo aumentó ("Netflix aumentó a 12.000") → ¿desde este mes o el próximo?
 - Resumen de la tarjeta por Chop ("¿cuánto me viene en la Visa?").
@@ -90,6 +109,12 @@ la validación "no antes del cierre"): se puede desmarcar desde la pantalla.
 
 ## Pendientes chicos
 
+- **Compu sin Docker (2026-09-28):** esta compu no tiene Docker ni `sudo`, así que la base se levantó
+  con un PostgreSQL portátil (`embedded-postgres`) en una carpeta temporal, fuera del repo, en el
+  puerto 5434. Si se reinicia la compu hay que volver a levantarla (o instalar Docker). El `.env`
+  de acá tiene WhatsApp y la API key vacíos, y el admin es `fbrisig@gmail.com`.
+- Después de una migración nueva hay que **reiniciar `npm run dev`**: si no, sigue con el cliente
+  de Prisma viejo en memoria y la tabla nueva da `undefined`.
 - **Docker sin sudo:** el usuario `laptop` no está en el grupo `docker`, así que `npm run db:up`
   falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
 - `npm run db:seed` **pisa la contraseña del admin** con la del `.env`. Felipe decidió no tocarlo por

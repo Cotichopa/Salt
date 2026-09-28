@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
 import {
   dateToISO,
-  defaultDollarType,
+  dollarTypeFor,
   isoToDate,
   todayISO,
   type CurrencyCode,
@@ -171,7 +171,7 @@ async function main() {
   for (const r of rows) {
     const iso = dateToISO(r.date);
     if (r.currency === "USD") {
-      const dollarType = defaultDollarType(r.paymentMethod);
+      const dollarType = dollarTypeFor(r.paymentMethod);
       const rate = await rateOf(dollarType, iso);
       converted.push({ ...r, dollarType, rate, amountArs: rate ? round2(r.amount * rate) : null, amountUsd: r.amount });
     } else {
