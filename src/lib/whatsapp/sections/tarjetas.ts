@@ -24,7 +24,7 @@ import {
 import { listRecurring } from "@/lib/services/recurring";
 import { askModel, isAiEnabled, matchByName, MAX_CHARS, saidDay, todayLine } from "@/lib/whatsapp/ai-parser";
 import { BACK, shortDate, type Ctx, type Input } from "@/lib/whatsapp/menu";
-import { askConfirm } from "@/lib/whatsapp/sections/confirm";
+import { askConfirm, askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { clearSession, setSession, type Draft } from "@/lib/whatsapp/session";
 
 // Tarjetas y billeteras por Chop: el resumen de una tarjeta ("¿cuánto me viene en la Visa?"),
@@ -43,7 +43,7 @@ const cardSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("fechas"), tarjeta: z.string(), cierre: z.number().optional(), vence: z.number().optional() }),
   z.object({
     accion: z.literal("crear"),
-    nombre: z.string(),
+    nombre: z.string().optional(), // sin nombre: se pregunta
     tipo: z.enum(["tarjeta", "billetera"]).optional(),
     cierre: z.number().optional(),
     vence: z.number().optional(),
@@ -84,12 +84,13 @@ export async function handleCards(ctx: Ctx, text: string): Promise<boolean> {
     case "pagar":
       return showWhatToPay(ctx);
     case "otro":
-      await ctx.out.text(`${p.pregunta || "No entendí qué querés hacer con las tarjetas 🤔"}\n\n${EXAMPLES}${BACK}`);
+      if (p.pregunta) return askFollowup(ctx, "tarjeta", text, p.pregunta, `\n\n${EXAMPLES}${BACK}`);
+      await ctx.out.text(`No entendí qué querés hacer con las tarjetas 🤔\n\n${EXAMPLES}${BACK}`);
       return true;
     case "crear": {
       // "la visa cierra el 25" a veces viene como crear: si ya la tenés y trae días, es un cambio de días
-      const existing = findCard(sources, p.nombre);
-      if (existing && (p.cierre || p.vence)) return askDates(ctx, existing, saidDay(text, p.cierre), saidDay(text, p.vence));
+      const existing = findCard(sources, p.nombre ?? "");
+      if (existing && (p.cierre || p.vence)) return askDates(ctx, text, existing, saidDay(text, p.cierre), saidDay(text, p.vence));
       return askCreate(ctx, text, p, sources);
     }
   }
@@ -101,7 +102,7 @@ export async function handleCards(ctx: Ctx, text: string): Promise<boolean> {
   }
   if (p.accion === "resumen") return showStatement(ctx, card);
   if (p.accion === "pagado") return askMarkPaid(ctx, card);
-  return askDates(ctx, card, saidDay(text, p.cierre), saidDay(text, p.vence));
+  return askDates(ctx, text, card, saidDay(text, p.cierre), saidDay(text, p.vence));
 }
 
 const EXAMPLES =
@@ -329,14 +330,12 @@ export async function markPaidButton(ctx: Ctx, cardId: string, month: string) {
 
 // ---------- Días de cierre y vencimiento ----------
 
-function askDates(ctx: Ctx, card: Source, closing?: number, due?: number) {
+function askDates(ctx: Ctx, text: string, card: Source, closing?: number, due?: number) {
   // Si dice uno solo, el otro queda como estaba (si ya tenía)
   const closingDay = closing ?? card.closingDay ?? undefined;
   const dueDay = due ?? card.dueDay ?? undefined;
   if (!closingDay || !dueDay) {
-    return ctx.out
-      .text(`Necesito los dos días 🙏 Decime por ej. "la ${card.name} cierra el 25 y vence el 7".${BACK}`)
-      .then(() => true);
+    return askFollowup(ctx, "tarjeta", text, `📅 ¿Qué día cierra y qué día vence la *${card.name}*? (ej: 25 y 7)`, BACK);
   }
   if (closingDay === card.closingDay && dueDay === card.dueDay) {
     return ctx.out.text(`La *${card.name}* ya cierra el ${closingDay} y vence el ${dueDay} 👌${BACK}`).then(() => true);
@@ -361,12 +360,12 @@ async function saveDates(ctx: Ctx, data: Record<string, unknown>) {
 // ---------- Agregar una tarjeta o billetera ----------
 
 function askCreate(ctx: Ctx, text: string, p: Extract<CardParsed, { accion: "crear" }>, sources: Source[]) {
-  const typed = p.nombre.trim().replace(/^(la|el|una?)\s+/i, "").slice(0, 30);
+  const typed = (p.nombre ?? "").trim().replace(/^(la|el|una?)\s+/i, "").slice(0, 30);
   // "brubank" → "Brubank" (si lo escribió todo en minúscula)
   const name = typed === typed.toLowerCase() ? capitalize(typed) : typed;
   const t = normalize(text);
   if (name.length < 2 || !t.includes(normalize(name))) {
-    return ctx.out.text(`¿Cómo se llama? Decime por ej. "agregá la tarjeta Galicia" o "agregá la billetera Brubank".${BACK}`).then(() => true);
+    return askFollowup(ctx, "tarjeta", text, "➕ ¿Cómo se llama la tarjeta o billetera que querés agregar?", BACK);
   }
   const clash = sources.find((s) => normalize(s.name) === normalize(name));
   if (clash) return ctx.out.text(`Ya tenés *${clash.name}* 👌${BACK}`).then(() => true);

@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { todayISO, TIME_ZONE, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
+import { parseAmount, todayISO, TIME_ZONE, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
 
 // Interpreta lo que escribe la persona con Claude Haiku: primero QUÉ quiere hacer
@@ -41,11 +41,11 @@ const aiSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("eliminar"), ...target }),
   z.object({ accion: z.literal("editar"), ...target, cambios: expenseShape.partial().optional() }),
   z.object({ accion: z.literal("otro"), pregunta: z.string().optional() }),
-  z.object({ accion: z.literal("seccion"), cual: z.enum(["fijo", "tarjeta"]) }),
+  z.object({ accion: z.literal("seccion"), cual: z.enum(["fijo", "tarjeta", "presupuesto", "categoria"]) }),
 ]);
 
 /** Otras partes de la app que Chop maneja con una segunda llamada chica (ver sections/) */
-export type Section = "fijo" | "tarjeta";
+export type Section = "fijo" | "tarjeta" | "presupuesto" | "categoria";
 
 /**
  * Atajo sin IA dentro de una sección (lo arma quick-parser.ts): "mis fijos" → listar,
@@ -92,15 +92,13 @@ const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Int
 {"accion":"eliminar","ultimo":true}
 {"accion":"editar","texto":"pizza","monto":18000,"cambios":{"monto":20000,"medio":"CASH"}}
 {"accion":"otro","pregunta":"¿Querés cargar un gasto de $15.000? ¿En qué categoría?"}
-{"accion":"seccion","cual":"fijo"}
 {"accion":"seccion","cual":"tarjeta"}
 
 ACCIONES
 - cargar: uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "chop cargame 5000 de nafta").
 - consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes".
 - eliminar / editar: un gasto ya cargado ("borrá el último", "eliminá la nafta", "el último eran 20000", "pasá la pizza a efectivo"). ultimo=true SOLO si dice "el último"; si no, texto = palabras que lo identifican y monto = el que tenía, si lo dice. En cambios, solo lo que cambia (mismas claves que un gasto).
-- seccion "fijo": gastos fijos mensuales ("netflix aumentó a 12000", "agregá un fijo de alquiler", "pausá el gimnasio"). No es cargar.
-- seccion "tarjeta": resumen o pago de una tarjeta, vencimientos, días de cierre, agregar tarjeta o billetera ("cuánto me viene en la visa", "pagué la visa", "agregá la tarjeta galicia"). "Cuánto gasté con la visa" es consultar.
+- seccion: otra parte de la app. cual: "fijo" (gastos fijos mensuales: "netflix aumentó a 12000", "agregá un fijo de alquiler"), "tarjeta" (resumen, pago, vencimientos o días de una tarjeta, agregar tarjeta o billetera: "cuánto me viene en la visa", "pagué la visa"), "presupuesto" (poner o sacar el de una categoría: "poneme 200 mil en comida"), "categoria" (crear, renombrar o borrar una). "Cuánto gasté con la visa" y "cómo vengo con el presupuesto" son consultar.
 - otro: saludos, gracias o mensajes confusos. Si parece un gasto incompleto, poné una pregunta corta; si no tiene que ver con gastos, omitila.
 
 DATOS
@@ -158,7 +156,8 @@ export async function askModel<T extends z.ZodType>(
     const block = response.content[0];
     if (response.stop_reason !== "end_turn" || block?.type !== "text") return null;
     // Un campo en null es lo mismo que no decirlo (a veces el modelo pone "dia": null en vez de omitirlo)
-    const result = schema.safeParse(JSON.parse(`{${block.text}`, (_key, value) => (value === null ? undefined : value)));
+    const json = firstJsonObject(`{${block.text}`);
+    const result = schema.safeParse(json && JSON.parse(json, (_key, value) => (value === null ? undefined : value)));
     if (!result.success) {
       console.error(`[${tag}] respuesta inválida:`, block.text.slice(0, 200));
       return null;
@@ -171,6 +170,25 @@ export async function askModel<T extends z.ZodType>(
   }
 }
 
+/**
+ * El primer objeto JSON completo del texto (hasta su "}" de cierre). A veces el modelo escribe algo
+ * más después del JSON, y eso haría fallar a JSON.parse. null si no hay un objeto completo.
+ */
+function firstJsonObject(text: string) {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\") i++; // se saltea el carácter escapado (\" no cierra el texto)
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(0, i + 1);
+  }
+  return null;
+}
+
 /** Interpreta un mensaje. Devuelve null si la IA no está disponible o respondió algo inválido. */
 export async function parseMessage(text: string, lists: Lists, proposed?: ParsedExpense[]): Promise<Parsed | null> {
   if (!isAiEnabled() || text.length > MAX_CHARS) return null;
@@ -181,8 +199,16 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
     `\nMensaje: "${text}"`,
   ].join("\n");
   const result = await askModel(SYSTEM, content, aiSchema);
-  return result && toParsed(result, todayISO());
+  if (!result) return null;
+  const parsed = toParsed(result, todayISO());
+  // "eliminá el gasto de la nafta" a veces viene como editar sin nada que cambiar: es eliminar
+  if (parsed.intent === "editar" && Object.keys(parsed.changes).length === 0 && DELETE_WORDS.test(normalize(text))) {
+    return { intent: "eliminar", target: parsed.target };
+  }
+  return parsed;
 }
+
+const DELETE_WORDS = /\b(borra|borrar|borralo|borrame|elimina|eliminar|eliminalo|eliminame|saca|sacar|sacalo|sacame)\b/;
 
 function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
   switch (p.accion) {
@@ -266,6 +292,16 @@ export function saidDay(text: string, day: number | undefined) {
   const t = normalize(text);
   if (new RegExp(`(^|[^\\d.,])${day}([^\\d.,]|$)`).test(t)) return day;
   return day === 1 && /\b(primero|1ro|1°)\b/.test(t) ? 1 : undefined;
+}
+
+/**
+ * Un monto que dio el modelo, solo si sale de un número del mensaje: tal cual, o en miles o
+ * millones ("200 mil", "200k", "2 palos"). Si no, el modelo lo inventó.
+ */
+export function saidAmount(text: string, amount: number | undefined) {
+  if (!amount || !(amount > 0 && amount < 1e12)) return undefined;
+  const numbers = (text.match(/\d+(?:[.,]\d+)*/g) ?? []).map((n) => parseAmount(n)).filter((n): n is number => n !== null);
+  return numbers.some((n) => n === amount || n * 1000 === amount || n * 1e6 === amount) ? amount : undefined;
 }
 
 /** Busca por nombre (sin tildes ni mayúsculas) entre las categorías o tarjetas del usuario */

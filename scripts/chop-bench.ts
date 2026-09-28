@@ -14,10 +14,12 @@ import { parseWithoutAI } from "../src/lib/whatsapp/quick-parser";
 import { listRecurring } from "../src/lib/services/recurring";
 import { parseFixed } from "../src/lib/whatsapp/sections/fijos";
 import { parseCards } from "../src/lib/whatsapp/sections/tarjetas";
+import { parseBudgets } from "../src/lib/whatsapp/sections/presupuestos";
+import { parseCategories } from "../src/lib/whatsapp/sections/categorias";
 
 // Acciones esperadas. Las de secciones nuevas (tarjeta, medio, fijo, presupuesto, categoria)
 // Chop todavía no las sabe hacer: sirven para ver cómo mejora en las próximas etapas.
-type Expected = Exclude<Parsed["intent"], "seccion"> | Section | "presupuesto" | "categoria";
+type Expected = Exclude<Parsed["intent"], "seccion"> | Section;
 
 // El tercer dato (opcional) son gastos ya propuestos que el mensaje corrige ("con efectivo")
 const NAFTA: ParsedExpense = {
@@ -70,6 +72,7 @@ const CASES: [string, Expected, ParsedExpense[]?][] = [
   ["sacá el presupuesto de salidas", "presupuesto"],
   ["creá la categoría mascotas", "categoria"],
   ["borrá la categoría ropa", "categoria"],
+  ["renombrá ropa a indumentaria", "categoria"],
   // Otros
   ["gracias!", "otro"],
   ["qué onda", "otro"],
@@ -117,12 +120,13 @@ async function main() {
     const quick = proposed ? null : parseWithoutAI(text, cats, sources);
     const parsed: Parsed | null = quick ?? (await parseMessage(text, lists, proposed));
     // Si es de una sección, también la segunda llamada (lo que realmente pasa en Chop)
-    const second =
-      parsed?.intent !== "seccion" || parsed.quick
-        ? null
-        : parsed.section === "fijo"
-          ? await parseFixed(text, lists, fixedNames)
-          : await parseCards(text, lists.sources);
+    const sectionParsers: Record<Section, () => Promise<unknown>> = {
+      fijo: () => parseFixed(text, lists, fixedNames),
+      tarjeta: () => parseCards(text, lists.sources),
+      presupuesto: () => parseBudgets(text, lists.categories),
+      categoria: () => parseCategories(text, lists.categories),
+    };
+    const second = parsed?.intent !== "seccion" || parsed.quick ? null : await sectionParsers[parsed.section]();
     const detail = second ? JSON.stringify(second) : describe(parsed);
     const got = parsed?.intent === "seccion" ? parsed.section : (parsed?.intent ?? "error");
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón

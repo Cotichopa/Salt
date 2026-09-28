@@ -1,5 +1,6 @@
 import "server-only";
 import { normalize } from "@/lib/text";
+import type { Section } from "@/lib/whatsapp/ai-parser";
 import type { Ctx, Input } from "@/lib/whatsapp/menu";
 import { setSession, type PendingAction } from "@/lib/whatsapp/session";
 
@@ -16,6 +17,17 @@ export async function askConfirm(ctx: Ctx, action: PendingAction) {
     ...action.options.map((o) => ({ id: `act:${o.id}`, title: o.title })),
     { id: "act:no", title: "❌ Cancelar" },
   ]);
+  return true;
+}
+
+/**
+ * Chop pregunta algo que falta ("¿cuál es el nombre nuevo?") y se acuerda de qué preguntó: la
+ * respuesta ("Market") se interpreta junto con el mensaje original (ver bot.ts). `extra` va después
+ * de la pregunta (ejemplos, "escribí menu...").
+ */
+export async function askFollowup(ctx: Ctx, section: Section | undefined, text: string, question: string, extra = "") {
+  await setSession(ctx.phone, "followup", { followup: { section, text, question } });
+  await ctx.out.text(`${question}${extra}`);
   return true;
 }
 

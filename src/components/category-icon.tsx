@@ -60,90 +60,87 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  CATEGORY_ICON_INFO,
+  CATEGORY_ICON_KEYS,
+  resolveCategoryIcon,
+  type CategoryIconKey,
+} from "@/lib/category-icon-data";
+
+// Los datos (clave, emoji y nombre) viven en src/lib/category-icon-data.ts; acá se re-exportan para
+// que las pantallas sigan importando todo desde este archivo.
+export { CATEGORY_ICON_KEYS, resolveCategoryIcon };
+export type { CategoryIconKey };
 
 // Íconos de las categorías. En la web mostramos estos íconos de línea (blanco y negro,
 // como el resto de la app); en WhatsApp no hay íconos, así que cada uno tiene su emoji
 // "gemelo" que Chop usa en los mensajes. Al elegir un ícono se guardan los dos.
 
-export const CATEGORY_ICONS = {
-  utensils: { Icon: UtensilsIcon, emoji: "🍽️", label: "Cubiertos" },
-  hamburger: { Icon: HamburgerIcon, emoji: "🍔", label: "Hamburguesa" },
-  pizza: { Icon: PizzaIcon, emoji: "🍕", label: "Pizza" },
-  sandwich: { Icon: SandwichIcon, emoji: "🥪", label: "Sándwich" },
-  croissant: { Icon: CroissantIcon, emoji: "🥐", label: "Medialuna" },
-  "ice-cream": { Icon: IceCreamConeIcon, emoji: "🍦", label: "Helado" },
-  apple: { Icon: AppleIcon, emoji: "🍎", label: "Fruta" },
-  coffee: { Icon: CoffeeIcon, emoji: "☕", label: "Café" },
-  beer: { Icon: BeerIcon, emoji: "🍻", label: "Cerveza" },
-  wine: { Icon: WineIcon, emoji: "🍷", label: "Vino" },
-  cart: { Icon: ShoppingCartIcon, emoji: "🛒", label: "Changuito" },
-  bag: { Icon: ShoppingBagIcon, emoji: "🛍️", label: "Bolsa de compras" },
-  fuel: { Icon: FuelIcon, emoji: "⛽", label: "Surtidor" },
-  car: { Icon: CarIcon, emoji: "🚗", label: "Auto" },
-  taxi: { Icon: CarTaxiFrontIcon, emoji: "🚕", label: "Taxi" },
-  bus: { Icon: BusIcon, emoji: "🚌", label: "Colectivo" },
-  train: { Icon: TrainIcon, emoji: "🚆", label: "Tren" },
-  bike: { Icon: BikeIcon, emoji: "🚲", label: "Bicicleta" },
-  plane: { Icon: PlaneIcon, emoji: "✈️", label: "Avión" },
-  palm: { Icon: TreePalmIcon, emoji: "🏝️", label: "Vacaciones" },
-  house: { Icon: HouseIcon, emoji: "🏠", label: "Casa" },
-  building: { Icon: Building2Icon, emoji: "🏢", label: "Edificio" },
-  sofa: { Icon: SofaIcon, emoji: "🛋️", label: "Sillón" },
-  wrench: { Icon: WrenchIcon, emoji: "🔧", label: "Herramienta" },
-  lightbulb: { Icon: LightbulbIcon, emoji: "💡", label: "Lamparita" },
-  plug: { Icon: PlugIcon, emoji: "🔌", label: "Enchufe" },
-  flame: { Icon: FlameIcon, emoji: "🔥", label: "Gas" },
-  droplet: { Icon: DropletIcon, emoji: "💧", label: "Agua" },
-  wifi: { Icon: WifiIcon, emoji: "📶", label: "Internet" },
-  phone: { Icon: SmartphoneIcon, emoji: "📱", label: "Celular" },
-  laptop: { Icon: LaptopIcon, emoji: "💻", label: "Computadora" },
-  tv: { Icon: TvIcon, emoji: "📺", label: "Televisión" },
-  gamepad: { Icon: Gamepad2Icon, emoji: "🎮", label: "Juegos" },
-  music: { Icon: MusicIcon, emoji: "🎵", label: "Música" },
-  film: { Icon: ClapperboardIcon, emoji: "🎬", label: "Cine" },
-  ticket: { Icon: TicketIcon, emoji: "🎟️", label: "Entradas" },
-  pill: { Icon: PillIcon, emoji: "💊", label: "Remedios" },
-  stethoscope: { Icon: StethoscopeIcon, emoji: "🩺", label: "Médico" },
-  dumbbell: { Icon: DumbbellIcon, emoji: "🏋️", label: "Gimnasio" },
-  scissors: { Icon: ScissorsIcon, emoji: "✂️", label: "Peluquería" },
-  sparkles: { Icon: SparklesIcon, emoji: "✨", label: "Belleza" },
-  shirt: { Icon: ShirtIcon, emoji: "👕", label: "Ropa" },
-  baby: { Icon: BabyIcon, emoji: "👶", label: "Bebé" },
-  paw: { Icon: PawPrintIcon, emoji: "🐾", label: "Mascotas" },
-  flower: { Icon: Flower2Icon, emoji: "🌸", label: "Plantas" },
-  graduation: { Icon: GraduationCapIcon, emoji: "🎓", label: "Estudios" },
-  book: { Icon: BookOpenIcon, emoji: "📚", label: "Libros" },
-  palette: { Icon: PaletteIcon, emoji: "🎨", label: "Arte" },
-  gift: { Icon: GiftIcon, emoji: "🎁", label: "Regalos" },
-  heart: { Icon: HeartIcon, emoji: "❤️", label: "Corazón" },
-  briefcase: { Icon: BriefcaseIcon, emoji: "💼", label: "Trabajo" },
-  landmark: { Icon: LandmarkIcon, emoji: "🏛️", label: "Impuestos" },
-  shield: { Icon: ShieldIcon, emoji: "🛡️", label: "Seguros" },
-  piggy: { Icon: PiggyBankIcon, emoji: "🐷", label: "Ahorro" },
-  receipt: { Icon: ReceiptIcon, emoji: "🧾", label: "Factura" },
-  cigarette: { Icon: CigaretteIcon, emoji: "🚬", label: "Cigarrillos" },
-  package: { Icon: PackageIcon, emoji: "📦", label: "Caja" },
-  tag: { Icon: TagIcon, emoji: "🏷️", label: "Etiqueta" },
-} satisfies Record<string, { Icon: LucideIcon; emoji: string; label: string }>;
+// Los dibujos de cada ícono. `satisfies` obliga a que estén todos los de CATEGORY_ICON_INFO.
+const ICON_COMPONENTS = {
+  utensils: UtensilsIcon,
+  hamburger: HamburgerIcon,
+  pizza: PizzaIcon,
+  sandwich: SandwichIcon,
+  croissant: CroissantIcon,
+  "ice-cream": IceCreamConeIcon,
+  apple: AppleIcon,
+  coffee: CoffeeIcon,
+  beer: BeerIcon,
+  wine: WineIcon,
+  cart: ShoppingCartIcon,
+  bag: ShoppingBagIcon,
+  fuel: FuelIcon,
+  car: CarIcon,
+  taxi: CarTaxiFrontIcon,
+  bus: BusIcon,
+  train: TrainIcon,
+  bike: BikeIcon,
+  plane: PlaneIcon,
+  palm: TreePalmIcon,
+  house: HouseIcon,
+  building: Building2Icon,
+  sofa: SofaIcon,
+  wrench: WrenchIcon,
+  lightbulb: LightbulbIcon,
+  plug: PlugIcon,
+  flame: FlameIcon,
+  droplet: DropletIcon,
+  wifi: WifiIcon,
+  phone: SmartphoneIcon,
+  laptop: LaptopIcon,
+  tv: TvIcon,
+  gamepad: Gamepad2Icon,
+  music: MusicIcon,
+  film: ClapperboardIcon,
+  ticket: TicketIcon,
+  pill: PillIcon,
+  stethoscope: StethoscopeIcon,
+  dumbbell: DumbbellIcon,
+  scissors: ScissorsIcon,
+  sparkles: SparklesIcon,
+  shirt: ShirtIcon,
+  baby: BabyIcon,
+  paw: PawPrintIcon,
+  flower: Flower2Icon,
+  graduation: GraduationCapIcon,
+  book: BookOpenIcon,
+  palette: PaletteIcon,
+  gift: GiftIcon,
+  heart: HeartIcon,
+  briefcase: BriefcaseIcon,
+  landmark: LandmarkIcon,
+  shield: ShieldIcon,
+  piggy: PiggyBankIcon,
+  receipt: ReceiptIcon,
+  cigarette: CigaretteIcon,
+  package: PackageIcon,
+  tag: TagIcon,
+} satisfies Record<CategoryIconKey, LucideIcon>;
 
-export type CategoryIconKey = keyof typeof CATEGORY_ICONS;
-export const CATEGORY_ICON_KEYS = Object.keys(CATEGORY_ICONS) as [CategoryIconKey, ...CategoryIconKey[]];
-
-// Categorías viejas (creadas antes de los íconos) solo tienen emoji: buscamos el ícono gemelo.
-// El "️" es un carácter invisible que algunos emojis traen y otros no: lo ignoramos.
-const stripVariation = (s: string) => s.replace(/️/g, "");
-const byEmoji = new Map(
-  (Object.entries(CATEGORY_ICONS) as [CategoryIconKey, (typeof CATEGORY_ICONS)[CategoryIconKey]][]).map(([key, v]) => [
-    stripVariation(v.emoji),
-    key,
-  ]),
-);
-
-/** El ícono de una categoría: el guardado, o el que corresponde a su emoji, o una etiqueta */
-export function resolveCategoryIcon(icon: string | null | undefined, emoji?: string | null): CategoryIconKey {
-  if (icon && icon in CATEGORY_ICONS) return icon as CategoryIconKey;
-  return (emoji && byEmoji.get(stripVariation(emoji))) || "tag";
-}
+export const CATEGORY_ICONS = Object.fromEntries(
+  CATEGORY_ICON_KEYS.map((key) => [key, { Icon: ICON_COMPONENTS[key], ...CATEGORY_ICON_INFO[key] }]),
+) as { [K in CategoryIconKey]: { Icon: LucideIcon; emoji: string; label: string } };
 
 const sizes = {
   sm: { box: "size-6 rounded-md", icon: "size-3.5" },

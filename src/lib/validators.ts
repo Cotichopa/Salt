@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { dollarTypeLabels, parseAmount, todayISO, type DollarTypeCode } from "@/lib/format";
 import { parseKeywords } from "@/lib/text";
-import { CATEGORY_ICON_KEYS, CATEGORY_ICONS } from "@/components/category-icon";
+import { CATEGORY_ICON_INFO, CATEGORY_ICON_KEYS } from "@/lib/category-icon-data";
 
 // Reglas de validación compartidas. Se usan en el servidor antes de tocar la base,
 // así ningún dato inválido entra, venga de la web o (más adelante) de WhatsApp.
@@ -222,7 +222,7 @@ export const categorySchema = z
       .refine((k) => k.length <= 30, "Máximo 30 palabras clave"),
   })
   // El emoji no se elige: sale del ícono (es el que Chop muestra en WhatsApp)
-  .transform((c) => ({ ...c, emoji: CATEGORY_ICONS[c.icon].emoji }));
+  .transform((c) => ({ ...c, emoji: CATEGORY_ICON_INFO[c.icon].emoji }));
 
 export type CategoryInput = z.infer<typeof categorySchema>;
 

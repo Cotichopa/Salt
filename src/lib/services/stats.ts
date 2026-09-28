@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
-import { resolveCategoryIcon } from "@/components/category-icon";
+import { resolveCategoryIcon } from "@/lib/category-icon-data";
 import { dateToISO, monthRange, todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 
 // Números del dashboard. Las sumas las hace PostgreSQL con groupBy (agrupar y sumar

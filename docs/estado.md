@@ -170,8 +170,30 @@ Etapas (cada una se commitea aparte):
      fijos quedan sin ella). Botones sin estado: `go:<rama>:<opción>`, `sel:<qué>:<id>`,
      `page:<qué>:<n>` (listas de más de 10). "agregar/consultar/eliminar" escritos también abren el menú
      si no hay otra pregunta pendiente.
-   - **6b — presupuestos y categorías** (por texto y en los tres menús): falta. Ver el plan en
-     `~/.claude/plans/frolicking-growing-lake.md` (ícono de categoría nueva: Chop lo elige por el nombre).
+   - **6b — presupuestos y categorías** — hecha. `sections/presupuestos.ts`: poner o cambiar
+     ("poneme 200 mil de presupuesto en comida", con antes/después), sacar, "mis presupuestos" (sin IA).
+     `sections/categorias.ts`: crear (el ícono lo elige Chop por el nombre: Regalos → 🎁, si no 🏷️; se
+     cambia en la web), renombrar, borrar (con gastos: "pasarlos a otra" → lista, o "borrarlos" con
+     una segunda confirmación porque no se deshace), "mis categorías" (sin IA). Las dos también en los
+     menús Agregar / Consultar / Eliminar. El monto y la categoría de un presupuesto solo se aceptan si
+     están en el mensaje (`saidAmount` en `ai-parser.ts`).
+     Los datos de los íconos (clave, emoji, nombre) se separaron a `src/lib/category-icon-data.ts`:
+     `lucide-react` no carga del lado del servidor. `category-icon.tsx` los re-exporta con los dibujos,
+     así que las pantallas no cambiaron.
+     Las 4 secciones van en **una sola línea** del prompt principal (con un ejemplo concreto: el
+     ejemplo con `fijo|tarjeta|...` confundía al modelo). "editar" sin cambios y con "borrá/eliminá"
+     se toma como eliminar, y "borrá / eliminá / sacá (el gasto de) X" se resuelve sin IA
+     (`deleteTarget` en `quick-parser.ts`, salvo que hable de categoría, presupuesto, fijo o tarjeta).
+     Banco final: 37/37, prompt principal ~1.190 tokens, ~US$ 0,001 por mensaje (−67% vs. la base
+     aunque Chop maneja toda la app).
+   - **Preguntas de Chop con memoria** (2026-09-28, lo encontró Felipe: "¿cuál es el nombre nuevo?" →
+     "Market" se perdía). "Sin memoria" sigue valiendo para la charla, pero cuando **Chop pregunta algo**
+     (`askFollowup` en `sections/confirm.ts`, estado `followup`) guarda el mensaje original y la
+     pregunta; la respuesta se interpreta junto con eso (`bot.ts`), salvo que se entienda sola
+     ("nafta 5000", "cuánto gasté hoy": mensaje nuevo). Vale para las 4 secciones y para la pregunta de
+     la IA principal ("¿en qué categoría?"). Los datos que pueden faltar (nombre nuevo, monto...) son
+     opcionales en los esquemas y se preguntan; renombrar al mismo nombre = falta el nombre.
+     `askModel` toma solo el primer objeto JSON completo (a veces el modelo escribe algo después).
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
 principal; el resto en una segunda llamada chica con el prompt de su sección).
 

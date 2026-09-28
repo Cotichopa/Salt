@@ -20,6 +20,7 @@ import {
 import { clearSession, getSession } from "@/lib/whatsapp/session";
 import { loadDueRecurring } from "@/lib/services/recurring";
 import { handleSection, handleSectionState } from "@/lib/whatsapp/sections";
+import { askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { loadedFixedText } from "@/lib/whatsapp/sections/fijos";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
 
@@ -64,7 +65,14 @@ export async function handleInput(ctx: Ctx, input: Input) {
   // Vale aunque haya otra conversación en curso, como "menu" o "cancelar"
   if (input.text && isDeleteLast(input.text)) return void (await handleDelete(ctx, { last: true, text: "", amount: 0 }));
 
-  const session = await getSession(ctx.phone);
+  let session = await getSession(ctx.phone);
+  // Chop había hecho una pregunta ("¿cuál es el nombre nuevo?") y le contestan con texto: se deja la
+  // pregunta y, más abajo, la respuesta se interpreta junto con el mensaje original
+  const followup = session?.state === "followup" && input.text ? session.data.followup : undefined;
+  if (followup) {
+    await clearSession(ctx.phone);
+    session = null;
+  }
   if (await handleSectionState(ctx, input, session)) return;
   if (await handleMenu(ctx, input, session)) return;
 
@@ -72,11 +80,21 @@ export async function handleInput(ctx: Ctx, input: Input) {
   if (input.text) {
     const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
 
-    // Mensajes simples ("nafta 15000", "cuánto gasté este mes"): se entienden con reglas, sin gastar tokens
+    // Mensajes simples ("nafta 15000", "cuánto gasté este mes"): se entienden con reglas, sin gastar tokens.
+    // Si es la respuesta a una pregunta de Chop y se entiende sola, es un mensaje nuevo.
     const quick = parseWithoutAI(input.text, categories, sources);
+    if (followup && !quick) {
+      const combined = `${followup.text}\n(Chop preguntó: "${followup.question}". Respuesta: ${input.text})`;
+      if (followup.section) {
+        if (await handleSection(ctx, followup.section, combined)) return;
+      } else if (isAiEnabled()) {
+        return askAI(ctx, combined, categories, sources);
+      }
+    }
     if (quick) console.log(`[quick-parser] ${quick.intent} resuelto sin IA`);
     if (quick?.intent === "cargar" && (await proposeExpenses(ctx, quick.expenses))) return;
     if (quick?.intent === "consultar") return void (await handleQuery(ctx, quick));
+    if (quick?.intent === "eliminar") return void (await handleDelete(ctx, quick.target));
     if (quick?.intent === "seccion" && (await handleSection(ctx, quick.section, input.text, quick.quick))) return;
 
     if (isAiEnabled()) return askAI(ctx, input.text, categories, sources);
@@ -110,7 +128,8 @@ async function askAI(
   if (parsed.intent === "seccion" && (await handleSection(ctx, parsed.section, text))) return;
   // No entendió del todo: repregunta en vez de tirar el menú de una
   if (parsed.intent === "otro" && parsed.question) {
-    await ctx.out.text(`${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);
+    // Se acuerda de la pregunta: la respuesta se interpreta junto con este mensaje
+    await askFollowup(ctx, undefined, text, parsed.question, "\n\n_Escribí *menu* si preferís los botones._");
     return;
   }
 

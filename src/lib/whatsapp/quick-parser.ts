@@ -1,6 +1,6 @@
 import { parseAmount, todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
-import type { Parsed, ParsedExpense, QueryPeriod } from "@/lib/whatsapp/ai-parser";
+import type { Parsed, ParsedExpense, QueryPeriod, Section } from "@/lib/whatsapp/ai-parser";
 
 // Entiende sin IA los mensajes simples, así no gastan tokens:
 // - cargas ("nafta 15000", "super 12500 debito", "ayer 5 lucas en el chino con la visa",
@@ -118,6 +118,17 @@ function splitWords(text: string) {
 // "mis fijos": la lista de gastos fijos
 const FIXED_LIST = ["fijos", "mis fijos", "los fijos", "ver fijos", "ver mis fijos", "gastos fijos", "mis gastos fijos", "ver gastos fijos", "que fijos tengo"];
 
+// Listas sin IA: "mis presupuestos", "categorías", "mis tarjetas"...
+const LISTS: Record<string, Section> = Object.fromEntries(
+  (
+    [
+      ["presupuesto", ["presupuestos", "mis presupuestos", "ver presupuestos", "los presupuestos"]],
+      ["categoria", ["categorias", "mis categorias", "ver categorias", "las categorias"]],
+      ["tarjeta", ["tarjetas", "mis tarjetas", "billeteras", "mis billeteras", "medios de pago", "mis medios de pago"]],
+    ] as [Section, string[]][]
+  ).flatMap(([section, phrases]) => phrases.map((p) => [p, section])),
+);
+
 // "¿qué tengo que pagar?": resúmenes y fijos que faltan pagar este mes
 const WHAT_TO_PAY = [
   "que tengo que pagar",
@@ -149,11 +160,28 @@ export function isDeleteLast(text: string) {
   return /^(borra|borrar|borrame|elimina|eliminar|eliminame)( el)? ultimo( gasto)?$/.test(joined);
 }
 
+/**
+ * "eliminá el gasto de la nafta", "borrá la pizza": las palabras que identifican el gasto a borrar.
+ * null si no es eso o si habla de otra cosa ("borrá la categoría ropa", "sacá el presupuesto...").
+ */
+function deleteTarget(text: string) {
+  const joined = splitWords(text).words.join(" ");
+  const m = /^(?:borra|borrar|borrame|elimina|eliminar|eliminame|saca|sacar|sacame)(?: el| la)?(?: gasto)?(?: de| del)?(?: el| la)? (.+)$/.exec(joined);
+  if (!m) return null;
+  const words = m[1].split(" ");
+  const otherSection = ["categoria", "presupuesto", "fijo", "fijos", "tarjeta", "billetera", "resumen"];
+  return words.some((w) => otherSection.includes(w)) ? null : m[1];
+}
+
 /** Lo que Chop puede entender sin IA: primero una carga, después una consulta. null si ninguna. */
 export function parseWithoutAI(text: string, categories: Category[], sources: Source[]): Parsed | null {
   if (isDeleteLast(text)) return { intent: "eliminar", target: { last: true, text: "", amount: 0 } };
+  const toDelete = deleteTarget(text);
+  if (toDelete) return { intent: "eliminar", target: { last: false, text: toDelete, amount: 0 } };
   const joined = splitWords(text).words.join(" ");
   if (FIXED_LIST.includes(joined)) return { intent: "seccion", section: "fijo", quick: { action: "listar" } };
+  const list = LISTS[joined];
+  if (list) return { intent: "seccion", section: list, quick: { action: "listar" } };
   if (WHAT_TO_PAY.includes(joined)) return { intent: "seccion", section: "tarjeta", quick: { action: "pagar" } };
   const card = statementOf(joined, sources);
   if (card) return { intent: "seccion", section: "tarjeta", quick: { action: "resumen", name: card } };

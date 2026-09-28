@@ -16,7 +16,17 @@ import {
   type LoadedRecurring,
   type RecurringDTO,
 } from "@/lib/services/recurring";
-import { askModel, isAiEnabled, listsLines, matchByName, MAX_CHARS, saidDay, todayLine, type Lists } from "@/lib/whatsapp/ai-parser";
+import {
+  askModel,
+  isAiEnabled,
+  listsLines,
+  matchByName,
+  MAX_CHARS,
+  saidAmount,
+  saidDay,
+  todayLine,
+  type Lists,
+} from "@/lib/whatsapp/ai-parser";
 import {
   BACK,
   dollarRows,
@@ -31,7 +41,7 @@ import {
   type Ctx,
   type Input,
 } from "@/lib/whatsapp/menu";
-import { askConfirm } from "@/lib/whatsapp/sections/confirm";
+import { askConfirm, askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { clearSession, setSession, type Draft, type FixedDraft } from "@/lib/whatsapp/session";
 
 // Gastos fijos por Chop: ver la lista, crear, cambiar el monto ("Netflix aumentó a 12.000"),
@@ -49,15 +59,16 @@ const fixedSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("listar") }),
   z.object({
     accion: z.literal("crear"),
-    desc: z.string(),
-    monto: z.number(),
+    // Pueden faltar ("agregá un fijo"): se preguntan
+    desc: z.string().optional(),
+    monto: z.number().optional(),
     usd: z.boolean().optional(),
     cat: z.string().optional(),
     medio: method.optional(),
     tarjeta: z.string().optional(),
     dia: z.number().optional(),
   }),
-  z.object({ accion: z.literal("monto"), fijo: z.string(), monto: z.number(), usd: z.boolean().optional() }),
+  z.object({ accion: z.literal("monto"), fijo: z.string(), monto: z.number().optional(), usd: z.boolean().optional() }),
   z.object({ accion: z.literal("pausar"), fijo: z.string() }),
   z.object({ accion: z.literal("reanudar"), fijo: z.string() }),
   z.object({ accion: z.literal("borrar"), fijo: z.string() }),
@@ -107,11 +118,12 @@ export async function handleFixed(ctx: Ctx, text: string): Promise<boolean> {
 
   // "aumentó a 12.000" es un cambio de monto aunque el modelo diga "crear" (pasa si ese fijo no existe)
   if (p.accion === "crear" && CHANGE_WORDS.test(normalize(text))) {
-    return askAmountChange(ctx, findFixed(fixed, p.desc), p.monto, p.usd, p.desc);
+    return askAmountChange(ctx, text, findFixed(fixed, p.desc ?? ""), p.monto, p.usd, p.desc ?? "");
   }
   if (p.accion === "listar") return showFixedList(ctx, fixed);
   if (p.accion === "otro") {
-    await ctx.out.text(`${p.pregunta || "No entendí qué querés hacer con los fijos 🤔"}\n\n${EXAMPLES}${BACK}`);
+    if (p.pregunta) return askFollowup(ctx, "fijo", text, p.pregunta, `\n\n${EXAMPLES}${BACK}`);
+    await ctx.out.text(`No entendí qué querés hacer con los fijos 🤔\n\n${EXAMPLES}${BACK}`);
     return true;
   }
   if (p.accion === "crear") return startCreate(ctx, text, p, cats, sources);
@@ -124,7 +136,7 @@ export async function handleFixed(ctx: Ctx, text: string): Promise<boolean> {
     );
     return true;
   }
-  if (p.accion === "monto") return askAmountChange(ctx, f, p.monto, p.usd, p.fijo);
+  if (p.accion === "monto") return askAmountChange(ctx, text, f, p.monto, p.usd, p.fijo);
   if (p.accion === "pausar" || p.accion === "reanudar") return askPause(ctx, f, p.accion === "pausar");
   return askDelete(ctx, f);
 }
@@ -191,11 +203,11 @@ async function startCreate(
   cats: Awaited<ReturnType<typeof listCategories>>,
   sources: Awaited<ReturnType<typeof listPaymentSources>>,
 ) {
-  const description = p.desc.trim().slice(0, 60);
-  if (!(p.monto > 0 && p.monto < 1e12) || description.length < 2) {
-    await ctx.out.text(`Para crear un fijo necesito el nombre y el monto 🙏\n\n${EXAMPLES}${BACK}`);
-    return true;
-  }
+  // Lo que falte (nombre o monto) se pregunta en el paso a paso, igual que desde el menú.
+  // El monto, solo si salió de un número del mensaje.
+  const typed = (p.desc ?? "").trim().slice(0, 60);
+  const description = typed.length >= 2 ? typed.charAt(0).toUpperCase() + typed.slice(1) : "";
+  const amount = saidAmount(text, p.monto) ?? 0;
   const cat = matchByName(cats, p.cat ?? null);
   // Medio y tarjeta, solo si están en el mensaje (el modelo a veces copia los del ejemplo).
   // La tarjeta o billetera solo vale si corresponde al medio (billetera → transferencia).
@@ -209,7 +221,7 @@ async function startCreate(
 
   return nextFixedStep(ctx, {
     description,
-    amount: p.monto,
+    amount,
     currency: p.usd ? "USD" : "ARS",
     categoryId: cat?.id,
     categoryLabel: cat ? label(cat) : undefined,
@@ -388,16 +400,25 @@ function confirmCreate(ctx: Ctx, f: FixedDraft) {
 
 const CHANGE_WORDS = /\b(aumento|aumentaron|subio|subieron|bajo|ahora sale|ahora es|paso a|pasa a)\b/;
 
-async function askAmountChange(ctx: Ctx, f: RecurringDTO | null, amount: number, usd: boolean | undefined, name: string) {
+async function askAmountChange(
+  ctx: Ctx,
+  text: string,
+  f: RecurringDTO | null,
+  saidMonto: number | undefined,
+  usd: boolean | undefined,
+  name: string,
+) {
   if (!f) {
     const names = (await listRecurring(ctx.userId)).map((x) => x.description).join(", ");
     await ctx.out.text(
-      `No tengo un gasto fijo "${name}" 🤔${names ? `\nTus fijos: ${names}.` : ""}\n\n_Si querés crearlo: "agregá un fijo de ${name} ${formatMoney(amount, usd ? "USD" : "ARS")} el día 5"._${BACK}`,
+      `No tengo un gasto fijo "${name}" 🤔${names ? `\nTus fijos: ${names}.` : ""}\n\n_Si querés crearlo: "agregá un fijo de ${name} el día 5"._${BACK}`,
     );
     return true;
   }
   const currency = usd === undefined ? f.currency : usd ? "USD" : "ARS";
-  if (!(amount > 0 && amount < 1e12)) return ctx.out.text(`Ese monto no lo agarro 🤔${BACK}`).then(() => true);
+  // El monto nuevo, solo si salió de un número del mensaje; si no, se pregunta
+  const amount = saidAmount(text, saidMonto);
+  if (!amount) return askFollowup(ctx, "fijo", text, `💰 ¿Cuánto sale ahora *${f.description}*?`, BACK);
   if (amount === f.amount && currency === f.currency) {
     return ctx.out.text(`*${f.description}* ya está en ${formatMoney(amount, currency)} 👌${BACK}`).then(() => true);
   }

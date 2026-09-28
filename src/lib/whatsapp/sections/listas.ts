@@ -1,9 +1,13 @@
 import "server-only";
 import { formatMoney } from "@/lib/format";
 import { normalize } from "@/lib/text";
+import { listBudgets } from "@/lib/services/budgets";
+import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { listRecurring } from "@/lib/services/recurring";
-import { BACK, showDeleteList, showQueryMenu, startAdd, type Ctx, type Input } from "@/lib/whatsapp/menu";
+import { BACK, label, showDeleteList, showQueryMenu, startAdd, type Ctx, type Input } from "@/lib/whatsapp/menu";
+import { askDeleteCategory, askMoveAndDelete, showCategoriesList, startCategoryGuided } from "@/lib/whatsapp/sections/categorias";
+import { askBudgetAmount, askRemoveBudget, showBudgetsList } from "@/lib/whatsapp/sections/presupuestos";
 import type { ListRow } from "@/lib/whatsapp/outbox";
 import { askDelete, showFixedList, startFixedGuided } from "@/lib/whatsapp/sections/fijos";
 import {
@@ -32,6 +36,8 @@ const BRANCHES: Record<Branch, { body: string; rows: ListRow[] }> = {
       { id: "go:add:expense", title: "💸 Gasto" },
       { id: "go:add:fixed", title: "📌 Gasto fijo", description: "Se carga solo todos los meses" },
       { id: "go:add:source", title: "💳 Tarjeta o billetera" },
+      { id: "go:add:category", title: "🏷️ Categoría" },
+      { id: "go:add:budget", title: "🎯 Presupuesto", description: "Un tope mensual para una categoría" },
     ],
   },
   query: {
@@ -42,6 +48,8 @@ const BRANCHES: Record<Branch, { body: string; rows: ListRow[] }> = {
       { id: "go:q:statement", title: "💳 Resumen de tarjeta", description: "Cuánto te viene y cuándo vence" },
       { id: "go:q:fixed", title: "📌 Gastos fijos" },
       { id: "go:q:sources", title: "👛 Medios de pago", description: "Tus tarjetas y billeteras" },
+      { id: "go:q:budgets", title: "🎯 Presupuestos", description: "Cuánto llevás de cada uno" },
+      { id: "go:q:categories", title: "🏷️ Categorías", description: "Lo gastado en cada una este mes" },
     ],
   },
   delete: {
@@ -50,6 +58,8 @@ const BRANCHES: Record<Branch, { body: string; rows: ListRow[] }> = {
       { id: "go:del:expense", title: "💸 Gasto" },
       { id: "go:del:fixed", title: "📌 Gasto fijo" },
       { id: "go:del:source", title: "💳 Tarjeta o billetera" },
+      { id: "go:del:category", title: "🏷️ Categoría" },
+      { id: "go:del:budget", title: "🎯 Presupuesto" },
     ],
   },
 };
@@ -77,8 +87,16 @@ async function showBranch(ctx: Ctx, branch: Branch) {
 
 type Picker = { body: string; empty: string; rows: ListRow[] };
 
-/** Las listas para elegir algo: qué tarjeta ver, qué fijo o qué tarjeta borrar */
-const PICKERS: Record<string, (ctx: Ctx) => Promise<Picker>> = {
+/** Categorías para elegir (sin `except`), con el id de la fila armado por `id` */
+async function categoryRows(ctx: Ctx, id: (catId: string) => string, except?: string) {
+  return (await listCategories(ctx.userId)).filter((c) => c.id !== except).map((c) => ({ id: id(c.id), title: label(c) }));
+}
+
+/**
+ * Las listas para elegir algo: qué tarjeta ver, qué fijo o qué tarjeta borrar... `arg` es lo que va
+ * después del punto en "<qué>.<arg>" (ej: "movecat.<id>": a qué categoría pasar los gastos de <id>).
+ */
+const PICKERS: Record<string, (ctx: Ctx, arg?: string) => Promise<Picker>> = {
   statement: async (ctx) => ({
     body: "💳 ¿De qué tarjeta querés ver el resumen?",
     empty: "No tenés tarjetas cargadas.",
@@ -103,15 +121,40 @@ const PICKERS: Record<string, (ctx: Ctx) => Promise<Picker>> = {
       title: `${s.kind === "CARD" ? "💳" : "📲"} ${s.name}`,
     })),
   }),
+  budgetcat: async (ctx) => ({
+    body: "🎯 ¿Para qué categoría es el presupuesto?",
+    empty: "No tenés categorías.",
+    rows: await categoryRows(ctx, (id) => `sel:budgetcat:${id}`),
+  }),
+  delbudget: async (ctx) => ({
+    body: "🎯 ¿Qué presupuesto querés sacar?",
+    empty: "No tenés presupuestos.",
+    rows: (await listBudgets(ctx.userId)).map((b) => ({
+      id: `sel:delbudget:${b.categoryId}`,
+      title: label(b),
+      description: `${formatMoney(b.amount, "ARS")} por mes`,
+    })),
+  }),
+  delcat: async (ctx) => ({
+    body: "🏷️ ¿Qué categoría querés eliminar?",
+    empty: "No tenés categorías.",
+    rows: await categoryRows(ctx, (id) => `sel:delcat:${id}`),
+  }),
+  movecat: async (ctx, from) => ({
+    body: "📦 ¿A qué categoría paso los gastos?",
+    empty: "No tenés otra categoría a donde pasarlos.",
+    rows: await categoryRows(ctx, (id) => `sel:movecat:${from}.${id}`, from),
+  }),
 };
 
 const PAGE = 9; // 9 filas + "ver más" = 10, el máximo de WhatsApp
 
-async function sendPicker(ctx: Ctx, what: string, page = 0) {
-  const picker = PICKERS[what];
+export async function sendPicker(ctx: Ctx, what: string, page = 0) {
+  const [kind, arg] = what.split(".");
+  const picker = PICKERS[kind];
   if (!picker) return false;
   await clearSession(ctx.phone);
-  const { body, empty, rows } = await picker(ctx);
+  const { body, empty, rows } = await picker(ctx, arg);
   if (rows.length === 0) {
     await ctx.out.text(`${empty}${BACK}`);
     return true;
@@ -144,6 +187,15 @@ async function select(ctx: Ctx, what: string, id: string) {
     if (f) return askDelete(ctx, f);
   } else if (what === "delsource") {
     return askDeleteSource(ctx, id);
+  } else if (what === "budgetcat") {
+    return askBudgetAmount(ctx, id);
+  } else if (what === "delbudget") {
+    return askRemoveBudget(ctx, id);
+  } else if (what === "delcat") {
+    return askDeleteCategory(ctx, id);
+  } else if (what === "movecat") {
+    const [from, to] = id.split(".");
+    return askMoveAndDelete(ctx, from, to);
   }
   await ctx.out.text(`Eso ya no existe 🤔${BACK}`);
   return true;
@@ -160,6 +212,10 @@ async function go(ctx: Ctx, option: string) {
       return startFixedGuided(ctx);
     case "add:source":
       return startSourceGuided(ctx);
+    case "add:category":
+      return startCategoryGuided(ctx);
+    case "add:budget":
+      return sendPicker(ctx, "budgetcat");
     case "q:pay":
       return showWhatToPay(ctx);
     case "q:expenses":
@@ -171,6 +227,10 @@ async function go(ctx: Ctx, option: string) {
       return showFixedList(ctx);
     case "q:sources":
       return showSourcesList(ctx);
+    case "q:budgets":
+      return showBudgetsList(ctx);
+    case "q:categories":
+      return showCategoriesList(ctx);
     case "del:expense":
       await showDeleteList(ctx);
       return true;
@@ -178,6 +238,10 @@ async function go(ctx: Ctx, option: string) {
       return sendPicker(ctx, "delfixed");
     case "del:source":
       return sendPicker(ctx, "delsource");
+    case "del:category":
+      return sendPicker(ctx, "delcat");
+    case "del:budget":
+      return sendPicker(ctx, "delbudget");
   }
   return false;
 }

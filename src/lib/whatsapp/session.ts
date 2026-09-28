@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import type { DollarTypeCode } from "@/lib/format";
+import type { Section } from "@/lib/whatsapp/ai-parser";
 
 // "Memoria" de la conversación: en qué paso del menú está cada teléfono y qué datos
 // fue juntando (por ejemplo, la categoría elegida mientras espera el monto).
@@ -56,6 +57,9 @@ export type Draft = {
   action?: PendingAction;
   fixed?: FixedDraft;
   newSource?: NewSourceDraft;
+  budgetCategoryId?: string; // presupuesto que se está poniendo con los botones: falta el monto
+  // Chop hizo una pregunta: la respuesta se interpreta junto con el mensaje original (sin sección = IA principal)
+  followup?: { section?: Section; text: string; question: string };
   pending?: PendingExpense[];
   categoryId?: string;
   categoryLabel?: string;
