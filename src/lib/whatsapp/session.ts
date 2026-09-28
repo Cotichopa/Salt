@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
+import type { DollarTypeCode } from "@/lib/format";
 
 // "Memoria" de la conversación: en qué paso del menú está cada teléfono y qué datos
 // fue juntando (por ejemplo, la categoría elegida mientras espera el monto).
@@ -20,6 +21,7 @@ export type PendingExpense = {
   sourceId?: string | null; // tarjeta o billetera
   sourceName?: string | null;
   installments?: number;
+  dollarType?: DollarTypeCode; // en USD sin crédito: a qué dólar se pagó (se pregunta antes de guardar)
 };
 
 export type Draft = {
@@ -48,8 +50,9 @@ export type Draft = {
       date: string;
     };
   };
-  // Para completar datos que faltan de la propuesta
-  missing?: ("description" | "source")[];
+  // Para completar la tarjeta de una compra con crédito antes de guardarla
+  missing?: "source"[];
+  askedCard?: boolean; // ya se preguntó (si no eligió ninguna, se guarda sin tarjeta)
 };
 
 export type Session = { state: string; data: Draft };

@@ -88,13 +88,8 @@ avisa en vez de preguntar; con otro medio se elige el dólar. Los gastos viejos 
 defecto de los fijos (lista de arriba). En la demo, los gastos en USD con crédito viejos siguen al
 dólar tarjeta; `npm run db:demo` los regenera al oficial (cambia la contraseña de la demo).
 
-**Para cuando esté la API key (todo lo de Chop):**
-- Al cargar un gasto en USD que **no** sea con crédito, que Chop pregunte "¿A qué dólar lo pagaste?"
-  (hoy pone MEP). Con crédito no pregunta: siempre es el oficial (`dollarTypeFor`), pero que lo avise.
-- Aviso por WhatsApp de los gastos fijos cargados, en un solo mensaje (ventana de 24 h de Meta).
-- Decirle a Chop que un fijo aumentó ("Netflix aumentó a 12.000") → ¿desde este mes o el próximo?
-- Resumen de la tarjeta por Chop ("¿cuánto me viene en la Visa?").
-- Totales de Chop en pesos (hoy `sendSummary` en `menu.ts` dice "$ X + USD Y").
+**Lo de Chop que quedaba de estas etapas** va en las etapas 4 y 5 del plan de Chop (abajo): aviso por
+WhatsApp de los fijos cargados, "Netflix aumentó a 12.000" y resumen de la tarjeta por Chop.
 
 ## En curso: Chop más barato y que maneje toda la app (plan del 2026-09-28)
 
@@ -118,7 +113,18 @@ Etapas (cada una se commitea aparte):
    "cuánto gasté / qué gasté / gastos / cómo vengo" + período, categoría (o palabra clave), tarjeta y
    medio; "borrá / eliminá el último" también es sin IA (`isDeleteLast`). `parseWithoutAI` junta todo
    y lo usan `bot.ts` y el banco. En el banco: 12 de 34 sin IA, **US$ 0,00084 por mensaje (−73% vs. la base)**.
-3. Carga directa con Deshacer, "¿a qué dólar?" en USD sin crédito, totales de Chop en pesos.
+3. **Carga directa con Deshacer** — hecha. Un gasto se guarda enseguida y la respuesta trae
+   **↩️ Deshacer** (el id va en el botón, `undo:<id>.<id>`; borra también todas las cuotas; vale
+   siempre, como los botones del menú). Antes de guardar pregunta solo lo imprescindible
+   (`finishPending` en `menu.ts`): **"¿Cómo pagaste?"** si no dijo el medio (lista con efectivo, débito,
+   crédito, sus billeteras y transferencia; antes suponía el más usado y Felipe prefirió que pregunte),
+   la **tarjeta** si es con crédito y no la dijo (sin ella no entra en el resumen de la tarjeta; si
+   contesta otro medio, "mercado pago", se cambia el medio; si no se entiende, se guarda sin tarjeta) y **a qué dólar** si es en USD
+   sin crédito (con crédito, oficial y lo avisa). Al guardar en USD muestra cuánto quedó en pesos.
+   Varios gastos en un mensaje siguen con "Guardar todos" (y también tienen Deshacer). La carga paso a
+   paso del menú termina por el mismo camino. Se sacó el botón "Completar" (descripción/tarjeta
+   opcionales). Los resúmenes de Chop suman **en pesos** (`amountArs`); solo los USD viejos sin
+   convertir quedan aparte. Las correcciones después de guardar van por "editar" (con confirmación).
 4. Gastos fijos por Chop (+ aviso de fijos cargados por WhatsApp, confirmación genérica).
 5. Tarjetas y billeteras (resumen, marcar pagado, crear, cierre/vencimiento).
 6. Presupuestos y categorías.

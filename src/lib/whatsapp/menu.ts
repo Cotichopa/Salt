@@ -1,14 +1,22 @@
 import "server-only";
-import { formatMoney, paymentMethodLabels, parseAmount, todayISO, type PaymentMethodCode } from "@/lib/format";
+import {
+  dollarTypeLabels,
+  formatMoney,
+  paymentMethodLabels,
+  parseAmount,
+  todayISO,
+  type DollarTypeCode,
+  type PaymentMethodCode,
+} from "@/lib/format";
 import { normalize } from "@/lib/text";
 import { listCategories } from "@/lib/services/categories";
 import {
   createExpense,
   deleteExpense,
+  ExpenseError,
   getExpense,
   listExpenses,
   mostUsedPaymentMethod,
-  totalsByCurrency,
   type ExpenseDTO,
   type ExpenseFilters,
 } from "@/lib/services/expenses";
@@ -91,6 +99,8 @@ const expected: Record<string, string[]> = {
   "ai:confirm": ["aiconfirm:"],
   "ai:edit": ["editconfirm:"],
   "ai:missing": ["cat:", "catpage:", "src:"],
+  "ai:dollar": ["usd:"],
+  "ai:method": ["pm:", "src:"],
 };
 
 // ---------- Menú principal ----------
@@ -109,8 +119,9 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
   const id = input.replyId;
   const text = normalize(input.text ?? "");
 
-  // Los botones del menú principal valen en cualquier momento
+  // Los botones del menú principal y "Deshacer" valen en cualquier momento
   if (id?.startsWith("menu:")) return routeMain(ctx, id.slice(5));
+  if (id?.startsWith("undo:")) return undoSaved(ctx, id.slice(5).split("."));
   if (!session && !id) return false;
 
   if (id && (!session || !expected[session.state]?.some((p) => id.startsWith(p)))) {
@@ -152,6 +163,10 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
       return confirmEdit(ctx, id, text, d);
     case "ai:missing":
       return receiveMissing(ctx, input, d);
+    case "ai:dollar":
+      return receiveDollar(ctx, input, d);
+    case "ai:method":
+      return receivePayment(ctx, input, d);
   }
   return false;
 }
@@ -312,26 +327,25 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
     ]);
     return true;
   }
-  await clearSession(ctx.phone);
   if (no) {
+    await clearSession(ctx.phone);
     await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
-  const created = await createExpense(
-    ctx.userId,
-    {
-      categoryId: d.categoryId!,
-      amount: d.amount!,
-      currency: d.currency ?? "ARS",
-      paymentMethod: d.paymentMethod ?? "CASH",
-      description: d.description ?? null,
-      date: d.date ?? todayISO(),
-    },
-    ctx.source,
-  );
-  const alert = await budgetAlertFor(ctx.userId, created);
-  await ctx.out.text(`✅ Gasto guardado\n\n${describeDraft(d)}${alertLines(alert ? [alert] : [])}${BACK}`);
-  return true;
+  // Igual que lo escrito a mano: si hace falta pregunta la tarjeta o el dólar, y guarda con Deshacer
+  return finishPending(ctx, {
+    pending: [
+      {
+        categoryId: d.categoryId!,
+        categoryLabel: d.categoryLabel ?? "",
+        amount: d.amount!,
+        currency: d.currency ?? "ARS",
+        paymentMethod: d.paymentMethod ?? "CASH",
+        description: d.description ?? null,
+        date: d.date ?? todayISO(),
+      },
+    ],
+  });
 }
 
 // ---------- Consultar ----------
@@ -378,17 +392,25 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
     return;
   }
 
-  const totals = totalsByCurrency(expenses);
-  const totalText = (["ARS", "USD"] as const)
-    .filter((c) => totals[c] > 0)
-    .map((c) => formatMoney(totals[c], c))
+  // Todo en pesos (cada gasto en USD guarda su valor en pesos del día). Solo los gastos
+  // viejos en USD que nunca se convirtieron quedan aparte, en dólares.
+  const inPesos = (e: ExpenseDTO) => (e.currency === "ARS" ? e.amount : e.amountArs);
+  const totals = { ARS: 0, USD: 0 };
+  for (const e of expenses) {
+    const pesos = inPesos(e);
+    if (pesos !== null) totals.ARS += pesos;
+    else totals.USD += e.amount;
+  }
+  const totalText = [formatMoney(totals.ARS, "ARS"), totals.USD > 0 ? `${formatMoney(totals.USD, "USD")} sin convertir` : ""]
+    .filter(Boolean)
     .join(" + ");
 
-  // Suma por categoría (separando monedas), de mayor a menor
+  // Suma por categoría, de mayor a menor
   const byCat = new Map<string, number>();
   for (const e of expenses) {
-    const key = `${label(e.category)}|${e.currency}`;
-    byCat.set(key, (byCat.get(key) ?? 0) + e.amount);
+    const pesos = inPesos(e);
+    const key = `${label(e.category)}|${pesos === null ? "USD" : "ARS"}`;
+    byCat.set(key, (byCat.get(key) ?? 0) + (pesos ?? e.amount));
   }
   const catLines = [...byCat.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -414,7 +436,8 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
 }
 
 function expenseLine(e: ExpenseDTO) {
-  return `• ${shortDate(e.date)} ${label(e.category)} ${formatMoney(e.amount, e.currency)}${e.description ? ` — ${e.description}` : ""}`;
+  const pesos = e.currency === "USD" && e.amountArs !== null ? ` (${formatMoney(e.amountArs, "ARS")})` : "";
+  return `• ${shortDate(e.date)} ${label(e.category)} ${formatMoney(e.amount, e.currency)}${pesos}${e.description ? ` — ${e.description}` : ""}`;
 }
 
 // ---------- Eliminar ----------
@@ -484,8 +507,9 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
 // ---------- Texto libre interpretado por la IA ----------
 
 /**
- * Convierte lo que entendió la IA en gastos concretos (categoría y medio de pago del
- * usuario) y los deja pendientes de confirmación. Devuelve false si ninguno era válido.
+ * Convierte lo que entendió la IA (o el pre-filtro) en gastos concretos, con la categoría y el
+ * medio de pago del usuario. Un gasto solo se guarda directo; varios, se confirman.
+ * Devuelve false si ninguno era válido.
  */
 export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string) {
   const [cats, sources, fallbackMethod] = await Promise.all([
@@ -521,33 +545,25 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
 }
 
 /**
- * Muestra los gastos propuestos con Guardar / Completar / Cancelar. Si alguno quedó sin
- * categoría, antes pregunta cuál (sin categoría no se puede guardar).
+ * Si alguno quedó sin categoría, primero pregunta cuál (sin categoría no se puede guardar).
+ * Un solo gasto se guarda directo (con Deshacer); varios muestran Guardar todos / Cancelar.
  */
 async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string) {
-  if (pending.some((p) => !p.categoryId)) return askMissing(ctx, { pending, missing: [] });
+  if (pending.some((p) => !p.categoryId)) return askMissing(ctx, { pending });
+  if (pending.length === 1) return finishPending(ctx, { pending });
 
-  // Qué datos faltan (solo preguntamos por los que realmente aportan)
-  const first = pending[0];
-  const missing: ("description" | "source")[] = [];
-  if (pending.length === 1 && !first.description) missing.push("description");
-  if (pending.length === 1 && kindForMethod(first.paymentMethod) && !first.sourceId) missing.push("source");
-
-  await setSession(ctx.phone, "ai:confirm", { pending, missing });
+  await setSession(ctx.phone, "ai:confirm", { pending });
   const body = [
-    heading ?? (pending.length === 1 ? "Entendí esto 👇" : `Entendí ${pending.length} gastos 👇`),
+    heading ?? `Entendí ${pending.length} gastos 👇`,
     "",
     ...pending.map(describePending),
     "",
     pending.some((p) => p.guessedMethod) ? "_El medio de pago lo supuse: revisalo._" : "",
-    missing.length > 0 ? `_Podés agregar: ${missing.map(missingLabel).join(" y ")}._` : "",
   ]
     .filter(Boolean)
     .join("\n");
-
   await ctx.out.buttons(body, [
-    { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
-    ...(missing.length > 0 ? [{ id: "aiconfirm:complete", title: "✏️ Completar" }] : []),
+    { id: "aiconfirm:yes", title: "✅ Guardar todos" },
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
   return true;
@@ -555,14 +571,16 @@ async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: strin
 
 const NO_CATEGORY = "❓ Sin categoría";
 
-const missingLabel = (m: "description" | "source") => (m === "description" ? "una descripción" : "la tarjeta");
+/** Con crédito hace falta la tarjeta: sin ella, la compra no aparece en el resumen de la tarjeta */
+const needsCard = (p: PendingExpense) => p.paymentMethod === "CREDIT" && !p.sourceId;
+/** En dólares sin crédito hay que saber a qué dólar se pagó (con crédito es siempre el oficial) */
+const needsDollar = (p: PendingExpense) => p.currency === "USD" && p.paymentMethod !== "CREDIT" && !p.dollarType;
 
 /**
- * Pregunta, de a uno, los datos que faltan. Primero la categoría (sin ella no se puede
- * guardar); después, lo opcional que quedó en `missing`.
+ * Pregunta lo que falta: la categoría (de cualquiera que no la tenga) o la tarjeta
+ * (de una compra con crédito, en `missing`).
  */
 async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
-  const [next, ...rest] = d.missing ?? [];
   const pending = d.pending ?? [];
 
   const uncategorized = pending.find((p) => !p.categoryId);
@@ -572,29 +590,22 @@ async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
     await sendCategoryList(ctx, d.page ?? 0, `🏷️ ¿En qué categoría va *${what}*? Elegila de la lista o escribí el nombre.`);
     return true;
   }
-  if (!next || pending.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
+  if (!d.missing?.length || pending.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
 
-  await setSession(ctx.phone, "ai:missing", { ...d, missing: [next, ...rest] });
-  if (next === "description") {
-    await ctx.out.text("📝 ¿Qué le ponemos de descripción? (o escribí *no* para dejarla vacía)");
-    return true;
-  }
   const kind = kindForMethod(pending[0].paymentMethod);
   const sources = (await listPaymentSources(ctx.userId)).filter((s) => s.kind === kind);
-  if (sources.length === 0) return skipMissing(ctx, d);
-  await ctx.out.list(kind === "CARD" ? "💳 ¿Con qué tarjeta?" : "📲 ¿Con qué billetera?",
-    "Ver opciones",
+  if (sources.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
+  await setSession(ctx.phone, "ai:missing", d);
+  await ctx.out.list(
+    `💳 ¿Con qué tarjeta pagaste *${formatMoney(pending[0].amount, pending[0].currency)}*? Así aparece en su resumen.`,
+    "Ver tarjetas",
     sources.map((s) => ({ id: `src:${s.id}`, title: s.name })),
-    kind === "CARD" ? "Tarjetas" : "Billeteras",
+    "Tarjetas",
   );
   return true;
 }
 
-function skipMissing(ctx: Ctx, d: Draft): Promise<boolean> {
-  return showPendingAgain(ctx, { ...d, missing: (d.missing ?? []).slice(1) });
-}
-
-/** Recibe el dato que faltaba y sigue con el siguiente (o vuelve a la confirmación) */
+/** Recibe el dato que faltaba y sigue con el siguiente (o guarda) */
 async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
   const pending = [...(d.pending ?? [])];
   const id = input.replyId;
@@ -613,42 +624,251 @@ async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean
     return showProposal(ctx, pending);
   }
 
-  const [current, ...rest] = d.missing ?? [];
-  if (!current || pending.length === 0) return false;
-
-  if (current === "description") {
-    const text = rawText.trim();
-    if (text && !["no", "No", "NO"].includes(text)) pending[0] = { ...pending[0], description: text.slice(0, 200) };
-  } else {
-    const sources = await listPaymentSources(ctx.userId);
-    const source = id?.startsWith("src:") ? sources.find((s) => s.id === id.slice(4)) : matchByName(sources, rawText.trim());
-    if (source && source.kind === kindForMethod(pending[0].paymentMethod)) {
-      pending[0] = { ...pending[0], sourceId: source.id, sourceName: source.name };
-    }
-  }
-  return showPendingAgain(ctx, { ...d, pending, missing: rest });
+  if (!d.missing?.length || pending.length === 0) return false;
+  // La tarjeta. Si contesta otro medio ("mercado pago", "efectivo"), se cambia el medio de pago;
+  // si contesta algo que no se entiende, se guarda sin tarjeta.
+  const answer = readPayment(input, await listPaymentSources(ctx.userId), pending[0].paymentMethod);
+  if (answer) pending[0] = withPayment(pending[0], answer);
+  return showPendingAgain(ctx, { ...d, pending, missing: [] });
 }
 
-/** Vuelve a mostrar la propuesta (después de completar un dato) */
+/** Después de completar un dato: un gasto sigue hacia guardarse; varios vuelven a la confirmación */
 async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
   const pending = d.pending ?? [];
-  const missing = d.missing ?? [];
-  if (missing.length > 0 || pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
+  if (d.missing?.length || pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
+  if (pending.length === 1) return finishPending(ctx, d);
 
-  await setSession(ctx.phone, "ai:confirm", { pending, missing: [] });
+  await setSession(ctx.phone, "ai:confirm", { pending });
   await ctx.out.buttons(["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [
-    { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
+    { id: "aiconfirm:yes", title: "✅ Guardar todos" },
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
+  return true;
+}
+
+/**
+ * Lo último antes de guardar. Con un solo gasto: el medio de pago si no lo dijo, y la tarjeta si
+ * es con crédito (una sola vez). Con cualquiera: a qué dólar se pagó cada gasto en USD sin
+ * crédito. Cuando no falta nada, guarda. (Con varios gastos el medio se supone y se avisa.)
+ */
+async function finishPending(ctx: Ctx, d: Draft): Promise<boolean> {
+  const pending = d.pending ?? [];
+  if (pending.length === 1 && pending[0].guessedMethod) return askPayment(ctx, d);
+  if (pending.length === 1 && !d.askedCard && needsCard(pending[0])) {
+    return askMissing(ctx, { ...d, missing: ["source"], askedCard: true });
+  }
+  const i = pending.findIndex(needsDollar);
+  if (i >= 0) return askDollar(ctx, d, i);
+  return savePending(ctx, pending);
+}
+
+/** "¿Cómo pagaste?": los medios de pago, con las billeteras por nombre (Mercado Pago, MODO...) */
+async function askPayment(ctx: Ctx, d: Draft) {
+  const p = d.pending![0];
+  // WhatsApp muestra hasta 10 filas: 4 medios + hasta 6 billeteras
+  const wallets = (await listPaymentSources(ctx.userId)).filter((s) => s.kind === "WALLET").slice(0, 6);
+  await setSession(ctx.phone, "ai:method", d);
+  await ctx.out.list(
+    `💳 ¿Cómo pagaste *${formatMoney(p.amount, p.currency)}*?`,
+    "Elegir medio",
+    [
+      { id: "pm:CASH", title: "💵 Efectivo" },
+      { id: "pm:DEBIT", title: "💳 Débito" },
+      { id: "pm:CREDIT", title: "💳 Crédito" },
+      ...wallets.map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` })),
+      { id: "pm:TRANSFER", title: "🏦 Transferencia" },
+    ],
+    "Medio de pago",
+  );
+  return true;
+}
+
+async function receivePayment(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
+  const pending = [...(d.pending ?? [])];
+  if (pending.length === 0) return false;
+  // Una tarjeta nombrada sin decir crédito es débito, igual que al cargar ("con la visa")
+  const answer = readPayment(input, await listPaymentSources(ctx.userId), "DEBIT");
+  if (!answer) return askPayment(ctx, d);
+  pending[0] = withPayment(pending[0], answer);
+  return finishPending(ctx, { ...d, pending });
+}
+
+type PaymentAnswer = { method: PaymentMethodCode; source: { id: string; name: string } | null };
+
+const METHOD_WORDS: Record<string, PaymentMethodCode> = {
+  efectivo: "CASH",
+  debito: "DEBIT",
+  credito: "CREDIT",
+  transferencia: "TRANSFER",
+};
+
+/**
+ * Entiende la respuesta a "¿cómo pagaste?" o "¿con qué tarjeta?": un botón, un medio
+ * ("efectivo"), una billetera ("mercado pago" → transferencia) o una tarjeta ("la visa").
+ * `cardDefault` es el medio si nombra una tarjeta sin decir débito o crédito. null si no se entiende.
+ */
+function readPayment(
+  input: Input,
+  sources: { id: string; name: string; kind: string }[],
+  cardDefault: PaymentMethodCode,
+): PaymentAnswer | null {
+  const id = input.replyId;
+  const text = normalize(input.text ?? "");
+  const source = id?.startsWith("src:")
+    ? sources.find((s) => s.id === id.slice(4))
+    : sources.find((s) => text.includes(normalize(s.name)));
+  const byButton = id?.startsWith("pm:") ? (id.slice(3) as PaymentMethodCode) : undefined;
+  const said = byButton ?? Object.entries(METHOD_WORDS).find(([w]) => text.split(/\s+/).includes(w))?.[1];
+
+  if (source?.kind === "WALLET") return { method: "TRANSFER", source };
+  if (source?.kind === "CARD") {
+    const method = said === "DEBIT" || said === "CREDIT" ? said : cardDefault === "CREDIT" ? "CREDIT" : "DEBIT";
+    return { method, source };
+  }
+  return said && said in paymentMethodLabels ? { method: said, source: null } : null;
+}
+
+function withPayment(p: PendingExpense, a: PaymentAnswer): PendingExpense {
+  return {
+    ...p,
+    paymentMethod: a.method,
+    guessedMethod: false,
+    sourceId: a.source?.id ?? null,
+    sourceName: a.source?.name ?? null,
+    installments: a.method === "CREDIT" ? p.installments : 1,
+  };
+}
+
+const DOLLAR_TYPES = Object.keys(dollarTypeLabels) as DollarTypeCode[];
+
+async function askDollar(ctx: Ctx, d: Draft, i: number) {
+  const p = d.pending![i];
+  await setSession(ctx.phone, "ai:dollar", d);
+  await ctx.out.list(
+    `💵 ¿A qué dólar pagaste *${formatMoney(p.amount, "USD")}*${p.description ? ` (${p.description})` : ""}? Con eso lo paso a pesos.`,
+    "Elegir dólar",
+    DOLLAR_TYPES.map((t) => ({ id: `usd:${t}`, title: `Dólar ${dollarTypeLabels[t]}` })),
+    "Dólar",
+  );
+  return true;
+}
+
+async function receiveDollar(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
+  const pending = [...(d.pending ?? [])];
+  const i = pending.findIndex(needsDollar);
+  if (i < 0) return finishPending(ctx, d);
+
+  const words = normalize(input.text ?? "").split(/\s+/);
+  const type = input.replyId?.startsWith("usd:")
+    ? DOLLAR_TYPES.find((t) => t === input.replyId!.slice(4))
+    : DOLLAR_TYPES.find((t) => words.includes(normalize(dollarTypeLabels[t])));
+  if (!type) return askDollar(ctx, d, i);
+  pending[i] = { ...pending[i], dollarType: type };
+  return finishPending(ctx, { ...d, pending });
+}
+
+/** Guarda los gastos y responde con lo guardado y el botón Deshacer */
+async function savePending(ctx: Ctx, pending: PendingExpense[]): Promise<boolean> {
+  await clearSession(ctx.phone);
+  const ids: string[] = [];
+  const pesos: (number | null)[] = []; // lo que quedó en pesos cada gasto en USD
+  const alerts: BudgetAlert[] = [];
+  let created = 0;
+  let error: string | null = null;
+  for (const p of pending) {
+    try {
+      const expense = await createExpense(
+        ctx.userId,
+        {
+          categoryId: p.categoryId,
+          amount: p.amount,
+          currency: p.currency,
+          paymentMethod: p.paymentMethod,
+          paymentSourceId: p.sourceId ?? undefined,
+          installments: p.installments ?? 1,
+          description: p.description,
+          date: p.date,
+          ...(p.dollarType ? { dollarType: p.dollarType } : {}),
+        },
+        ctx.source,
+      );
+      ids.push(expense.id);
+      pesos.push(expense.amountArs);
+      created += p.installments ?? 1;
+      // Se chequea después de cada uno: si dos gastos juntos cruzan el límite, avisa el que lo cruzó
+      const alert = await budgetAlertFor(ctx.userId, expense);
+      if (alert) alerts.push(alert);
+    } catch (e) {
+      // Ej: la categoría se borró mientras tanto, o no hay cotización del dólar elegido
+      if (!(e instanceof ExpenseError)) throw e;
+      error = e.message;
+      break;
+    }
+  }
+
+  const saved = pending.slice(0, ids.length);
+  const title =
+    ids.length === 0
+      ? "❌ No pude guardarlo"
+      : created > saved.length
+        ? `✅ Guardado en ${created} cuotas`
+        : saved.length === 1
+          ? "✅ Gasto guardado"
+          : `✅ ${saved.length} gastos guardados`;
+  const body = [
+    title,
+    "",
+    ...saved.map((p, i) => {
+      const inPesos = p.currency === "USD" && (p.installments ?? 1) === 1 ? pesos[i] : null;
+      return describePending(p) + (inPesos !== null ? `\n🇦🇷 Son ${formatMoney(inPesos, "ARS")}` : "");
+    }),
+    error ? `\n⚠️ ${ids.length > 0 ? "El resto no lo pude guardar" : "Motivo"}: ${error}` : "",
+    saved.some((p) => p.guessedMethod)
+      ? `\n_El medio de pago lo supuse. Si no es, decime por ej. "${saved.length === 1 ? "el último" : `el de ${formatMoney(saved[0].amount, saved[0].currency)}`} era con efectivo"._`
+      : "",
+    saved.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // El botón lleva los ids de lo guardado (entran hasta 3 en los 100 caracteres de un botón)
+  const undoId = `undo:${ids.join(".")}`;
+  if (ids.length > 0 && undoId.length <= 100) {
+    await ctx.out.buttons(`${body}${alertLines(alerts)}${BACK}`, [{ id: undoId, title: "↩️ Deshacer" }]);
+  } else {
+    await ctx.out.text(`${body}${alertLines(alerts)}${BACK}`);
+  }
+  return true;
+}
+
+/** Botón Deshacer: borra lo que se acaba de guardar (con todas sus cuotas) */
+async function undoSaved(ctx: Ctx, ids: string[]) {
+  await clearSession(ctx.phone);
+  let deleted = 0;
+  for (const id of ids) {
+    try {
+      // deleteExpense solo borra gastos de esta persona
+      deleted += await deleteExpense(ctx.userId, id, "purchase");
+    } catch (e) {
+      if (!(e instanceof ExpenseError)) throw e;
+    }
+  }
+  await ctx.out.text(
+    deleted > 0
+      ? `↩️ Listo, lo deshice: ${deleted === 1 ? "borré el gasto" : `borré ${deleted} gastos`}.${BACK}`
+      : `Ya no estaba 🤔 (¿lo borraste desde la web?)${BACK}`,
+  );
   return true;
 }
 
 function describePending(p: PendingExpense) {
   const cuotas = (p.installments ?? 1) > 1;
   const when = p.date === todayISO() ? "hoy" : shortDate(p.date);
+  const dollar =
+    p.currency !== "USD" ? null : p.paymentMethod === "CREDIT" ? "💵 Oficial" : p.dollarType ? `💵 ${dollarTypeLabels[p.dollarType]}` : null;
   const lines = [
     `${p.categoryLabel} · *${formatMoney(p.amount, p.currency)}*`,
-    [`💳 ${paymentMethodLabels[p.paymentMethod]}`, p.sourceName, `📅 ${when}`].filter(Boolean).join(" · "),
+    [`💳 ${paymentMethodLabels[p.paymentMethod]}`, p.sourceName, dollar, `📅 ${when}`].filter(Boolean).join(" · "),
   ];
   if (cuotas) {
     lines.push(`🧾 ${p.installments} cuotas de ${formatMoney(p.amount / (p.installments ?? 1), p.currency)}`);
@@ -658,7 +878,6 @@ function describePending(p: PendingExpense) {
 }
 
 async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText: string, d: Draft) {
-  if (id === "aiconfirm:complete") return askMissing(ctx, d);
   const yes = id === "aiconfirm:yes" || ["si", "guardar", "ok", "dale", "sip", "obvio"].includes(text);
   const no = id === "aiconfirm:no" || ["no", "cancelar", "nada"].includes(text);
   const pending = d.pending ?? [];
@@ -686,46 +905,17 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
       }
     }
     await ctx.out.buttons("¿Los guardo?", [
-      { id: "aiconfirm:yes", title: "✅ Guardar" },
+      { id: "aiconfirm:yes", title: "✅ Guardar todos" },
       { id: "aiconfirm:no", title: "❌ Cancelar" },
     ]);
     return true;
   }
-  await clearSession(ctx.phone);
   if (no || pending.length === 0) {
+    await clearSession(ctx.phone);
     await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
-  let created = 0;
-  const alerts: BudgetAlert[] = [];
-  for (const p of pending) {
-    const expense = await createExpense(
-      ctx.userId,
-      {
-        categoryId: p.categoryId,
-        amount: p.amount,
-        currency: p.currency,
-        paymentMethod: p.paymentMethod,
-        paymentSourceId: p.sourceId ?? undefined,
-        installments: p.installments ?? 1,
-        description: p.description,
-        date: p.date,
-      },
-      ctx.source,
-    );
-    created += p.installments ?? 1;
-    // Se chequea después de cada uno: si dos gastos juntos cruzan el límite, avisa el que lo cruzó
-    const alert = await budgetAlertFor(ctx.userId, expense);
-    if (alert) alerts.push(alert);
-  }
-  const title =
-    created > pending.length
-      ? `✅ Guardado en ${created} cuotas`
-      : pending.length === 1
-        ? "✅ Gasto guardado"
-        : `✅ ${pending.length} gastos guardados`;
-  await ctx.out.text(`${title}\n\n${pending.map(describePending).join("\n")}${alertLines(alerts)}${BACK}`);
-  return true;
+  return finishPending(ctx, d);
 }
 
 // ---------- Consultar, eliminar y editar hablando ----------
