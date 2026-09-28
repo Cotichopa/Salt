@@ -9,14 +9,26 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { db } from "../src/lib/db";
 import { listCategories } from "../src/lib/services/categories";
 import { listPaymentSources } from "../src/lib/services/payment-sources";
-import { isAiEnabled, parseMessage, type Parsed } from "../src/lib/whatsapp/ai-parser";
+import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense } from "../src/lib/whatsapp/ai-parser";
 import { parseQuick } from "../src/lib/whatsapp/quick-parser";
 
 // Acciones esperadas. Las de secciones nuevas (tarjeta, medio, fijo, presupuesto, categoria)
 // Chop todavía no las sabe hacer: sirven para ver cómo mejora en las próximas etapas.
 type Expected = Parsed["intent"] | "tarjeta" | "medio" | "fijo" | "presupuesto" | "categoria";
 
-const CASES: [string, Expected][] = [
+// El tercer dato (opcional) son gastos ya propuestos que el mensaje corrige ("con efectivo")
+const NAFTA: ParsedExpense = {
+  amount: 15000,
+  currency: "ARS",
+  categoryName: "Nafta",
+  paymentMethod: null,
+  sourceName: null,
+  installments: 1,
+  date: "2026-09-28",
+  description: null,
+};
+
+const CASES: [string, Expected, ParsedExpense[]?][] = [
   // Cargar
   ["nafta 15000", "cargar"],
   ["super 12500 debito", "cargar"],
@@ -28,6 +40,7 @@ const CASES: [string, Expected][] = [
   ["el lunes le pagué 40 mil al plomero por transferencia", "cargar"],
   ["chop cargame 8 lucas de farmacia", "cargar"],
   ["uber 6.500,50 mercado pago", "cargar"],
+  ["con efectivo y fue ayer", "cargar", [NAFTA]],
   // Consultar
   ["cuánto gasté este mes", "consultar"],
   ["cuánto gasté en comida este mes", "consultar"],
@@ -62,6 +75,7 @@ type Row = {
   expected: Expected;
   got: string;
   ok: boolean;
+  detail: string;
   noAi: boolean;
   inTok: number;
   outTok: number;
@@ -90,18 +104,22 @@ async function main() {
   };
 
   const rows: Row[] = [];
-  for (const [text, expected] of CASES) {
+  for (const [text, expected, proposed] of CASES) {
     usage = { inTok: 0, outTok: 0 };
-    // Igual que bot.ts: primero sin IA, y si no alcanza, con IA
-    const quick = parseQuick(text, cats, sources);
-    const parsed: Parsed | null = quick ? { intent: "cargar", expenses: [quick] } : await parseMessage(text, lists);
+    // Igual que bot.ts: primero sin IA, y si no alcanza, con IA (las correcciones van directo a la IA)
+    const quick = proposed ? null : parseQuick(text, cats, sources);
+    const parsed: Parsed | null = quick
+      ? { intent: "cargar", expenses: [quick] }
+      : await parseMessage(text, lists, proposed);
+    const detail = describe(parsed);
     const got = parsed?.intent ?? "error";
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón
-    rows.push({ text, expected, got, ok: got === expected, noAi: !!quick, ...usage, usd });
+    rows.push({ text, expected, got, ok: got === expected, detail, noAi: !!quick, ...usage, usd });
     log(
       `${got === expected ? "✅" : "❌"} ${quick ? "sin IA " : "con IA "} ${String(usage.inTok).padStart(5)}+${String(usage.outTok).padEnd(4)} ` +
         `${got.padEnd(10)} ${expected !== got ? `(esperaba ${expected}) ` : ""}"${text}"`,
     );
+    if (detail) log(`                         → ${detail}`);
   }
   console.log = log;
 
@@ -124,6 +142,14 @@ async function main() {
   const file = `${DIR}/${new Date().toISOString().replace(/[:.]/g, "-")}_${label}.json`;
   writeFileSync(file, JSON.stringify({ label, summary, rows }, null, 2));
   console.log(`\nGuardado en ${file}`);
+}
+
+/** Lo que entendió, en una línea (sin los campos vacíos), para revisarlo a ojo */
+function describe(p: Parsed | null) {
+  if (!p) return "";
+  const { intent, ...rest } = p;
+  void intent;
+  return JSON.stringify(rest, (_k, v) => (v === null || v === "" ? undefined : v));
 }
 
 function summarize(rows: Row[]) {

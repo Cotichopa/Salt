@@ -39,20 +39,9 @@ webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con 
 
 ## Pendiente (en orden)
 
-1. **API key de Anthropic.** Felipe ya tiene una (no crear otra); la trae de la oficina. Cargarla
-   en `ANTHROPIC_API_KEY`, poner `AI_PARSER_ENABLED=true` y probar texto libre por WhatsApp,
-   incluido el caso "categoría que no existe" (debería preguntarla).
-2. **Seguir bajando el consumo de tokens de Chop.** Ya hecho: pre-filtro sin IA
-   (`src/lib/whatsapp/quick-parser.ts`) que resuelve los mensajes simples de carga ("nafta 15000",
-   "ayer 5 lucas en el chino con la visa", "10 lucas de nafta descripcion nafta ypf pague efectivo")
-   sin llamar a la API; si queda una palabra que no conoce, pasa a la IA. La descripción va después
-   de "descripcion"/"desc"/"detalle" y se corta en "pague", un medio de pago o una tarjeta (no en
-   "con", para no romper "cena con amigos"). En el log aparece `[quick-parser] resuelto sin IA`. Con la key:
-   - Medir primero: mandar ~20 mensajes reales variados y anotar el `[ai-parser] X+Y tokens` de cada uno.
-   - Esquema de respuesta más corto: hoy la IA rellena `consulta`, `objetivo` y `cambios` aunque
-     no apliquen (hacerlos `nullable`), y acortar descripciones. Medir de nuevo y comparar.
-   - Prompt más compacto (sin perder los ejemplos que importan).
-   - La caché de prompt NO sirve: Haiku 4.5 solo cachea desde 4096 tokens y el prompt es más corto.
+1. **API key de Anthropic: cargada y andando** (2026-09-28, compu con Docker). Falta probar el
+   caso "categoría que no existe" por WhatsApp (debería preguntarla).
+2. **Chop más barato y que maneje toda la app** — en curso, ver la sección "En curso: Chop" más abajo.
 3. **Audios con Whisper.** Solo hay que implementar `src/lib/transcribe.ts`. Se decide según el
    servidor: sin placa de video conviene Whisper por API; local solo si el servidor tiene GPU o
    CPU de sobra. Falta también descargar el audio de Meta (llega como id, formato OGG/Opus).
@@ -106,6 +95,32 @@ dólar tarjeta; `npm run db:demo` los regenera al oficial (cambia la contraseña
 - Decirle a Chop que un fijo aumentó ("Netflix aumentó a 12.000") → ¿desde este mes o el próximo?
 - Resumen de la tarjeta por Chop ("¿cuánto me viene en la Visa?").
 - Totales de Chop en pesos (hoy `sendSummary` en `menu.ts` dice "$ X + USD Y").
+
+## En curso: Chop más barato y que maneje toda la app (plan del 2026-09-28)
+
+Decisiones de Felipe: Chop va a manejar también fijos, resumen/pago de tarjeta, presupuestos,
+categorías y tarjetas/billeteras (admin y cuenta, no). Un gasto simple se guarda directo con botón
+**Deshacer**; borrar, editar y lo demás pide confirmación. Sin memoria entre mensajes. Ampliar el
+pre-filtro sin IA. Medir antes y después de cada cambio.
+
+**Cómo se mide:** `npm run chop:bench -- <etiqueta>` (`scripts/chop-bench.ts`) pasa 34 mensajes fijos por
+el mismo camino que Chop (pre-filtro y después IA), muestra qué entendió y cuántos tokens gastó, y lo
+compara con la corrida anterior (guardadas en `scripts/.bench/`, fuera de git). Cuesta ~US$ 0,04.
+
+Etapas (cada una se commitea aparte):
+0. **Banco de pruebas** — hecha. Base: 2.956 tokens de entrada + 132 de salida = US$ 0,0031 por mensaje.
+1. **IA más barata** — hecha. Se sacó el "structured outputs": el esquema viajaba en cada mensaje y
+   pesaba ~1.700 tokens (tool use pesaba más todavía). Ahora el prompt muestra la respuesta con 5
+   ejemplos JSON de una línea, se prellena `{` y se valida con zod (si viene mal, se descarta).
+   Resultado: 1.012 + 50 tokens = **US$ 0,0011 por mensaje (−65%)**, mismos aciertos.
+   La caché queda descartada (el prompt está lejos de los 4096 tokens que pide Haiku 4.5).
+2. Pre-filtro sin IA para consultas y órdenes comunes.
+3. Carga directa con Deshacer, "¿a qué dólar?" en USD sin crédito, totales de Chop en pesos.
+4. Gastos fijos por Chop (+ aviso de fijos cargados por WhatsApp, confirmación genérica).
+5. Tarjetas y billeteras (resumen, marcar pagado, crear, cierre/vencimiento).
+6. Presupuestos y categorías.
+Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
+principal; el resto en una segunda llamada chica con el prompt de su sección).
 
 ## Pendientes chicos
 

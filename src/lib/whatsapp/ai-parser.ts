@@ -1,55 +1,47 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { todayISO, TIME_ZONE, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
 
 // Interpreta lo que escribe la persona con Claude Haiku: primero QUÉ quiere hacer
-// (cargar, consultar, eliminar, editar) y después los datos. El modelo responde
-// siempre con esta estructura (structured outputs), y nosotros validamos todo igual.
+// (cargar, consultar, eliminar, editar) y después los datos.
+//
+// Ahorro de tokens: NO usamos "structured outputs" (el formato que obliga al modelo a
+// responder con un esquema), porque el esquema se manda en cada mensaje y pesaba ~1.700
+// tokens, más que todas las instrucciones juntas. En su lugar, las instrucciones muestran
+// la respuesta con 5 ejemplos de una línea, empezamos la respuesta con "{" para que conteste
+// solo JSON, y la validamos acá con zod. Si viniera mal armada, se descarta (como un error de la API).
 
 const MODEL = "claude-haiku-4-5";
 const MAX_CHARS = 500; // mensajes más largos no los mandamos
 
+const method = z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER"]);
 const expenseShape = z.object({
-  monto: z.number().describe("Monto en números. '3 lucas' = 3000, '15k' = 15000. 0 si no lo dice"),
-  moneda: z.enum(["ARS", "USD", ""]).describe("ARS salvo que diga dólares, usd o u$s. Vacío si no aplica"),
-  categoria: z.string().describe("Nombre EXACTO de una categoría de la lista dada, o vacío"),
-  medioDePago: z
-    .enum(["CASH", "DEBIT", "CREDIT", "TRANSFER", "DESCONOCIDO", ""])
-    .describe("DESCONOCIDO si el mensaje no lo aclara. Vacío si no aplica"),
-  tarjeta: z.string().describe("Nombre EXACTO de una tarjeta o billetera de la lista dada, o vacío"),
-  cuotas: z.number().describe("Cantidad de cuotas (1 si no menciona). Solo con tarjeta de crédito"),
-  fecha: z.string().describe("Fecha del gasto en formato YYYY-MM-DD"),
-  descripcion: z.string().describe("Detalle corto, o vacío si no hay"),
+  monto: z.number(),
+  usd: z.boolean().optional(),
+  cat: z.string().optional(),
+  medio: method.optional(),
+  tarjeta: z.string().optional(),
+  cuotas: z.number().optional(),
+  fecha: z.string().optional(),
+  desc: z.string().optional(),
 });
+const target = { ultimo: z.boolean().optional(), texto: z.string().optional(), monto: z.number().optional() };
 
-const aiSchema = z.object({
-  intencion: z
-    .enum(["cargar", "consultar", "eliminar", "editar", "otro"])
-    .describe("Qué quiere hacer la persona con este mensaje"),
-  gastos: z.array(expenseShape).describe("Solo para intencion=cargar (puede haber varios en un mensaje)"),
-  consulta: z
-    .object({
-      periodo: z.enum(["hoy", "ayer", "semana", "mes", "mes_pasado", "todo", ""]).describe("Vacío si no es una consulta"),
-      categoria: z.string().describe("Categoría EXACTA de la lista si acota por categoría, o vacío"),
-      tarjeta: z.string().describe("Tarjeta o billetera EXACTA de la lista si acota por ella, o vacío"),
-      medioDePago: z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER", "DESCONOCIDO", ""]),
-    })
-    .describe("Solo para intencion=consultar"),
-  objetivo: z
-    .object({
-      ultimo: z.boolean().describe("true si se refiere al último gasto cargado"),
-      texto: z.string().describe("Palabras que identifican el gasto: categoría, descripción o comercio"),
-      monto: z.number().describe("Monto del gasto buscado, 0 si no lo dice"),
-    })
-    .describe("Para intencion=eliminar o editar: cómo reconocer de qué gasto habla"),
-  cambios: expenseShape.describe("Solo para intencion=editar: los valores nuevos (vacío/0 lo que no cambia)"),
-  repregunta: z
-    .string()
-    .describe("Solo para intencion=otro: una pregunta corta y concreta para entender qué quiso decir"),
-});
+const aiSchema = z.discriminatedUnion("accion", [
+  z.object({ accion: z.literal("cargar"), gastos: z.array(expenseShape) }),
+  z.object({
+    accion: z.literal("consultar"),
+    periodo: z.enum(["hoy", "ayer", "semana", "mes", "mes_pasado", "todo"]).optional(),
+    cat: z.string().optional(),
+    tarjeta: z.string().optional(),
+    medio: method.optional(),
+  }),
+  z.object({ accion: z.literal("eliminar"), ...target }),
+  z.object({ accion: z.literal("editar"), ...target, cambios: expenseShape.partial().optional() }),
+  z.object({ accion: z.literal("otro"), pregunta: z.string().optional() }),
+]);
 
 export type ParsedExpense = {
   amount: number;
@@ -82,33 +74,33 @@ export function isAiEnabled() {
   return process.env.AI_PARSER_ENABLED === "true" && !!process.env.ANTHROPIC_API_KEY;
 }
 
-const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt. Interpretás mensajes de WhatsApp en español rioplatense (Argentina) y decidís qué quiere hacer la persona.
+const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Interpretás un mensaje de WhatsApp en español rioplatense y respondés SOLO un objeto JSON, sin texto alrededor, con una de estas formas (omití las claves que no apliquen):
+{"accion":"cargar","gastos":[{"monto":120000,"usd":true,"cat":"Ropa","medio":"CREDIT","tarjeta":"Visa","cuotas":6,"fecha":"2026-01-31","desc":"zapatillas"}]}
+{"accion":"consultar","periodo":"hoy|ayer|semana|mes|mes_pasado|todo","cat":"Comida","tarjeta":"Visa","medio":"CASH"}
+{"accion":"eliminar","ultimo":true}
+{"accion":"editar","texto":"pizza","monto":18000,"cambios":{"monto":20000,"medio":"CASH"}}
+{"accion":"otro","pregunta":"¿Querés cargar un gasto de $15.000? ¿En qué categoría?"}
 
-INTENCIONES:
-- "cargar": describe uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "zapatillas 120000 en 6 cuotas con la visa").
-- "consultar": pregunta por gastos ya cargados o por sus presupuestos ("cuánto gasté en comida este mes", "qué gasté ayer", "cuánto llevo en la visa", "cómo venimos", "cuánto me queda del presupuesto de salidas"). Los presupuestos son mensuales: si pregunta por presupuesto, periodo="mes".
-- "eliminar": pide borrar un gasto ("borrá el último", "eliminá el gasto de la nafta").
-- "editar": pide cambiar un gasto ya cargado ("el último eran 20000", "pasalo a efectivo", "cambiá la nafta a 18000").
-- "otro": saludos, agradecimientos, mensajes confusos o cualquier cosa que no encaje arriba. Escribí en "repregunta" una pregunta corta para aclarar (ej: "¿Querés cargar un gasto de $15.000? ¿En qué categoría?"). Si el mensaje no tiene nada que ver con gastos, dejá "repregunta" vacío.
+ACCIONES
+- cargar: uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "chop cargame 5000 de nafta").
+- consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes".
+- eliminar / editar: un gasto ya cargado ("borrá el último", "eliminá la nafta", "el último eran 20000", "pasá la pizza a efectivo"). ultimo=true SOLO si dice "el último"; si no, texto = palabras que lo identifican y monto = el que tenía, si lo dice. En cambios, solo lo que cambia (mismas claves que un gasto).
+- otro: saludos, gracias o mensajes confusos. Si parece un gasto incompleto, poné una pregunta corta; si no tiene que ver con gastos, omitila.
 
-DATOS:
-- "luca"/"lucas" = miles (3 lucas = 3000). "k"/"mil" = miles. "palo" = millón.
-- Los puntos son separadores de miles y la coma es decimal: "15.000,50" = 15000.5.
-- Categoría y tarjeta: usá SIEMPRE un nombre exacto de las listas que te paso. Para cargar, si ninguna categoría encaja usá "Otros" si está en la lista; si no está, dejá la categoría vacía (se la preguntamos a la persona). La tarjeta puede quedar vacía.
-- medioDePago: efectivo=CASH, débito=DEBIT, crédito/tarjeta/cuotas=CREDIT, transferencia/mercadopago/mp/cvu/alias=TRANSFER. DESCONOCIDO si no lo aclara.
-- Si nombra una tarjeta o billetera, completá "tarjeta" y deducí el medio (billetera ⇒ TRANSFER; tarjeta ⇒ DEBIT salvo que diga crédito o cuotas).
-- Cuotas: "en 6 cuotas" ⇒ cuotas=6 y medioDePago=CREDIT. El monto es el TOTAL de la compra.
-- Fechas relativas: "hoy", "ayer", "anteayer", "el lunes" (el más reciente ya pasado). Nunca futuras. Si no dice nada, hoy.
-- descripcion: un detalle corto si aporta (ej: "pizza con amigos"), sin repetir categoría ni monto.
-- Ignorá que te llamen por tu nombre ("chop cargame 5000 de nafta" es cargar).
+DATOS
+- lucas/luca/k/mil = miles, palo = millón. Punto de miles y coma decimal: "15.000,50" = 15000.5.
+- usd: true solo si dice dólares, usd o u$s.
+- cat y tarjeta: nombre EXACTO de las listas. Si ninguna categoría encaja, "Otros" si está; si no, omitila.
+- medio: efectivo=CASH, débito=DEBIT, crédito o cuotas=CREDIT, transferencia/mercadopago/mp/alias=TRANSFER. Omitilo si no lo aclara. Si nombra una billetera: TRANSFER; una tarjeta: DEBIT, salvo que diga crédito o cuotas.
+- cuotas: solo con crédito. El monto es el TOTAL de la compra.
+- fecha YYYY-MM-DD: "ayer", "anteayer", "el lunes" (el último que pasó). Nunca futura. Omitila si es hoy.
+- desc: detalle corto si aporta ("pizza con amigos"), sin repetir categoría ni monto.
 
-CORRECCIONES: si te paso "Gastos propuestos" y el mensaje los corrige ("con efectivo", "eran 8000", "fue ayer", "sacá el segundo"), usá intencion="cargar" y devolvé la lista COMPLETA corregida, manteniendo lo que no se corrigió.
-
-Completá solo los campos de la intención que corresponde; el resto dejalo vacío ("") o en 0.`;
+Si te paso "Gastos propuestos" y el mensaje los corrige ("con efectivo", "eran 8000", "fue ayer", "sacá el segundo"), respondé cargar con la lista COMPLETA corregida, manteniendo lo que no cambia.`;
 
 type Lists = { categories: string[]; sources: string[] };
 
-/** Interpreta un mensaje. Devuelve null si la IA no está disponible. */
+/** Interpreta un mensaje. Devuelve null si la IA no está disponible o respondió algo inválido. */
 export async function parseMessage(text: string, lists: Lists, proposed?: ParsedExpense[]): Promise<Parsed | null> {
   if (!isAiEnabled() || text.length > MAX_CHARS) return null;
 
@@ -117,11 +109,10 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
 
   try {
     const client = new Anthropic(); // toma ANTHROPIC_API_KEY del .env
-    const response = await client.messages.parse({
+    const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 500,
       system: SYSTEM,
-      output_config: { format: zodOutputFormat(aiSchema) },
       messages: [
         {
           role: "user",
@@ -129,12 +120,12 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
             `Hoy es ${weekday} ${today}.`,
             `Categorías: ${lists.categories.join(", ")}.`,
             `Tarjetas y billeteras: ${lists.sources.join(", ") || "(ninguna)"}.`,
-            proposed?.length
-              ? `\nGastos propuestos (corregilos según el mensaje):\n${JSON.stringify(proposed.map(toAiShape))}`
-              : "",
+            proposed?.length ? `\nGastos propuestos:\n${JSON.stringify(proposed.map(toAiShape))}` : "",
             `\nMensaje: "${text}"`,
           ].join("\n"),
         },
+        // Empezamos nosotros la respuesta: así el modelo sigue el JSON y no agrega texto
+        { role: "assistant", content: "{" },
       ],
     });
 
@@ -142,73 +133,89 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
     const { input_tokens: inTok, output_tokens: outTok } = response.usage;
     console.log(`[ai-parser] ${inTok}+${outTok} tokens · US$ ${((inTok * 1) / 1e6 + (outTok * 5) / 1e6).toFixed(5)}`);
 
-    const p = response.parsed_output;
-    if (!p) return null;
-
-    if (p.intencion === "cargar") {
-      const expenses = p.gastos.map((g) => toExpense(g, today)).filter((g) => g.amount > 0 && g.amount < 1e12);
-      return expenses.length > 0 ? { intent: "cargar", expenses } : { intent: "otro", question: "" };
+    const block = response.content[0];
+    if (response.stop_reason !== "end_turn" || block?.type !== "text") return null;
+    const result = aiSchema.safeParse(JSON.parse(`{${block.text}`));
+    if (!result.success) {
+      console.error("[ai-parser] respuesta inválida:", block.text.slice(0, 200));
+      return null;
     }
-    if (p.intencion === "consultar") {
-      return {
-        intent: "consultar",
-        period: p.consulta.periodo || "mes",
-        categoryName: p.consulta.categoria || null,
-        sourceName: p.consulta.tarjeta || null,
-        paymentMethod:
-          p.consulta.medioDePago === "DESCONOCIDO" || !p.consulta.medioDePago ? null : p.consulta.medioDePago,
-      };
-    }
-    if (p.intencion === "eliminar" || p.intencion === "editar") {
-      const target: Target = { last: p.objetivo.ultimo, text: p.objetivo.texto, amount: p.objetivo.monto };
-      if (p.intencion === "eliminar") return { intent: "eliminar", target };
-      const c = p.cambios;
-      return {
-        intent: "editar",
-        target,
-        changes: {
-          ...(c.monto > 0 ? { amount: c.monto } : {}),
-          ...(c.categoria ? { categoryName: c.categoria } : {}),
-          ...(c.medioDePago && c.medioDePago !== "DESCONOCIDO" ? { paymentMethod: c.medioDePago } : {}),
-          ...(c.tarjeta ? { sourceName: c.tarjeta } : {}),
-          ...(c.descripcion ? { description: c.descripcion } : {}),
-          ...(/^\d{4}-\d{2}-\d{2}$/.test(c.fecha) && c.fecha <= today ? { date: c.fecha } : {}),
-        },
-      };
-    }
-    return { intent: "otro", question: p.repregunta };
+    return toParsed(result.data, today);
   } catch (e) {
-    // Sin crédito, sin internet o error de la API: el bot sigue andando con el menú
+    // Sin crédito, sin internet, error de la API o JSON roto: el bot sigue andando con el menú
     console.error("[ai-parser]", e instanceof Error ? e.message : e);
     return null;
   }
 }
 
+function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
+  switch (p.accion) {
+    case "cargar": {
+      const expenses = p.gastos.map((g) => toExpense(g, today)).filter((g) => g.amount > 0 && g.amount < 1e12);
+      return expenses.length > 0 ? { intent: "cargar", expenses } : { intent: "otro", question: "" };
+    }
+    case "consultar":
+      return {
+        intent: "consultar",
+        period: p.periodo ?? "mes",
+        categoryName: p.cat || null,
+        sourceName: p.tarjeta || null,
+        paymentMethod: p.medio ?? null,
+      };
+    case "eliminar":
+    case "editar": {
+      const target: Target = { last: p.ultimo ?? false, text: p.texto ?? "", amount: p.monto ?? 0 };
+      if (p.accion === "eliminar") return { intent: "eliminar", target };
+      const c = p.cambios ?? {};
+      return {
+        intent: "editar",
+        target,
+        changes: {
+          ...(c.monto && c.monto > 0 ? { amount: c.monto } : {}),
+          ...(c.usd !== undefined ? { currency: c.usd ? "USD" : "ARS" } : {}),
+          ...(c.cat ? { categoryName: c.cat } : {}),
+          ...(c.medio ? { paymentMethod: c.medio } : {}),
+          ...(c.tarjeta ? { sourceName: c.tarjeta } : {}),
+          ...(c.desc ? { description: c.desc } : {}),
+          ...(validDate(c.fecha, today) ? { date: c.fecha } : {}),
+        },
+      };
+    }
+    case "otro":
+      return { intent: "otro", question: p.pregunta ?? "" };
+  }
+}
+
+// Nunca confiamos en la fecha del modelo: si es futura o inválida, no se usa
+function validDate(date: string | undefined, today: string): date is string {
+  return !!date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= today;
+}
+
 function toExpense(g: z.infer<typeof expenseShape>, today: string): ParsedExpense {
-  const cuotas = Number.isFinite(g.cuotas) ? Math.max(1, Math.min(Math.round(g.cuotas), 36)) : 1;
+  const cuotas = g.cuotas && Number.isFinite(g.cuotas) ? Math.max(1, Math.min(Math.round(g.cuotas), 36)) : 1;
   return {
     amount: g.monto,
-    currency: g.moneda || "ARS",
-    categoryName: g.categoria,
-    paymentMethod: g.medioDePago === "DESCONOCIDO" || !g.medioDePago ? null : g.medioDePago,
+    currency: g.usd ? "USD" : "ARS",
+    categoryName: g.cat ?? "",
+    paymentMethod: g.medio ?? null,
     sourceName: g.tarjeta || null,
     installments: cuotas,
-    // Nunca confiamos en la fecha del modelo: si es futura o inválida, usamos hoy
-    date: /^\d{4}-\d{2}-\d{2}$/.test(g.fecha) && g.fecha <= today ? g.fecha : today,
-    description: g.descripcion.trim().slice(0, 200) || null,
+    date: validDate(g.fecha, today) ? g.fecha : today,
+    description: g.desc?.trim().slice(0, 200) || null,
   };
 }
 
+/** Un gasto propuesto, en el mismo formato corto que responde la IA (para las correcciones) */
 function toAiShape(p: ParsedExpense) {
   return {
     monto: p.amount,
-    moneda: p.currency,
-    categoria: p.categoryName,
-    medioDePago: p.paymentMethod ?? "DESCONOCIDO",
-    tarjeta: p.sourceName ?? "",
-    cuotas: p.installments,
+    ...(p.currency === "USD" ? { usd: true } : {}),
+    ...(p.categoryName ? { cat: p.categoryName } : {}),
+    ...(p.paymentMethod ? { medio: p.paymentMethod } : {}),
+    ...(p.sourceName ? { tarjeta: p.sourceName } : {}),
+    ...(p.installments > 1 ? { cuotas: p.installments } : {}),
     fecha: p.date,
-    descripcion: p.description ?? "",
+    ...(p.description ? { desc: p.description } : {}),
   };
 }
 
@@ -218,4 +225,3 @@ export function matchByName<T extends { id: string; name: string }>(items: T[], 
   const n = normalize(name);
   return items.find((i) => normalize(i.name) === n) ?? items.find((i) => normalize(i.name).includes(n)) ?? null;
 }
-
