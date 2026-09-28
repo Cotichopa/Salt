@@ -118,14 +118,30 @@ Etapas (cada una se commitea aparte):
    siempre, como los botones del menú). Antes de guardar pregunta solo lo imprescindible
    (`finishPending` en `menu.ts`): **"¿Cómo pagaste?"** si no dijo el medio (lista con efectivo, débito,
    crédito, sus billeteras y transferencia; antes suponía el más usado y Felipe prefirió que pregunte),
-   la **tarjeta** si es con crédito y no la dijo (sin ella no entra en el resumen de la tarjeta; si
-   contesta otro medio, "mercado pago", se cambia el medio; si no se entiende, se guarda sin tarjeta) y **a qué dólar** si es en USD
+   **con qué** si no es efectivo y no lo dijo: tarjeta para débito y crédito (sin ella una compra con
+   crédito no entra en el resumen de la tarjeta), billetera para transferencia (si contesta otro medio,
+   "mercado pago", se cambia el medio; si no se entiende, se guarda sin). La lista de "¿cómo pagaste?"
+   no tiene "Transferencia" suelta: van las billeteras por nombre (decisión de Felipe). Igual en los
+   fijos y en la carga paso a paso del menú y **a qué dólar** si es en USD
    sin crédito (con crédito, oficial y lo avisa). Al guardar en USD muestra cuánto quedó en pesos.
    Varios gastos en un mensaje siguen con "Guardar todos" (y también tienen Deshacer). La carga paso a
    paso del menú termina por el mismo camino. Se sacó el botón "Completar" (descripción/tarjeta
    opcionales). Los resúmenes de Chop suman **en pesos** (`amountArs`); solo los USD viejos sin
    convertir quedan aparte. Las correcciones después de guardar van por "editar" (con confirmación).
-4. Gastos fijos por Chop (+ aviso de fijos cargados por WhatsApp, confirmación genérica).
+4. **Gastos fijos por Chop** — hecha. Arquitectura de **secciones** (`src/lib/whatsapp/sections/`): la IA
+   principal solo detecta `{"accion":"seccion","cual":"fijo"}` (+~90 tokens al prompt) y la sección hace
+   una **segunda llamada chica** con sus instrucciones (`askModel` en `ai-parser.ts`, ~650 tokens). Así los
+   gastos no pagan los tokens de las secciones. "fijos" / "mis fijos" van sin IA.
+   `sections/fijos.ts`: lista, crear (pregunta lo que falte: categoría, día, medio, tarjeta si es
+   crédito, dólar si es USD sin crédito; si el día ya pasó: "Crear" o "Crear y cargar"), cambiar el monto
+   (desde este mes / el próximo, misma regla que la web), pausar, reanudar y borrar. Todo lo que cambia
+   datos pasa por la **confirmación genérica** (`sections/confirm.ts`, estado `confirm:action`,
+   botones `act:<opción>`), que ejecuta `sections/index.ts`. Los **fijos que tocan se cargan con el
+   primer mensaje** a Chop y se avisan en un solo mensaje (`noticeLoadedFixed` en `bot.ts`).
+   Lecciones con Haiku: inventa datos que no dijiste (día 1 para el alquiler, el medio del ejemplo) y a
+   veces responde `null` en vez de omitir. Por eso: los `null` se ignoran en `askModel`, y el día, el
+   medio y la tarjeta de un fijo solo se aceptan si están en el mensaje; "aumentó a" es siempre cambio
+   de monto (si ese fijo no existe, lo avisa en vez de crearlo).
 5. Tarjetas y billeteras (resumen, marcar pagado, crear, cierre/vencimiento).
 6. Presupuestos y categorías.
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la

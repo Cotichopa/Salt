@@ -56,10 +56,10 @@ import { clearSession, setSession, type Draft, type PendingExpense, type Session
 export type Ctx = { userId: string; name: string; phone: string; out: Outbox; source: Source };
 export type Input = { text?: string; replyId?: string };
 
-const BACK = "\n\nEscribí *menu* para volver al menú.";
+export const BACK = "\n\nEscribí *menu* para volver al menú.";
 const NAME = "Chop";
-const shortDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const label = (c: { emoji: string | null; name: string }) => `${c.emoji ?? ""} ${c.name}`.trim();
+export const shortDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+export const label = (c: { emoji: string | null; name: string }) => `${c.emoji ?? ""} ${c.name}`.trim();
 
 /** Avisos de presupuesto para agregar al final de un mensaje (vacío si no hay) */
 const alertLines = (alerts: BudgetAlert[]) =>
@@ -89,7 +89,7 @@ async function budgetLines(userId: string, filters: ExpenseFilters) {
 const expected: Record<string, string[]> = {
   "add:category": ["cat:", "catpage:"],
   "add:currency": ["cur:"],
-  "add:method": ["pm:"],
+  "add:method": ["pm:", "src:"],
   "add:description": ["desc:"],
   "add:confirm": ["confirm:"],
   query: ["q:"],
@@ -144,7 +144,7 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
     case "add:currency":
       return receiveCurrency(ctx, id, text, d);
     case "add:method":
-      return receiveMethod(ctx, id, text, d);
+      return receiveMethod(ctx, input, d);
     case "add:description":
       return receiveDescription(ctx, id, input.text ?? "", d);
     case "add:confirm":
@@ -188,7 +188,7 @@ async function startAdd(ctx: Ctx) {
 
 const PAGE = 9; // 9 categorías + 1 fila de "ver más" = 10, el máximo de WhatsApp
 
-async function sendCategoryList(ctx: Ctx, page: number, body: string) {
+export async function sendCategoryList(ctx: Ctx, page: number, body: string) {
   const cats = await listCategories(ctx.userId);
   const rows: ListRow[] = cats.map((c) => ({ id: `cat:${c.id}`, title: label(c) }));
   if (rows.length <= 10) return ctx.out.list(body, "Ver categorías", rows, "Categorías");
@@ -202,7 +202,7 @@ async function sendCategoryList(ctx: Ctx, page: number, body: string) {
 }
 
 /** Categoría escrita a mano: por nombre o por palabra clave, sin importar tildes ni mayúsculas */
-function findCategoryByText<T extends { name: string; keywords: string[] }>(cats: T[], text: string) {
+export function findCategoryByText<T extends { name: string; keywords: string[] }>(cats: T[], text: string) {
   const t = normalize(text);
   return (
     cats.find((c) => normalize(c.name) === t) ??
@@ -273,24 +273,23 @@ async function receiveCurrency(ctx: Ctx, id: string | undefined, text: string, d
   return true;
 }
 
-function sendMethodList(ctx: Ctx, body: string) {
-  const rows = (Object.keys(paymentMethodLabels) as PaymentMethodCode[]).map((m) => ({
-    id: `pm:${m}`,
-    title: paymentMethodLabels[m],
-  }));
-  return ctx.out.list(body, "Medios de pago", rows, "Medio de pago");
+async function sendMethodList(ctx: Ctx, body: string) {
+  return ctx.out.list(body, "Medios de pago", await paymentRows(ctx.userId), "Medio de pago");
 }
 
-async function receiveMethod(ctx: Ctx, id: string | undefined, text: string, d: Draft) {
-  const byText = (Object.keys(paymentMethodLabels) as PaymentMethodCode[]).find(
-    (m) => normalize(paymentMethodLabels[m]) === text || (text.length >= 4 && normalize(paymentMethodLabels[m]).startsWith(text)),
-  );
-  const method = (id?.startsWith("pm:") ? (id.slice(3) as PaymentMethodCode) : byText) ?? null;
-  if (!method || !(method in paymentMethodLabels)) {
+async function receiveMethod(ctx: Ctx, input: Input, d: Draft) {
+  // Igual que "¿cómo pagaste?" del texto libre: un medio, una billetera o una tarjeta
+  const answer = readPayment(input, await listPaymentSources(ctx.userId), "DEBIT");
+  if (!answer) {
     await sendMethodList(ctx, "Elegí el medio de pago de la lista:");
     return true;
   }
-  await setSession(ctx.phone, "add:description", { ...d, paymentMethod: method });
+  await setSession(ctx.phone, "add:description", {
+    ...d,
+    paymentMethod: answer.method,
+    sourceId: answer.source?.id ?? null,
+    sourceName: answer.source?.name ?? null,
+  });
   await ctx.out.buttons("📝 ¿Querés agregar una descripción? Escribila, o tocá el botón.", [
     { id: "desc:none", title: "Sin descripción" },
   ]);
@@ -311,7 +310,9 @@ async function receiveDescription(ctx: Ctx, id: string | undefined, rawText: str
 function describeDraft(d: Draft) {
   const lines = [
     `${d.categoryLabel} · *${formatMoney(d.amount ?? 0, d.currency ?? "ARS")}*`,
-    `💳 ${paymentMethodLabels[d.paymentMethod ?? "CASH"]} · 📅 ${d.date === todayISO() ? "hoy" : shortDate(d.date ?? todayISO())}`,
+    [`💳 ${paymentMethodLabels[d.paymentMethod ?? "CASH"]}`, d.sourceName, `📅 ${d.date === todayISO() ? "hoy" : shortDate(d.date ?? todayISO())}`]
+      .filter(Boolean)
+      .join(" · "),
   ];
   if (d.description) lines.push(`📝 ${d.description}`);
   return lines.join("\n");
@@ -341,6 +342,8 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
         amount: d.amount!,
         currency: d.currency ?? "ARS",
         paymentMethod: d.paymentMethod ?? "CASH",
+        sourceId: d.sourceId ?? null,
+        sourceName: d.sourceName ?? null,
         description: d.description ?? null,
         date: d.date ?? todayISO(),
       },
@@ -571,8 +574,19 @@ async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: strin
 
 const NO_CATEGORY = "❓ Sin categoría";
 
-/** Con crédito hace falta la tarjeta: sin ella, la compra no aparece en el resumen de la tarjeta */
-const needsCard = (p: PendingExpense) => p.paymentMethod === "CREDIT" && !p.sourceId;
+/**
+ * Todo lo que no es efectivo lleva con qué: la tarjeta (débito o crédito; sin ella, una compra con
+ * crédito no aparece en el resumen de la tarjeta) o la billetera (transferencia).
+ */
+const needsSource = (p: { paymentMethod?: PaymentMethodCode; sourceId?: string | null }) =>
+  !!p.paymentMethod && p.paymentMethod !== "CASH" && !p.sourceId;
+
+/** "¿Con qué tarjeta de crédito pagaste $ X?" / "¿Con qué billetera...?" (los fijos dicen "pagás") */
+export function sourceQuestion(method: PaymentMethodCode, what: string, verb = "pagaste") {
+  if (method === "TRANSFER") return `📲 ¿Con qué billetera ${verb} ${what}?`;
+  if (method === "CREDIT") return `💳 ¿Con qué tarjeta de crédito ${verb} ${what}? Así aparece en su resumen.`;
+  return `💳 ¿Con qué tarjeta de débito ${verb} ${what}?`;
+}
 /** En dólares sin crédito hay que saber a qué dólar se pagó (con crédito es siempre el oficial) */
 const needsDollar = (p: PendingExpense) => p.currency === "USD" && p.paymentMethod !== "CREDIT" && !p.dollarType;
 
@@ -597,10 +611,10 @@ async function askMissing(ctx: Ctx, d: Draft): Promise<boolean> {
   if (sources.length === 0) return showPendingAgain(ctx, { ...d, missing: [] });
   await setSession(ctx.phone, "ai:missing", d);
   await ctx.out.list(
-    `💳 ¿Con qué tarjeta pagaste *${formatMoney(pending[0].amount, pending[0].currency)}*? Así aparece en su resumen.`,
-    "Ver tarjetas",
+    sourceQuestion(pending[0].paymentMethod, `*${formatMoney(pending[0].amount, pending[0].currency)}*`),
+    kind === "CARD" ? "Ver tarjetas" : "Ver billeteras",
     sources.map((s) => ({ id: `src:${s.id}`, title: s.name })),
-    "Tarjetas",
+    kind === "CARD" ? "Tarjetas" : "Billeteras",
   );
   return true;
 }
@@ -625,8 +639,8 @@ async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean
   }
 
   if (!d.missing?.length || pending.length === 0) return false;
-  // La tarjeta. Si contesta otro medio ("mercado pago", "efectivo"), se cambia el medio de pago;
-  // si contesta algo que no se entiende, se guarda sin tarjeta.
+  // La tarjeta o billetera. Si contesta otro medio ("mercado pago", "efectivo"), se cambia el medio;
+  // si contesta algo que no se entiende, se guarda sin tarjeta ni billetera.
   const answer = readPayment(input, await listPaymentSources(ctx.userId), pending[0].paymentMethod);
   if (answer) pending[0] = withPayment(pending[0], answer);
   return showPendingAgain(ctx, { ...d, pending, missing: [] });
@@ -647,15 +661,15 @@ async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
 }
 
 /**
- * Lo último antes de guardar. Con un solo gasto: el medio de pago si no lo dijo, y la tarjeta si
- * es con crédito (una sola vez). Con cualquiera: a qué dólar se pagó cada gasto en USD sin
+ * Lo último antes de guardar. Con un solo gasto: el medio de pago si no lo dijo, y con qué
+ * (tarjeta o billetera, una sola vez) si no es efectivo. Con cualquiera: a qué dólar se pagó cada gasto en USD sin
  * crédito. Cuando no falta nada, guarda. (Con varios gastos el medio se supone y se avisa.)
  */
 async function finishPending(ctx: Ctx, d: Draft): Promise<boolean> {
   const pending = d.pending ?? [];
   if (pending.length === 1 && pending[0].guessedMethod) return askPayment(ctx, d);
-  if (pending.length === 1 && !d.askedCard && needsCard(pending[0])) {
-    return askMissing(ctx, { ...d, missing: ["source"], askedCard: true });
+  if (pending.length === 1 && !d.askedSource && needsSource(pending[0])) {
+    return askMissing(ctx, { ...d, missing: ["source"], askedSource: true });
   }
   const i = pending.findIndex(needsDollar);
   if (i >= 0) return askDollar(ctx, d, i);
@@ -665,22 +679,24 @@ async function finishPending(ctx: Ctx, d: Draft): Promise<boolean> {
 /** "¿Cómo pagaste?": los medios de pago, con las billeteras por nombre (Mercado Pago, MODO...) */
 async function askPayment(ctx: Ctx, d: Draft) {
   const p = d.pending![0];
-  // WhatsApp muestra hasta 10 filas: 4 medios + hasta 6 billeteras
-  const wallets = (await listPaymentSources(ctx.userId)).filter((s) => s.kind === "WALLET").slice(0, 6);
   await setSession(ctx.phone, "ai:method", d);
-  await ctx.out.list(
-    `💳 ¿Cómo pagaste *${formatMoney(p.amount, p.currency)}*?`,
-    "Elegir medio",
-    [
-      { id: "pm:CASH", title: "💵 Efectivo" },
-      { id: "pm:DEBIT", title: "💳 Débito" },
-      { id: "pm:CREDIT", title: "💳 Crédito" },
-      ...wallets.map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` })),
-      { id: "pm:TRANSFER", title: "🏦 Transferencia" },
-    ],
-    "Medio de pago",
-  );
+  await ctx.out.list(`💳 ¿Cómo pagaste *${formatMoney(p.amount, p.currency)}*?`, "Elegir medio", await paymentRows(ctx.userId), "Medio de pago");
   return true;
+}
+
+/**
+ * Filas de "¿cómo pagaste?" (se leen con readPayment): efectivo, débito, crédito y las billeteras
+ * por nombre. No hay "Transferencia" suelta: una transferencia siempre sale de una billetera.
+ */
+export async function paymentRows(userId: string): Promise<ListRow[]> {
+  // WhatsApp muestra hasta 10 filas: 3 medios + hasta 7 billeteras
+  const wallets = (await listPaymentSources(userId)).filter((s) => s.kind === "WALLET").slice(0, 7);
+  return [
+    { id: "pm:CASH", title: "💵 Efectivo" },
+    { id: "pm:DEBIT", title: "💳 Débito" },
+    { id: "pm:CREDIT", title: "💳 Crédito" },
+    ...wallets.map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` })),
+  ];
 }
 
 async function receivePayment(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
@@ -693,7 +709,7 @@ async function receivePayment(ctx: Ctx, input: Input, d: Draft): Promise<boolean
   return finishPending(ctx, { ...d, pending });
 }
 
-type PaymentAnswer = { method: PaymentMethodCode; source: { id: string; name: string } | null };
+export type PaymentAnswer = { method: PaymentMethodCode; source: { id: string; name: string } | null };
 
 const METHOD_WORDS: Record<string, PaymentMethodCode> = {
   efectivo: "CASH",
@@ -707,7 +723,7 @@ const METHOD_WORDS: Record<string, PaymentMethodCode> = {
  * ("efectivo"), una billetera ("mercado pago" → transferencia) o una tarjeta ("la visa").
  * `cardDefault` es el medio si nombra una tarjeta sin decir débito o crédito. null si no se entiende.
  */
-function readPayment(
+export function readPayment(
   input: Input,
   sources: { id: string; name: string; kind: string }[],
   cardDefault: PaymentMethodCode,
@@ -739,7 +755,17 @@ function withPayment(p: PendingExpense, a: PaymentAnswer): PendingExpense {
   };
 }
 
-const DOLLAR_TYPES = Object.keys(dollarTypeLabels) as DollarTypeCode[];
+export const DOLLAR_TYPES = Object.keys(dollarTypeLabels) as DollarTypeCode[];
+
+/** Filas de "¿a qué dólar?" (ids "usd:MEP"...; se leen con readDollar) */
+export const dollarRows = (): ListRow[] => DOLLAR_TYPES.map((t) => ({ id: `usd:${t}`, title: `Dólar ${dollarTypeLabels[t]}` }));
+
+/** El dólar elegido con el botón o escrito ("el blue", "mep") */
+export function readDollar(input: Input): DollarTypeCode | undefined {
+  if (input.replyId?.startsWith("usd:")) return DOLLAR_TYPES.find((t) => t === input.replyId!.slice(4));
+  const words = normalize(input.text ?? "").split(/\s+/);
+  return DOLLAR_TYPES.find((t) => words.includes(normalize(dollarTypeLabels[t])));
+}
 
 async function askDollar(ctx: Ctx, d: Draft, i: number) {
   const p = d.pending![i];
@@ -747,7 +773,7 @@ async function askDollar(ctx: Ctx, d: Draft, i: number) {
   await ctx.out.list(
     `💵 ¿A qué dólar pagaste *${formatMoney(p.amount, "USD")}*${p.description ? ` (${p.description})` : ""}? Con eso lo paso a pesos.`,
     "Elegir dólar",
-    DOLLAR_TYPES.map((t) => ({ id: `usd:${t}`, title: `Dólar ${dollarTypeLabels[t]}` })),
+    dollarRows(),
     "Dólar",
   );
   return true;
@@ -758,10 +784,7 @@ async function receiveDollar(ctx: Ctx, input: Input, d: Draft): Promise<boolean>
   const i = pending.findIndex(needsDollar);
   if (i < 0) return finishPending(ctx, d);
 
-  const words = normalize(input.text ?? "").split(/\s+/);
-  const type = input.replyId?.startsWith("usd:")
-    ? DOLLAR_TYPES.find((t) => t === input.replyId!.slice(4))
-    : DOLLAR_TYPES.find((t) => words.includes(normalize(dollarTypeLabels[t])));
+  const type = readDollar(input);
   if (!type) return askDollar(ctx, d, i);
   pending[i] = { ...pending[i], dollarType: type };
   return finishPending(ctx, { ...d, pending });

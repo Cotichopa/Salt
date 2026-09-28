@@ -26,10 +26,12 @@ async function webCtx() {
   return { ctx, out };
 }
 
-// Chop pudo cargar, editar o borrar gastos: que las otras pantallas se actualicen
+// Chop pudo cargar, editar o borrar gastos (o cambiar fijos): que las otras pantallas se actualicen
 function revalidate() {
   revalidatePath("/gastos");
   revalidatePath("/dashboard");
+  revalidatePath("/fijos");
+  revalidatePath("/medios", "layout");
   revalidatePath("/categorias", "layout");
 }
 

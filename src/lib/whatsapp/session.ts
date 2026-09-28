@@ -24,7 +24,34 @@ export type PendingExpense = {
   dollarType?: DollarTypeCode; // en USD sin crédito: a qué dólar se pagó (se pregunta antes de guardar)
 };
 
+/** Una opción de una confirmación: botón "act:<id>" y palabras que valen escritas */
+export type ActionOption = { id: string; title: string; words?: string[] };
+
+/**
+ * Algo que Chop va a hacer cuando la persona confirme (crear un fijo, pausarlo...).
+ * `type` dice qué hacer (ver sections/index.ts) y `data` con qué; `body` y `options` sirven para
+ * volver a preguntar si contesta otra cosa. La opción elegida se le pasa a la acción.
+ */
+export type PendingAction = { type: string; data: Record<string, unknown>; body: string; options: ActionOption[] };
+
+/** Un gasto fijo que se está creando: Chop pregunta lo que falte, en orden */
+export type FixedDraft = {
+  description: string;
+  amount: number;
+  currency: "ARS" | "USD";
+  categoryId?: string;
+  categoryLabel?: string;
+  day?: number;
+  paymentMethod?: "CASH" | "DEBIT" | "CREDIT" | "TRANSFER";
+  sourceId?: string | null;
+  sourceName?: string | null;
+  askedSource?: boolean;
+  dollarType?: DollarTypeCode;
+};
+
 export type Draft = {
+  action?: PendingAction;
+  fixed?: FixedDraft;
   pending?: PendingExpense[];
   categoryId?: string;
   categoryLabel?: string;
@@ -33,6 +60,8 @@ export type Draft = {
   paymentMethod?: "CASH" | "DEBIT" | "CREDIT" | "TRANSFER";
   description?: string | null;
   date?: string;
+  sourceId?: string | null; // carga paso a paso: tarjeta o billetera elegida con el medio
+  sourceName?: string | null;
   expenseId?: string;
   page?: number;
   // Para editar por texto: qué gasto y con qué valores queda
@@ -50,9 +79,9 @@ export type Draft = {
       date: string;
     };
   };
-  // Para completar la tarjeta de una compra con crédito antes de guardarla
+  // Para completar la tarjeta o billetera antes de guardar
   missing?: "source"[];
-  askedCard?: boolean; // ya se preguntó (si no eligió ninguna, se guarda sin tarjeta)
+  askedSource?: boolean; // ya se preguntó la tarjeta o billetera (si no eligió, se guarda sin)
 };
 
 export type Session = { state: string; data: Draft };

@@ -11,6 +11,8 @@ import { listCategories } from "../src/lib/services/categories";
 import { listPaymentSources } from "../src/lib/services/payment-sources";
 import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense } from "../src/lib/whatsapp/ai-parser";
 import { parseWithoutAI } from "../src/lib/whatsapp/quick-parser";
+import { listRecurring } from "../src/lib/services/recurring";
+import { parseFixed } from "../src/lib/whatsapp/sections/fijos";
 
 // Acciones esperadas. Las de secciones nuevas (tarjeta, medio, fijo, presupuesto, categoria)
 // Chop todavía no las sabe hacer: sirven para ver cómo mejora en las próximas etapas.
@@ -94,14 +96,16 @@ async function main() {
   const [cats, sources] = await Promise.all([listCategories(user.id), listPaymentSources(user.id)]);
   const lists = { categories: cats.map((c) => c.name), sources: sources.map((s) => s.name) };
 
-  // parseMessage anota el uso en la terminal ("[ai-parser] 812+95 tokens · ..."): lo atajamos
+  // Cada llamada a la IA anota su uso en la terminal ("[ai-parser] 812+95 tokens · ..."): lo atajamos
+  // y lo sumamos (un mensaje de una sección hace dos llamadas: la principal y la de la sección)
   let usage = { inTok: 0, outTok: 0 };
   const log = console.log;
   console.log = (...args: unknown[]) => {
-    const m = typeof args[0] === "string" && args[0].match(/^\[ai-parser\] (\d+)\+(\d+) tokens/);
-    if (m) usage = { inTok: Number(m[1]), outTok: Number(m[2]) };
+    const m = typeof args[0] === "string" && args[0].match(/^\[ai-[a-z]+\] (\d+)\+(\d+) tokens/);
+    if (m) usage = { inTok: usage.inTok + Number(m[1]), outTok: usage.outTok + Number(m[2]) };
     else log(...args);
   };
+  const fixedNames = (await listRecurring(user.id)).map((f) => f.description);
 
   const rows: Row[] = [];
   for (const [text, expected, proposed] of CASES) {
@@ -109,8 +113,10 @@ async function main() {
     // Igual que bot.ts: primero sin IA, y si no alcanza, con IA (las correcciones van directo a la IA)
     const quick = proposed ? null : parseWithoutAI(text, cats, sources);
     const parsed: Parsed | null = quick ?? (await parseMessage(text, lists, proposed));
-    const detail = describe(parsed);
-    const got = parsed?.intent ?? "error";
+    // Si es de una sección, también la segunda llamada (lo que realmente pasa en Chop)
+    const second = parsed?.intent === "seccion" && !parsed.list ? await parseFixed(text, lists, fixedNames) : null;
+    const detail = second ? JSON.stringify(second) : describe(parsed);
+    const got = parsed?.intent === "seccion" ? parsed.section : (parsed?.intent ?? "error");
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón
     rows.push({ text, expected, got, ok: got === expected, detail, noAi: !!quick, ...usage, usd });
     log(

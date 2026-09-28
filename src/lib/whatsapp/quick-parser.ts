@@ -115,6 +115,9 @@ function splitWords(text: string) {
   return { raw, words: raw.map(normalize) };
 }
 
+// "mis fijos": la lista de gastos fijos
+const FIXED_LIST = ["fijos", "mis fijos", "los fijos", "ver fijos", "ver mis fijos", "gastos fijos", "mis gastos fijos", "ver gastos fijos", "que fijos tengo"];
+
 /** "borrá el último", "eliminar el último gasto", "borrame el ultimo" */
 export function isDeleteLast(text: string) {
   const joined = splitWords(text).words.join(" ");
@@ -124,6 +127,7 @@ export function isDeleteLast(text: string) {
 /** Lo que Chop puede entender sin IA: primero una carga, después una consulta. null si ninguna. */
 export function parseWithoutAI(text: string, categories: Category[], sources: Source[]): Parsed | null {
   if (isDeleteLast(text)) return { intent: "eliminar", target: { last: true, text: "", amount: 0 } };
+  if (FIXED_LIST.includes(splitWords(text).words.join(" "))) return { intent: "seccion", section: "fijo", list: true };
   const expense = parseQuick(text, categories, sources);
   if (expense) return { intent: "cargar", expenses: [expense] };
   return parseQuickQuery(text, categories, sources);

@@ -14,7 +14,7 @@ import { normalize } from "@/lib/text";
 // solo JSON, y la validamos acá con zod. Si viniera mal armada, se descarta (como un error de la API).
 
 const MODEL = "claude-haiku-4-5";
-const MAX_CHARS = 500; // mensajes más largos no los mandamos
+export const MAX_CHARS = 500; // mensajes más largos no los mandamos
 
 const method = z.enum(["CASH", "DEBIT", "CREDIT", "TRANSFER"]);
 const expenseShape = z.object({
@@ -41,7 +41,11 @@ const aiSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("eliminar"), ...target }),
   z.object({ accion: z.literal("editar"), ...target, cambios: expenseShape.partial().optional() }),
   z.object({ accion: z.literal("otro"), pregunta: z.string().optional() }),
+  z.object({ accion: z.literal("seccion"), cual: z.enum(["fijo"]) }),
 ]);
+
+/** Otras partes de la app que Chop maneja con una segunda llamada chica (ver sections/) */
+export type Section = "fijo";
 
 export type ParsedExpense = {
   amount: number;
@@ -68,7 +72,9 @@ export type Parsed =
     }
   | { intent: "eliminar"; target: Target }
   | { intent: "editar"; target: Target; changes: Partial<ParsedExpense> }
-  | { intent: "otro"; question: string };
+  | { intent: "otro"; question: string }
+  // De otra sección: `list` = mostrar la lista (sin IA, ej: "mis fijos"); si no, la sección interpreta el mensaje
+  | { intent: "seccion"; section: Section; list?: boolean };
 
 export function isAiEnabled() {
   return process.env.AI_PARSER_ENABLED === "true" && !!process.env.ANTHROPIC_API_KEY;
@@ -80,11 +86,13 @@ const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Int
 {"accion":"eliminar","ultimo":true}
 {"accion":"editar","texto":"pizza","monto":18000,"cambios":{"monto":20000,"medio":"CASH"}}
 {"accion":"otro","pregunta":"¿Querés cargar un gasto de $15.000? ¿En qué categoría?"}
+{"accion":"seccion","cual":"fijo"}
 
 ACCIONES
 - cargar: uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "chop cargame 5000 de nafta").
 - consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes".
 - eliminar / editar: un gasto ya cargado ("borrá el último", "eliminá la nafta", "el último eran 20000", "pasá la pizza a efectivo"). ultimo=true SOLO si dice "el último"; si no, texto = palabras que lo identifican y monto = el que tenía, si lo dice. En cambios, solo lo que cambia (mismas claves que un gasto).
+- seccion "fijo": gastos fijos que se cargan solos cada mes (ver, crear, pausar, reanudar, borrar o cambiar el monto: "netflix aumentó a 12000", "agregá un fijo de alquiler", "pausá el gimnasio"). No es cargar.
 - otro: saludos, gracias o mensajes confusos. Si parece un gasto incompleto, poné una pregunta corta; si no tiene que ver con gastos, omitila.
 
 DATOS
@@ -98,32 +106,38 @@ DATOS
 
 Si te paso "Gastos propuestos" y el mensaje los corrige ("con efectivo", "eran 8000", "fue ayer", "sacá el segundo"), respondé cargar con la lista COMPLETA corregida, manteniendo lo que no cambia.`;
 
-type Lists = { categories: string[]; sources: string[] };
+export type Lists = { categories: string[]; sources: string[] };
 
-/** Interpreta un mensaje. Devuelve null si la IA no está disponible o respondió algo inválido. */
-export async function parseMessage(text: string, lists: Lists, proposed?: ParsedExpense[]): Promise<Parsed | null> {
-  if (!isAiEnabled() || text.length > MAX_CHARS) return null;
-
-  const today = todayISO();
+/** "Hoy es lunes 2026-09-28.": el modelo lo necesita para las fechas relativas ("ayer", "el lunes") */
+export function todayLine() {
   const weekday = new Intl.DateTimeFormat("es-AR", { weekday: "long", timeZone: TIME_ZONE }).format(new Date());
+  return `Hoy es ${weekday} ${todayISO()}.`;
+}
 
+/** Las listas de la persona, para que el modelo use los nombres exactos */
+export function listsLines(lists: Lists) {
+  return [`Categorías: ${lists.categories.join(", ")}.`, `Tarjetas y billeteras: ${lists.sources.join(", ") || "(ninguna)"}.`];
+}
+
+/**
+ * Le pasa a Haiku unas instrucciones y un mensaje, y valida el JSON que responde con `schema`.
+ * La usan este archivo y las secciones (sections/). Devuelve null si la IA no está disponible,
+ * falla o responde algo inválido: el bot sigue andando con el menú.
+ */
+export async function askModel<T extends z.ZodType>(
+  system: string,
+  content: string,
+  schema: T,
+  tag = "ai-parser",
+): Promise<z.infer<T> | null> {
   try {
     const client = new Anthropic(); // toma ANTHROPIC_API_KEY del .env
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 500,
-      system: SYSTEM,
+      system,
       messages: [
-        {
-          role: "user",
-          content: [
-            `Hoy es ${weekday} ${today}.`,
-            `Categorías: ${lists.categories.join(", ")}.`,
-            `Tarjetas y billeteras: ${lists.sources.join(", ") || "(ninguna)"}.`,
-            proposed?.length ? `\nGastos propuestos:\n${JSON.stringify(proposed.map(toAiShape))}` : "",
-            `\nMensaje: "${text}"`,
-          ].join("\n"),
-        },
+        { role: "user", content },
         // Empezamos nosotros la respuesta: así el modelo sigue el JSON y no agrega texto
         { role: "assistant", content: "{" },
       ],
@@ -131,21 +145,35 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
 
     // Costo de esta consulta, para poder seguir el gasto desde la terminal
     const { input_tokens: inTok, output_tokens: outTok } = response.usage;
-    console.log(`[ai-parser] ${inTok}+${outTok} tokens · US$ ${((inTok * 1) / 1e6 + (outTok * 5) / 1e6).toFixed(5)}`);
+    console.log(`[${tag}] ${inTok}+${outTok} tokens · US$ ${((inTok * 1) / 1e6 + (outTok * 5) / 1e6).toFixed(5)}`);
 
     const block = response.content[0];
     if (response.stop_reason !== "end_turn" || block?.type !== "text") return null;
-    const result = aiSchema.safeParse(JSON.parse(`{${block.text}`));
+    // Un campo en null es lo mismo que no decirlo (a veces el modelo pone "dia": null en vez de omitirlo)
+    const result = schema.safeParse(JSON.parse(`{${block.text}`, (_key, value) => (value === null ? undefined : value)));
     if (!result.success) {
-      console.error("[ai-parser] respuesta inválida:", block.text.slice(0, 200));
+      console.error(`[${tag}] respuesta inválida:`, block.text.slice(0, 200));
       return null;
     }
-    return toParsed(result.data, today);
+    return result.data;
   } catch (e) {
-    // Sin crédito, sin internet, error de la API o JSON roto: el bot sigue andando con el menú
-    console.error("[ai-parser]", e instanceof Error ? e.message : e);
+    // Sin crédito, sin internet, error de la API o JSON roto
+    console.error(`[${tag}]`, e instanceof Error ? e.message : e);
     return null;
   }
+}
+
+/** Interpreta un mensaje. Devuelve null si la IA no está disponible o respondió algo inválido. */
+export async function parseMessage(text: string, lists: Lists, proposed?: ParsedExpense[]): Promise<Parsed | null> {
+  if (!isAiEnabled() || text.length > MAX_CHARS) return null;
+  const content = [
+    todayLine(),
+    ...listsLines(lists),
+    proposed?.length ? `\nGastos propuestos:\n${JSON.stringify(proposed.map(toAiShape))}` : "",
+    `\nMensaje: "${text}"`,
+  ].join("\n");
+  const result = await askModel(SYSTEM, content, aiSchema);
+  return result && toParsed(result, todayISO());
 }
 
 function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
@@ -183,6 +211,8 @@ function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
     }
     case "otro":
       return { intent: "otro", question: p.pregunta ?? "" };
+    case "seccion":
+      return { intent: "seccion", section: p.cual };
   }
 }
 

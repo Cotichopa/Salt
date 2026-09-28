@@ -18,6 +18,9 @@ import {
   type Input,
 } from "@/lib/whatsapp/menu";
 import { clearSession, getSession } from "@/lib/whatsapp/session";
+import { loadDueRecurring } from "@/lib/services/recurring";
+import { handleSection, handleSectionState } from "@/lib/whatsapp/sections";
+import { loadedFixedText } from "@/lib/whatsapp/sections/fijos";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
 
 // Chop, el bot de Salt. handleMessage recibe lo que llega por WhatsApp y handleInput es el
@@ -51,6 +54,7 @@ export async function handleMessage(msg: IncomingMessage) {
  * que valen siempre (menu, cancelar...), sigue el menú paso a paso o le pregunta a la IA.
  */
 export async function handleInput(ctx: Ctx, input: Input) {
+  await noticeLoadedFixed(ctx);
   const text = normalize(input.text ?? "").replace(/[!¡?¿.]/g, "");
   if (MENU_WORDS.includes(text)) return showMainMenu(ctx, `¡Hola ${ctx.name}! 👋 Soy *Chop*. Contame un gasto (ej: _"nafta 15000"_) o elegí una opción:`);
   if (CANCEL_WORDS.includes(text)) {
@@ -61,6 +65,7 @@ export async function handleInput(ctx: Ctx, input: Input) {
   if (input.text && isDeleteLast(input.text)) return void (await handleDelete(ctx, { last: true, text: "", amount: 0 }));
 
   const session = await getSession(ctx.phone);
+  if (await handleSectionState(ctx, input, session)) return;
   if (await handleMenu(ctx, input, session)) return;
 
   // Nada en curso: primero probamos sin IA (gratis) y, si no alcanza, le preguntamos a la IA
@@ -72,6 +77,7 @@ export async function handleInput(ctx: Ctx, input: Input) {
     if (quick) console.log(`[quick-parser] ${quick.intent} resuelto sin IA`);
     if (quick?.intent === "cargar" && (await proposeExpenses(ctx, quick.expenses))) return;
     if (quick?.intent === "consultar") return void (await handleQuery(ctx, quick));
+    if (quick?.intent === "seccion" && (await handleSection(ctx, quick.section, input.text, quick.list))) return;
 
     if (isAiEnabled()) return askAI(ctx, input.text, categories, sources);
   }
@@ -100,6 +106,8 @@ async function askAI(
   if (parsed.intent === "consultar") return void (await handleQuery(ctx, parsed));
   if (parsed.intent === "eliminar") return void (await handleDelete(ctx, parsed.target));
   if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));
+  // De otra sección (fijos...): la sección hace su propia llamada chica a la IA
+  if (parsed.intent === "seccion" && (await handleSection(ctx, parsed.section, text, parsed.list))) return;
   // No entendió del todo: repregunta en vez de tirar el menú de una
   if (parsed.intent === "otro" && parsed.question) {
     await ctx.out.text(`${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);
@@ -107,4 +115,17 @@ async function askAI(
   }
 
   await showMainMenu(ctx, "No te entendí 🤔 Probá escribiendo el gasto (ej: _\"super 12500 debito\"_) o elegí una opción:");
+}
+
+/**
+ * Los gastos fijos que ya llegaron a su día se cargan al primer mensaje (igual que al abrir la web)
+ * y se avisan todos juntos en un solo mensaje. Si falla, Chop sigue igual.
+ */
+async function noticeLoadedFixed(ctx: Ctx) {
+  try {
+    const notice = loadedFixedText(await loadDueRecurring(ctx.userId));
+    if (notice) await ctx.out.text(notice);
+  } catch (e) {
+    console.error("[fijos]", e instanceof Error ? e.message : e);
+  }
 }
