@@ -114,7 +114,10 @@ Etapas (cada una se commitea aparte):
    ejemplos JSON de una línea, se prellena `{` y se valida con zod (si viene mal, se descarta).
    Resultado: 1.012 + 50 tokens = **US$ 0,0011 por mensaje (−65%)**, mismos aciertos.
    La caché queda descartada (el prompt está lejos de los 4096 tokens que pide Haiku 4.5).
-2. Pre-filtro sin IA para consultas y órdenes comunes.
+2. **Pre-filtro sin IA para consultas** — hecha. `parseQuickQuery` en `quick-parser.ts` entiende
+   "cuánto gasté / qué gasté / gastos / cómo vengo" + período, categoría (o palabra clave), tarjeta y
+   medio; "borrá / eliminá el último" también es sin IA (`isDeleteLast`). `parseWithoutAI` junta todo
+   y lo usan `bot.ts` y el banco. En el banco: 12 de 34 sin IA, **US$ 0,00084 por mensaje (−73% vs. la base)**.
 3. Carga directa con Deshacer, "¿a qué dólar?" en USD sin crédito, totales de Chop en pesos.
 4. Gastos fijos por Chop (+ aviso de fijos cargados por WhatsApp, confirmación genérica).
 5. Tarjetas y billeteras (resumen, marcar pagado, crear, cierre/vencimiento).

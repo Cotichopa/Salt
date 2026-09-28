@@ -1,10 +1,12 @@
 import { parseAmount, todayISO, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
-import type { ParsedExpense } from "@/lib/whatsapp/ai-parser";
+import type { Parsed, ParsedExpense, QueryPeriod } from "@/lib/whatsapp/ai-parser";
 
-// Entiende sin IA los mensajes simples de carga ("nafta 15000", "super 12500 debito",
-// "ayer 5 lucas en el chino con la visa", "10 lucas de nafta descripcion ypf ruta 2 pague efectivo"),
-// así no gastan tokens. Es conservador a propósito:
+// Entiende sin IA los mensajes simples, así no gastan tokens:
+// - cargas ("nafta 15000", "super 12500 debito", "ayer 5 lucas en el chino con la visa",
+//   "10 lucas de nafta descripcion ypf ruta 2 pague efectivo")
+// - consultas ("cuánto gasté este mes", "qué gasté ayer en comida", "cómo vengo con la visa")
+// Es conservador a propósito:
 // si queda CUALQUIER palabra que no reconoce ("borrá", "pizza con amigos", "6 cuotas"),
 // devuelve null y el mensaje sigue a la IA como siempre.
 
@@ -102,15 +104,33 @@ function lookup(dict: Map<string, Meaning>, words: string[], i: number) {
   return null;
 }
 
-export function parseQuick(text: string, categories: Category[], sources: Source[]): ParsedExpense | null {
-  // Las palabras tal cual (para la descripción) y normalizadas (para reconocerlas)
+/** Las palabras tal cual (para la descripción) y normalizadas (para reconocerlas) */
+function splitWords(text: string) {
   const raw = text
     .replace(/[¡!¿?]/g, " ")
     .split(/\s+/)
     // Saca comas y puntos pegados al final ("nafta," / "15000.") sin romper "15.000,50"
     .map((w) => w.replace(/[.,;:]+$/, ""))
     .filter(Boolean);
-  const words = raw.map(normalize);
+  return { raw, words: raw.map(normalize) };
+}
+
+/** "borrá el último", "eliminar el último gasto", "borrame el ultimo" */
+export function isDeleteLast(text: string) {
+  const joined = splitWords(text).words.join(" ");
+  return /^(borra|borrar|borrame|elimina|eliminar|eliminame)( el)? ultimo( gasto)?$/.test(joined);
+}
+
+/** Lo que Chop puede entender sin IA: primero una carga, después una consulta. null si ninguna. */
+export function parseWithoutAI(text: string, categories: Category[], sources: Source[]): Parsed | null {
+  if (isDeleteLast(text)) return { intent: "eliminar", target: { last: true, text: "", amount: 0 } };
+  const expense = parseQuick(text, categories, sources);
+  if (expense) return { intent: "cargar", expenses: [expense] };
+  return parseQuickQuery(text, categories, sources);
+}
+
+export function parseQuick(text: string, categories: Category[], sources: Source[]): ParsedExpense | null {
+  const { raw, words } = splitWords(text);
   if (words.length === 0 || words.length > 20) return null;
 
   const dict = buildDictionary(categories, sources);
@@ -186,5 +206,89 @@ export function parseQuick(text: string, categories: Category[], sources: Source
     installments: 1,
     date: daysAgoISO([...found.dates][0] ?? 0),
     description,
+  };
+}
+
+// ---------- Consultas ----------
+
+// Cómo empieza una consulta. Sin una de estas, no es consulta (y decide la IA).
+const QUERY_STARTS = [
+  "cuanto llevo gastado",
+  "cuanto gaste",
+  "cuanto gastamos",
+  "cuanto llevo",
+  "cuanto va",
+  "que gaste",
+  "que gastamos",
+  "mis gastos",
+  "gastos",
+  "como vengo",
+  "como venimos",
+  "como voy",
+];
+
+// Períodos, de la frase más larga a la más corta ("el mes pasado" antes que "el mes")
+const PERIODS: [string, QueryPeriod][] = [
+  ["el mes pasado", "mes_pasado"],
+  ["mes pasado", "mes_pasado"],
+  ["esta semana", "semana"],
+  ["la semana", "semana"],
+  ["semana", "semana"],
+  ["este mes", "mes"],
+  ["el mes", "mes"],
+  ["mes", "mes"],
+  ["en total", "todo"],
+  ["total", "todo"],
+  ["hoy", "hoy"],
+  ["ayer", "ayer"],
+];
+
+// Relleno propio de las consultas ("cómo vengo CON EL PRESUPUESTO de salidas")
+const QUERY_FILLER = new Set(["presupuesto", "gastado", "y", "a", "al", "hasta", "ahora", "va", "este", "esta"]);
+
+/** "cuánto gasté en comida este mes" → consulta de Comida del mes. null si no es una consulta clara. */
+export function parseQuickQuery(text: string, categories: Category[], sources: Source[]): Parsed | null {
+  const { words } = splitWords(text);
+  if (words.length === 0 || words.length > 15) return null;
+
+  const joined = words.join(" ");
+  const start = QUERY_STARTS.find((q) => joined === q || joined.startsWith(`${q} `));
+  if (!start) return null;
+
+  const dict = buildDictionary(categories, sources);
+  const found = { periods: new Set<QueryPeriod>(), categories: new Set<string>(), sources: [] as Source[], methods: new Set<PaymentMethodCode>() };
+
+  for (let i = start.split(" ").length; i < words.length; ) {
+    // Período (puede ser de varias palabras)
+    const period = PERIODS.find(([phrase]) => words.slice(i, i + phrase.split(" ").length).join(" ") === phrase);
+    if (period) {
+      found.periods.add(period[1]);
+      i += period[0].split(" ").length;
+      continue;
+    }
+    if (QUERY_FILLER.has(words[i])) {
+      i++;
+      continue;
+    }
+    const hit = lookup(dict, words, i);
+    // Palabra desconocida, un monto o una moneda ("en dólares"): mejor que decida la IA
+    if (!hit || !["category", "source", "method", "skip"].includes(hit.meaning.type)) return null;
+    const { meaning, used } = hit;
+    if (meaning.type === "category") found.categories.add(meaning.name);
+    else if (meaning.type === "source") found.sources.push(meaning.source);
+    else if (meaning.type === "method") found.methods.add(meaning.method);
+    i += used;
+  }
+
+  // Una sola cosa de cada tipo: "comida y salidas" o "hoy y ayer" los decide la IA
+  if (found.periods.size > 1 || found.categories.size > 1 || found.sources.length > 1 || found.methods.size > 1) {
+    return null;
+  }
+  return {
+    intent: "consultar",
+    period: [...found.periods][0] ?? "mes",
+    categoryName: [...found.categories][0] ?? null,
+    sourceName: found.sources[0]?.name ?? null,
+    paymentMethod: [...found.methods][0] ?? null,
   };
 }

@@ -10,7 +10,7 @@ import { db } from "../src/lib/db";
 import { listCategories } from "../src/lib/services/categories";
 import { listPaymentSources } from "../src/lib/services/payment-sources";
 import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense } from "../src/lib/whatsapp/ai-parser";
-import { parseQuick } from "../src/lib/whatsapp/quick-parser";
+import { parseWithoutAI } from "../src/lib/whatsapp/quick-parser";
 
 // Acciones esperadas. Las de secciones nuevas (tarjeta, medio, fijo, presupuesto, categoria)
 // Chop todavía no las sabe hacer: sirven para ver cómo mejora en las próximas etapas.
@@ -107,10 +107,8 @@ async function main() {
   for (const [text, expected, proposed] of CASES) {
     usage = { inTok: 0, outTok: 0 };
     // Igual que bot.ts: primero sin IA, y si no alcanza, con IA (las correcciones van directo a la IA)
-    const quick = proposed ? null : parseQuick(text, cats, sources);
-    const parsed: Parsed | null = quick
-      ? { intent: "cargar", expenses: [quick] }
-      : await parseMessage(text, lists, proposed);
+    const quick = proposed ? null : parseWithoutAI(text, cats, sources);
+    const parsed: Parsed | null = quick ?? (await parseMessage(text, lists, proposed));
     const detail = describe(parsed);
     const got = parsed?.intent ?? "error";
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón

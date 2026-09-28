@@ -439,15 +439,6 @@ async function showDeleteList(ctx: Ctx) {
 }
 
 /** Atajo "borrar último": salta directo a la confirmación del gasto más reciente */
-export async function startDeleteLast(ctx: Ctx) {
-  const [last] = await listExpenses(ctx.userId, { to: todayISO() }, 1);
-  if (!last) {
-    await ctx.out.text(`No tenés gastos para eliminar.${BACK}`);
-    return;
-  }
-  await askDeleteConfirm(ctx, last);
-}
-
 async function pickDelete(ctx: Ctx, id: string | undefined) {
   const expense = id?.startsWith("del:") ? await getExpense(ctx.userId, id.slice(4)) : null;
   if (!expense) {

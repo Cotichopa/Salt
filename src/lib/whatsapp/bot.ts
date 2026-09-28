@@ -6,7 +6,7 @@ import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
 import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
 import { listPaymentSources } from "@/lib/services/payment-sources";
-import { parseQuick } from "@/lib/whatsapp/quick-parser";
+import { isDeleteLast, parseWithoutAI } from "@/lib/whatsapp/quick-parser";
 import {
   handleDelete,
   handleEdit,
@@ -14,7 +14,6 @@ import {
   handleQuery,
   proposeExpenses,
   showMainMenu,
-  startDeleteLast,
   type Ctx,
   type Input,
 } from "@/lib/whatsapp/menu";
@@ -26,7 +25,6 @@ import type { IncomingMessage } from "@/lib/whatsapp/webhook";
 
 const MENU_WORDS = ["menu", "hola", "inicio", "ayuda", "buenas", "buen dia", "empezar"];
 const CANCEL_WORDS = ["cancelar", "salir", "chau"];
-const DELETE_LAST = ["borrar ultimo", "eliminar ultimo", "borrar el ultimo", "eliminar el ultimo"];
 
 /** Mensaje que llega por WhatsApp: identifica a la persona por su teléfono y se lo pasa a Chop */
 export async function handleMessage(msg: IncomingMessage) {
@@ -59,7 +57,8 @@ export async function handleInput(ctx: Ctx, input: Input) {
     await clearSession(ctx.phone);
     return ctx.out.text("Listo, cancelado 👌 Escribime cuando quieras.");
   }
-  if (DELETE_LAST.includes(text)) return startDeleteLast(ctx);
+  // Vale aunque haya otra conversación en curso, como "menu" o "cancelar"
+  if (input.text && isDeleteLast(input.text)) return void (await handleDelete(ctx, { last: true, text: "", amount: 0 }));
 
   const session = await getSession(ctx.phone);
   if (await handleMenu(ctx, input, session)) return;
@@ -68,12 +67,11 @@ export async function handleInput(ctx: Ctx, input: Input) {
   if (input.text) {
     const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
 
-    // Mensajes simples de carga ("nafta 15000"): se entienden con reglas, sin gastar tokens
-    const quick = parseQuick(input.text, categories, sources);
-    if (quick) {
-      console.log("[quick-parser] resuelto sin IA");
-      if (await proposeExpenses(ctx, [quick])) return;
-    }
+    // Mensajes simples ("nafta 15000", "cuánto gasté este mes"): se entienden con reglas, sin gastar tokens
+    const quick = parseWithoutAI(input.text, categories, sources);
+    if (quick) console.log(`[quick-parser] ${quick.intent} resuelto sin IA`);
+    if (quick?.intent === "cargar" && (await proposeExpenses(ctx, quick.expenses))) return;
+    if (quick?.intent === "consultar") return void (await handleQuery(ctx, quick));
 
     if (isAiEnabled()) return askAI(ctx, input.text, categories, sources);
   }
