@@ -35,6 +35,32 @@ async function send(to: string, payload: Record<string, unknown>) {
   }
 }
 
+// Un audio de WhatsApp de 1 minuto pesa unos 100 KB: más de esto no lo bajamos
+const MAX_MEDIA_BYTES = 5_000_000;
+
+/**
+ * Baja un archivo que mandaron por WhatsApp (un audio). Meta manda solo el id: primero se pide la
+ * dirección del archivo y después se baja, las dos cosas con el token. null si no se pudo.
+ * Documentación: https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
+ */
+export async function downloadMedia(mediaId: string): Promise<Buffer | null> {
+  const token = process.env.WHATSAPP_TOKEN;
+  if (!token) return null;
+  const auth = { Authorization: `Bearer ${token}` };
+  try {
+    const info = await fetch(`https://graph.facebook.com/${API_VERSION}/${mediaId}`, { headers: auth });
+    if (!info.ok) throw new Error(`info ${info.status}: ${await info.text()}`);
+    const { url, file_size } = (await info.json()) as { url?: string; file_size?: number };
+    if (!url || (file_size ?? 0) > MAX_MEDIA_BYTES) throw new Error(`sin url o muy grande (${file_size} bytes)`);
+    const file = await fetch(url, { headers: auth });
+    if (!file.ok) throw new Error(`archivo ${file.status}`);
+    return Buffer.from(await file.arrayBuffer());
+  } catch (e) {
+    console.error(`[whatsapp] no pude bajar el archivo ${mediaId}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 export function sendText(to: string, body: string) {
   return send(to, { type: "text", text: { body, preview_url: false } });
 }

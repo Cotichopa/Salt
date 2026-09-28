@@ -23,7 +23,11 @@ type Meaning =
   | { type: "ambiguous" }; // la misma palabra significa dos cosas: mejor que decida la IA
 
 // Palabras de relleno que no cambian el sentido ("gasté 5000 EN el super CON la visa")
-const FILLER = ["en", "de", "del", "el", "la", "los", "las", "con", "por", "un", "una", "mi", "gaste", "pague", "fue"];
+const FILLER = [
+  "en", "de", "del", "el", "la", "los", "las", "con", "por", "un", "una", "mi", "gaste", "pague", "fue",
+  // "chop, me cargás...": lo que se dice de más al pedirlo (sobre todo en audios)
+  "chop", "me", "cargas", "carga", "cargame", "cargar", "anota", "anotame", "anotar", "porfa", "favor", "y",
+];
 
 const METHODS: Record<string, PaymentMethodCode> = {
   efectivo: "CASH",

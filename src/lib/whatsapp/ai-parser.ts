@@ -201,6 +201,17 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
   const result = await askModel(SYSTEM, content, aiSchema);
   if (!result) return null;
   const parsed = toParsed(result, todayISO());
+  // Un gasto cuya tarjeta o billetera se nombró pero el modelo no la puso (a veces la pone como
+  // descripción: "pagué con transferencia, Mercado Pago"): si el mensaje nombra una sola, es esa
+  if (parsed.intent === "cargar" && parsed.expenses.length === 1 && !parsed.expenses[0].sourceName) {
+    const t = normalize(text);
+    const named = lists.sources.filter((s) => t.includes(normalize(s)));
+    if (named.length === 1) {
+      const e = parsed.expenses[0];
+      e.sourceName = named[0];
+      if (e.description && normalize(e.description) === normalize(named[0])) e.description = null;
+    }
+  }
   // "eliminá el gasto de la nafta" a veces viene como editar sin nada que cambiar: es eliminar
   if (parsed.intent === "editar" && Object.keys(parsed.changes).length === 0 && DELETE_WORDS.test(normalize(text))) {
     return { intent: "eliminar", target: parsed.target };

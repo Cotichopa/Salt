@@ -42,10 +42,10 @@ webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con 
 1. **API key de Anthropic: cargada y andando** (2026-09-28, compu con Docker). Falta probar el
    caso "categoría que no existe" por WhatsApp (debería preguntarla).
 2. **Chop más barato y que maneje toda la app** — en curso, ver la sección "En curso: Chop" más abajo.
-3. **Audios con Whisper.** Solo hay que implementar `src/lib/transcribe.ts`. Se decide según el
+3. ~~Audios con Whisper~~ — hecho (ver "Audios con Whisper local" abajo). Antes decía: implementar `src/lib/transcribe.ts`. Se decide según el
    servidor: sin placa de video conviene Whisper por API; local solo si el servidor tiene GPU o
    CPU de sobra. Falta también descargar el audio de Meta (llega como id, formato OGG/Opus).
-4. **Subir al servidor** (todavía no está definido cuál). Ver "Antes de desplegar" en el README;
+4. **Subir al servidor** — lo hace Felipe con su papá (fuera de estas sesiones). Todavía no está definido cuál. Ver "Antes de desplegar" en el README;
    lo más importante: backups de la base, dominio con HTTPS, número real de WhatsApp.
 
 ## En curso: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
@@ -94,8 +94,11 @@ WhatsApp de los fijos cargados, "Netflix aumentó a 12.000" y resumen de la tarj
 ## En curso: Chop más barato y que maneje toda la app (plan del 2026-09-28)
 
 Decisiones de Felipe: Chop va a manejar también fijos, resumen/pago de tarjeta, presupuestos,
-categorías y tarjetas/billeteras (admin y cuenta, no). Un gasto simple se guarda directo con botón
-**Deshacer**; borrar, editar y lo demás pide confirmación. Sin memoria entre mensajes. Ampliar el
+categorías y tarjetas/billeteras (admin y cuenta, no). ~~Un gasto simple se guarda directo con botón
+Deshacer~~ → **cambió el 2026-09-28: todo gasto se confirma antes de guardar** (con los audios, Whisper
+puede entender mal un número): primero pregunta lo que falte (medio, tarjeta, dólar), después
+"¿Guardo este gasto?" [Guardar] [Cancelar] o una corrección escrita, y al guardar queda **Deshacer**.
+Borrar, editar y lo demás también pide confirmación. Sin memoria entre mensajes. Ampliar el
 pre-filtro sin IA. Medir antes y después de cada cambio.
 
 **Cómo se mide:** `npm run chop:bench -- <etiqueta>` (`scripts/chop-bench.ts`) pasa 34 mensajes fijos por
@@ -197,7 +200,35 @@ Etapas (cada una se commitea aparte):
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
 principal; el resto en una segunda llamada chica con el prompt de su sección).
 
+## Audios con Whisper local — hecho (2026-09-28)
+
+Felipe eligió **Whisper en la propia compu** (whisper.cpp). En la compu con Docker (i7-7700, 8 hilos,
+AVX2, sin GPU NVIDIA) está compilado en `~/whisper/whisper.cpp` (fuera del repo), con los modelos base,
+small y large-v3-turbo-q5_0 en `models/`. Velocidad con 11 s de audio: base 1,3 s, small 4 s, turbo
+20 s (descartado). **Modelo elegido: small** (~4 s por audio; con los audios de Felipe entendió bien casi
+todo; base ya se equivocaba palabras).
+- `src/lib/transcribe.ts`: ffmpeg (paquete npm `ffmpeg-static`, sin sudo; en `serverExternalPackages`
+  de `next.config.ts`) pasa el audio a WAV 16 kHz → `whisper-cli` en español, con una pista de palabras
+  (Chop, lucas, sus categorías y tarjetas). Máximo 60 s (decisión de Felipe). Saca "Chop/Job/Shop" del
+  principio (el nombre del bot).
+- WhatsApp: `downloadMedia` en `client.ts` baja la nota de voz con el id de Meta; `bot.ts` contesta
+  "🎙️ Entendí: «…»" y la procesa como texto (y como todo gasto, se confirma antes de guardar). El chat
+  web (micrófono) hace lo mismo.
+- `.env`: `WHISPER_CLI` y `WHISPER_MODEL` (ruta a `ggml-small.bin`), `WHISPER_THREADS` opcional,
+  `WHISPER_KEEP_DIR` solo para pruebas (guarda copias de los audios). Sin las dos primeras, Chop dice
+  que todavía no escucha audios. Ver `.env.example`.
+- **En el servidor**: clonar y compilar whisper.cpp igual (`cmake -B build -DGGML_NATIVE=ON` y
+  `cmake --build build -j`), bajar `ggml-small.bin` con `models/download-ggml-model.sh small` y
+  apuntar las dos variables. Si el servidor es más lento, medir: con base es ~3 veces más rápido.
+- Además: "me cargás / cargame / anotame / porfa" son relleno para el pre-filtro; si el mensaje nombra
+  una sola tarjeta o billetera y la IA no la puso, se completa; en los mensajes de Chop el `$` va
+  pegado al número ("$100.000", `tightMoney` en `outbox.ts`) porque WhatsApp toma "100.000" suelto
+  como teléfono.
+
 ## Pendientes chicos
+
+- `npm audit` marca 4 vulnerabilidades altas que vienen de Prisma (`deepmerge-ts` y `mysql2`, que la
+  app no usa). Revisar cuando salga una versión de Prisma que las arregle (no usar `--force`).
 
 - **Compu sin Docker (2026-09-28):** esta compu no tiene Docker ni `sudo`, así que la base se levantó
   con un PostgreSQL portátil (`embedded-postgres`) en una carpeta temporal, fuera del repo, en el

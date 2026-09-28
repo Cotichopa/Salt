@@ -3,8 +3,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/dal";
-import { transcribeAudio } from "@/lib/transcribe";
-import { handleInput } from "@/lib/whatsapp/bot";
+import { transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
+import { audioHints, handleInput } from "@/lib/whatsapp/bot";
 import type { Ctx } from "@/lib/whatsapp/menu";
 import { collectingOutbox, type ChopMessage } from "@/lib/whatsapp/outbox";
 import { clearSession } from "@/lib/whatsapp/session";
@@ -57,16 +57,13 @@ export async function sendAudioToChop(formData: FormData): Promise<{ transcript:
   }
 
   const { ctx, out } = await webCtx();
-  const transcript = await transcribeAudio(audio);
-  if (!transcript) {
-    return {
-      transcript: null,
-      messages: [{ type: "text", body: "Todavía no entiendo audios 🙉 (¡ya viene!). Escribímelo y lo cargo al toque." }],
-    };
-  }
-  await handleInput(ctx, { text: transcript });
+  const result = await transcribeAudio(audio, await audioHints(ctx.userId));
+  if (!result.ok) return { transcript: null, messages: [{ type: "text", body: transcriptionProblem(result.reason) }] };
+  // Igual que en WhatsApp: primero lo que se entendió, después la respuesta
+  await out.text(`🎙️ Entendí: «${result.text}»`);
+  await handleInput(ctx, { text: result.text });
   revalidate();
-  return { transcript, messages: out.messages };
+  return { transcript: result.text, messages: out.messages };
 }
 
 /** "Nueva conversación": Chop se olvida del paso del menú en el que estaba */

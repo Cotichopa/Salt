@@ -19,11 +19,24 @@ export type Outbox = {
   list: (body: string, buttonText: string, rows: ListRow[], sectionTitle?: string) => Promise<void>;
 };
 
+/**
+ * "$ 100.000" → "$100.000". WhatsApp toma "100.000" suelto como un teléfono (lo pinta de verde para
+ * agendarlo); pegado al "$" no. formatMoney separa con un espacio que no se corta (U+00A0).
+ * Se aplica a todo lo que manda Chop (textos, botones y listas); la web sigue con su formato.
+ */
+export function tightMoney(text: string) {
+  return text.replace(/\$[ \u00a0]+(?=\d)/g, "$");
+}
+
+const tightButtons = (buttons: Button[]) => buttons.map((b) => ({ ...b, title: tightMoney(b.title) }));
+const tightRows = (rows: ListRow[]) =>
+  rows.map((r) => ({ ...r, title: tightMoney(r.title), ...(r.description ? { description: tightMoney(r.description) } : {}) }));
+
 export function whatsappOutbox(phone: string): Outbox {
   return {
-    text: (body) => sendText(phone, body),
-    buttons: (body, buttons) => sendButtons(phone, body, buttons),
-    list: (body, buttonText, rows, sectionTitle) => sendList(phone, body, buttonText, rows, sectionTitle),
+    text: (body) => sendText(phone, tightMoney(body)),
+    buttons: (body, buttons) => sendButtons(phone, tightMoney(body), tightButtons(buttons)),
+    list: (body, buttonText, rows, sectionTitle) => sendList(phone, tightMoney(body), buttonText, tightRows(rows), sectionTitle),
   };
 }
 
@@ -32,8 +45,10 @@ export function collectingOutbox(): Outbox & { messages: ChopMessage[] } {
   const messages: ChopMessage[] = [];
   return {
     messages,
-    text: async (body) => void messages.push({ type: "text", body }),
-    buttons: async (body, buttons) => void messages.push({ type: "buttons", body, buttons: buttons.slice(0, 3) }),
-    list: async (body, buttonText, rows) => void messages.push({ type: "list", body, buttonText, rows: rows.slice(0, 10) }),
+    text: async (body) => void messages.push({ type: "text", body: tightMoney(body) }),
+    buttons: async (body, buttons) =>
+      void messages.push({ type: "buttons", body: tightMoney(body), buttons: tightButtons(buttons.slice(0, 3)) }),
+    list: async (body, buttonText, rows) =>
+      void messages.push({ type: "list", body: tightMoney(body), buttonText, rows: tightRows(rows.slice(0, 10)) }),
   };
 }

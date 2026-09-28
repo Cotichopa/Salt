@@ -341,8 +341,9 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
     await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
-  // Igual que lo escrito a mano: si hace falta pregunta la tarjeta o el dólar, y guarda con Deshacer
+  // Ya confirmó ("¿Guardo este gasto?"): si hace falta pregunta la tarjeta o el dólar, y guarda con Deshacer
   return finishPending(ctx, {
+    confirmed: true,
     pending: [
       {
         categoryId: d.categoryId!,
@@ -604,20 +605,30 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
  */
 async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string) {
   if (pending.some((p) => !p.categoryId)) return askMissing(ctx, { pending });
-  if (pending.length === 1) return finishPending(ctx, { pending });
+  return finishPending(ctx, { pending }, false, heading);
+}
 
-  await setSession(ctx.phone, "ai:confirm", { pending });
+/**
+ * "¿Guardo este gasto?" con todo lo que se entendió: Guardar / Cancelar, o escribir una corrección
+ * ("era con efectivo", "fueron 8 mil"). Decisión de Felipe: nada se guarda sin confirmar (con los
+ * audios, Whisper puede entender mal un número).
+ */
+async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
+  const pending = d.pending ?? [];
+  await setSession(ctx.phone, "ai:confirm", d);
   const body = [
-    heading ?? `Entendí ${pending.length} gastos 👇`,
+    heading ?? (pending.length === 1 ? "¿Guardo este gasto? 👇" : `¿Guardo estos ${pending.length} gastos? 👇`),
     "",
     ...pending.map(describePending),
     "",
     pending.some((p) => p.guessedMethod) ? "_El medio de pago lo supuse: revisalo._" : "",
+    pending.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
+    "_Si algo está mal, escribime la corrección (ej: \"era con efectivo\")._",
   ]
     .filter(Boolean)
     .join("\n");
   await ctx.out.buttons(body, [
-    { id: "aiconfirm:yes", title: "✅ Guardar todos" },
+    { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
   return true;
@@ -701,22 +712,16 @@ async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean
 async function showPendingAgain(ctx: Ctx, d: Draft): Promise<boolean> {
   const pending = d.pending ?? [];
   if (d.missing?.length || pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
-  if (pending.length === 1) return finishPending(ctx, d);
-
-  await setSession(ctx.phone, "ai:confirm", { pending });
-  await ctx.out.buttons(["Quedó así 👇", "", ...pending.map(describePending)].join("\n"), [
-    { id: "aiconfirm:yes", title: "✅ Guardar todos" },
-    { id: "aiconfirm:no", title: "❌ Cancelar" },
-  ]);
-  return true;
+  return finishPending(ctx, d);
 }
 
 /**
  * Lo último antes de guardar. Con un solo gasto: el medio de pago si no lo dijo, y con qué
  * (tarjeta o billetera, una sola vez) si no es efectivo. Con cualquiera: a qué dólar se pagó cada gasto en USD sin
- * crédito. Cuando no falta nada, guarda. (Con varios gastos el medio se supone y se avisa.)
+ * crédito. Cuando no falta nada, pide confirmar y después guarda. (Con varios gastos el medio se
+ * supone y se avisa.)
  */
-async function finishPending(ctx: Ctx, d: Draft): Promise<boolean> {
+async function finishPending(ctx: Ctx, d: Draft, confirmed = false, heading?: string): Promise<boolean> {
   const pending = d.pending ?? [];
   if (pending.length === 1 && pending[0].guessedMethod) return askPayment(ctx, d);
   if (pending.length === 1 && !d.askedSource && needsSource(pending[0])) {
@@ -724,6 +729,8 @@ async function finishPending(ctx: Ctx, d: Draft): Promise<boolean> {
   }
   const i = pending.findIndex(needsDollar);
   if (i >= 0) return askDollar(ctx, d, i);
+  // Ya no falta nada: se confirma antes de guardar (la carga paso a paso ya confirmó)
+  if (!confirmed && !d.confirmed) return confirmPending(ctx, d, heading);
   return savePending(ctx, pending);
 }
 
@@ -960,26 +967,33 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
     // No dijo ni sí ni no: puede ser una corrección ("con efectivo", "eran 8000", "fue ayer")
     if (rawText && pending.length > 0 && isAiEnabled()) {
       const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+      const proposed: ParsedExpense[] = pending.map((p) => ({
+        amount: p.amount,
+        currency: p.currency,
+        categoryName: p.categoryLabel.replace(/^\S*\s/, ""), // sin el emoji
+        paymentMethod: p.guessedMethod ? null : p.paymentMethod,
+        sourceName: p.sourceName ?? null,
+        installments: p.installments ?? 1,
+        date: p.date,
+        description: p.description,
+      }));
       const corrected = await parseMessage(
         rawText,
         { categories: cats.map((c) => c.name), sources: sources.map((s) => s.name) },
-        pending.map((p) => ({
-          amount: p.amount,
-          currency: p.currency,
-          categoryName: p.categoryLabel.replace(/^\S*\s/, ""), // sin el emoji
-          paymentMethod: p.guessedMethod ? null : p.paymentMethod,
-          sourceName: p.sourceName ?? null,
-          installments: p.installments ?? 1,
-          date: p.date,
-          description: p.description,
-        })),
+        proposed,
       );
-      if (corrected?.intent === "cargar" && (await proposeExpenses(ctx, corrected.expenses, "Corregido 👇"))) {
-        return true;
-      }
+      // La lista corregida, o (con un solo gasto) los cambios de un "editar": a veces el modelo toma
+      // "fueron 8000" como editar un gasto ya guardado, pero es este que todavía no se guardó
+      const fixed =
+        corrected?.intent === "cargar"
+          ? corrected.expenses
+          : corrected?.intent === "editar" && proposed.length === 1 && Object.keys(corrected.changes).length > 0
+            ? [{ ...proposed[0], ...corrected.changes }]
+            : null;
+      if (fixed && (await proposeExpenses(ctx, fixed, "Corregido 👇"))) return true;
     }
-    await ctx.out.buttons("¿Los guardo?", [
-      { id: "aiconfirm:yes", title: "✅ Guardar todos" },
+    await ctx.out.buttons(`No entendí la corrección 🤔 ¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`, [
+      { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
       { id: "aiconfirm:no", title: "❌ Cancelar" },
     ]);
     return true;
@@ -989,7 +1003,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
     await ctx.out.text(`Dale, no guardé nada 👌${BACK}`);
     return true;
   }
-  return finishPending(ctx, d);
+  return finishPending(ctx, { ...d, confirmed: true });
 }
 
 // ---------- Consultar, eliminar y editar hablando ----------

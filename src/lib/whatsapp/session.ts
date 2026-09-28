@@ -90,6 +90,7 @@ export type Draft = {
   // Para completar la tarjeta o billetera antes de guardar
   missing?: "source"[];
   askedSource?: boolean; // ya se preguntó la tarjeta o billetera (si no eligió, se guarda sin)
+  confirmed?: boolean; // ya dijo "Guardar": lo que falte preguntar (el dólar) no vuelve a pedir confirmación
 };
 
 export type Session = { state: string; data: Draft };

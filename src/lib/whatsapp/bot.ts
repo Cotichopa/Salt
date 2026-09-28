@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { normalize } from "@/lib/text";
-import { sendText } from "@/lib/whatsapp/client";
+import { downloadMedia, sendText } from "@/lib/whatsapp/client";
+import { isTranscriptionEnabled, transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
 import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
@@ -38,16 +39,34 @@ export async function handleMessage(msg: IncomingMessage) {
     await sendText(msg.from, "Hola 👋 Soy Chop, el asistente de gastos de Salt. Este número no está registrado, así que no puedo ayudarte todavía. Pedile al administrador que lo cargue en tu cuenta.");
     return;
   }
+  const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
+  if (msg.audio) return handleAudio(ctx, msg.audio.id);
   const input: Input = {
     text: msg.text?.body,
     replyId: msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id,
   };
   if (!input.text && !input.replyId) {
-    await sendText(msg.from, "Todavía no escucho audios 🙉 Escribímelo y lo cargo al toque, o escribí *menu* para ver las opciones.");
+    await sendText(msg.from, "Por ahora entiendo mensajes escritos y audios 🙂 Escribí *menu* para ver las opciones.");
     return;
   }
-  const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
   await handleInput(ctx, input);
+}
+
+/** Nota de voz: se baja, se pasa a texto, se muestra lo que se entendió y se procesa como escrito */
+async function handleAudio(ctx: Ctx, mediaId: string) {
+  if (!isTranscriptionEnabled()) return ctx.out.text(transcriptionProblem("off"));
+  const audio = await downloadMedia(mediaId);
+  if (!audio) return ctx.out.text(transcriptionProblem("error"));
+  const result = await transcribeAudio(audio, await audioHints(ctx.userId));
+  if (!result.ok) return ctx.out.text(transcriptionProblem(result.reason));
+  await ctx.out.text(`🎙️ Entendí: «${result.text}»`);
+  await handleInput(ctx, { text: result.text });
+}
+
+/** Palabras que ayudan a Whisper a entender los audios: las categorías y tarjetas de la persona */
+export async function audioHints(userId: string) {
+  const [categories, sources] = await Promise.all([listCategories(userId), listPaymentSources(userId)]);
+  return [...categories.map((c) => c.name), ...sources.map((s) => s.name)];
 }
 
 /**
