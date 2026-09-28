@@ -49,9 +49,13 @@ export type FixedDraft = {
   dollarType?: DollarTypeCode;
 };
 
+/** Una tarjeta o billetera que se está agregando con los botones */
+export type NewSourceDraft = { kind?: "CARD" | "WALLET"; name?: string };
+
 export type Draft = {
   action?: PendingAction;
   fixed?: FixedDraft;
+  newSource?: NewSourceDraft;
   pending?: PendingExpense[];
   categoryId?: string;
   categoryLabel?: string;

@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { dollarTypeLabels, formatMoney, paymentMethodLabels, todayISO } from "@/lib/format";
+import { dollarTypeLabels, formatMoney, parseAmount, paymentMethodLabels, todayISO } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import { listCategories } from "@/lib/services/categories";
 import { kindForMethod, listPaymentSources } from "@/lib/services/payment-sources";
@@ -224,8 +224,23 @@ async function startCreate(
 const needsSource = (f: FixedDraft) => !!f.paymentMethod && f.paymentMethod !== "CASH" && !f.sourceId && !f.askedSource;
 const needsDollar = (f: FixedDraft) => f.currency === "USD" && f.paymentMethod !== "CREDIT" && !f.dollarType;
 
+/** "Agregar → Gasto fijo" del menú: arranca preguntando el nombre y el monto */
+export function startFixedGuided(ctx: Ctx) {
+  return nextFixedStep(ctx, { description: "", amount: 0, currency: "ARS" });
+}
+
 async function nextFixedStep(ctx: Ctx, f: FixedDraft): Promise<boolean> {
   const d: Draft = { fixed: f };
+  if (!f.description) {
+    await setSession(ctx.phone, "fixed:new", d);
+    await ctx.out.text("📌 ¿Cómo se llama el gasto fijo? (ej: Alquiler, Netflix, Luz)");
+    return true;
+  }
+  if (!f.amount) {
+    await setSession(ctx.phone, "fixed:new", d);
+    await ctx.out.text(`💰 ¿Cuánto sale *${f.description}* por mes? (ej: 15000, o "10 dólares")`);
+    return true;
+  }
   if (!f.categoryId) {
     await setSession(ctx.phone, "fixed:new", d);
     await sendCategoryList(ctx, 0, `🏷️ ¿En qué categoría va *${f.description}*? Elegila o escribí el nombre.`);
@@ -272,7 +287,29 @@ export async function receiveFixed(ctx: Ctx, input: Input, d: Draft): Promise<bo
   const id = input.replyId;
   const text = input.text ?? "";
 
-  if (!f.categoryId) {
+  if (!f.description) {
+    const name = text.trim().slice(0, 60);
+    if (name.length < 2) {
+      await ctx.out.text("Decime un nombre de al menos 2 letras 🙏 (o escribí *cancelar*)");
+      return true;
+    }
+    // "netflix" → "Netflix"
+    f.description = name === name.toLowerCase() ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+    // Si el nombre es una palabra clave de una categoría ("luz" → Servicios), no hace falta preguntarla
+    const cat = findCategoryByText(await listCategories(ctx.userId), name);
+    if (cat) {
+      f.categoryId = cat.id;
+      f.categoryLabel = label(cat);
+    }
+  } else if (!f.amount) {
+    const amount = parseAmount(text.replace(/[^\d.,]/g, ""));
+    if (!amount || amount <= 0 || amount >= 1e12) {
+      await ctx.out.text("Ese monto no lo agarro 🤔 Escribilo con números, por ej. 15000 (o escribí *cancelar*)");
+      return true;
+    }
+    f.amount = amount;
+    f.currency = /\b(usd|u\$s|us\$|dolar|dolares)\b/.test(normalize(text)) ? "USD" : "ARS";
+  } else if (!f.categoryId) {
     if (id?.startsWith("catpage:")) {
       await sendCategoryList(ctx, Number(id.slice(8)) || 0, `🏷️ ¿En qué categoría va *${f.description}*?`);
       return true;
@@ -397,7 +434,7 @@ async function askPause(ctx: Ctx, f: RecurringDTO, pause: boolean) {
   });
 }
 
-function askDelete(ctx: Ctx, f: RecurringDTO) {
+export function askDelete(ctx: Ctx, f: RecurringDTO) {
   return askConfirm(ctx, {
     type: "fixed:delete",
     data: { id: f.id },

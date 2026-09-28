@@ -160,11 +160,18 @@ Etapas (cada una se commitea aparte):
    - En cualquier confirmación, si la persona escribe otra cosa, la confirmación se deja y el
      mensaje se procesa normal (antes volvía a preguntar).
    - Banco: 32/36 (fallan solo presupuestos y categorías), US$ 0,00098 por mensaje.
-6. **Menú completo + presupuestos y categorías** (pedido de Felipe, 2026-09-28): menú con 3 botones
-   **➕ Agregar · 📊 Consultar · 🗑️ Eliminar**, cada uno abre una lista (gasto, fijo, tarjeta/billetera,
-   categoría, presupuesto; en Consultar además "¿qué tengo que pagar?", resumen de tarjeta, fijos,
-   presupuestos; consultas de gastos por tarjeta o medio). Presupuestos y categorías también por texto.
-   Falta planificarla.
+6. **Menú completo + presupuestos y categorías** (pedido de Felipe, 2026-09-28). En dos partes:
+   - **6a — menú nuevo** — hecha. El menú principal son 3 botones **➕ Agregar · 📊 Consultar ·
+     🗑️ Eliminar** y cada uno abre una lista (`sections/listas.ts`). Agregar: gasto, fijo (paso a paso:
+     nombre, monto y lo de siempre; si el nombre es palabra clave de una categoría, "luz" → Servicios,
+     no la pregunta), tarjeta o billetera (tipo, nombre, días o "sin días"). Consultar: ¿qué tengo que
+     pagar?, gastos (se sumaron "por tarjeta o billetera" y "por medio de pago", del mes), resumen de una
+     tarjeta, fijos, medios de pago. Eliminar: gasto, fijo, tarjeta o billetera (avisa que sus gastos y
+     fijos quedan sin ella). Botones sin estado: `go:<rama>:<opción>`, `sel:<qué>:<id>`,
+     `page:<qué>:<n>` (listas de más de 10). "agregar/consultar/eliminar" escritos también abren el menú
+     si no hay otra pregunta pendiente.
+   - **6b — presupuestos y categorías** (por texto y en los tres menús): falta. Ver el plan en
+     `~/.claude/plans/frolicking-growing-lake.md` (ícono de categoría nueva: Chop lo elige por el nombre).
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
 principal; el resto en una segunda llamada chica con el prompt de su sección).
 

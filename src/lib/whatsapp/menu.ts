@@ -94,6 +94,8 @@ const expected: Record<string, string[]> = {
   "add:confirm": ["confirm:"],
   query: ["q:"],
   "query:category": ["cat:", "catpage:"],
+  "query:source": ["src:"],
+  "query:method": ["pm:"],
   "delete:pick": ["del:"],
   "delete:confirm": ["delconfirm:"],
   "ai:confirm": ["aiconfirm:"],
@@ -105,10 +107,14 @@ const expected: Record<string, string[]> = {
 
 // ---------- Menú principal ----------
 
+/**
+ * Menú principal: 3 botones (lo máximo de WhatsApp). Cada uno abre una lista con gastos, fijos,
+ * tarjetas... (sections/listas.ts, que los atiende en cualquier momento).
+ */
 export async function showMainMenu(ctx: Ctx, intro?: string) {
   await setSession(ctx.phone, "main");
   await ctx.out.buttons(intro ?? `¿Qué hacemos, ${ctx.name}? Soy ${NAME}, decime:`, [
-    { id: "menu:add", title: "➕ Cargar gasto" },
+    { id: "menu:add", title: "➕ Agregar" },
     { id: "menu:query", title: "📊 Consultar" },
     { id: "menu:delete", title: "🗑️ Eliminar" },
   ]);
@@ -132,11 +138,9 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
   if (!session) return false;
   const d = session.data;
   switch (session.state) {
-    case "main": {
-      const option = { "1": "add", cargar: "add", "2": "query", consultar: "query", "3": "delete", eliminar: "delete" }[text];
-      // Si no eligió una opción, devolvemos false para que el mensaje siga camino a la IA
-      return option ? routeMain(ctx, option) : false;
-    }
+    case "main":
+      // Las opciones escritas ("1", "agregar"...) las atiende sections/listas.ts: el resto sigue a la IA
+      return false;
     case "add:category":
       return pickCategory(ctx, input, d, "add");
     case "add:amount":
@@ -153,6 +157,10 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
       return receiveQuery(ctx, id, text);
     case "query:category":
       return pickCategory(ctx, input, d, "query");
+    case "query:source":
+      return receiveQuerySource(ctx, id, text);
+    case "query:method":
+      return receiveQueryMethod(ctx, id, text);
     case "delete:pick":
       return pickDelete(ctx, id);
     case "delete:confirm":
@@ -181,7 +189,7 @@ async function routeMain(ctx: Ctx, option: string) {
 
 // ---------- Cargar gasto ----------
 
-async function startAdd(ctx: Ctx) {
+export async function startAdd(ctx: Ctx) {
   await setSession(ctx.phone, "add:category", { page: 0 });
   await sendCategoryList(ctx, 0, "🏷️ ¿En qué categoría? Elegila de la lista o escribí el nombre.");
 }
@@ -353,14 +361,16 @@ async function confirmAdd(ctx: Ctx, id: string | undefined, text: string, d: Dra
 
 // ---------- Consultar ----------
 
-async function showQueryMenu(ctx: Ctx) {
+export async function showQueryMenu(ctx: Ctx) {
   await setSession(ctx.phone, "query");
-  await ctx.out.list("📊 ¿Qué querés ver?", "Ver opciones", [
+  await ctx.out.list("📊 ¿Qué gastos querés ver?", "Ver opciones", [
     { id: "q:today", title: "Hoy" },
     { id: "q:week", title: "Esta semana", description: "Desde el lunes" },
     { id: "q:month", title: "Este mes" },
     { id: "q:lastmonth", title: "Mes pasado" },
     { id: "q:category", title: "Por categoría", description: "Este mes, en una categoría" },
+    { id: "q:source", title: "Por tarjeta o billetera", description: "Este mes, con una tarjeta o billetera" },
+    { id: "q:method", title: "Por medio de pago", description: "Este mes: efectivo, débito..." },
   ]);
 }
 
@@ -371,7 +381,8 @@ function shiftMonth(month: string, delta: number) {
 
 async function receiveQuery(ctx: Ctx, id: string | undefined, text: string) {
   const today = todayISO();
-  const option = id?.slice(2) ?? { hoy: "today", semana: "week", mes: "month", categoria: "category" }[text];
+  const option =
+    id?.slice(2) ?? { hoy: "today", semana: "week", mes: "month", categoria: "category", tarjeta: "source", medio: "method" }[text];
 
   if (option === "today") await sendSummary(ctx, "de hoy", { from: today, to: today });
   else if (option === "week") {
@@ -383,7 +394,47 @@ async function receiveQuery(ctx: Ctx, id: string | undefined, text: string) {
   else if (option === "category") {
     await setSession(ctx.phone, "query:category", { page: 0 });
     await sendCategoryList(ctx, 0, "🏷️ ¿Qué categoría querés ver?");
+  } else if (option === "source") {
+    const sources = await listPaymentSources(ctx.userId);
+    await setSession(ctx.phone, "query:source");
+    await ctx.out.list(
+      "💳 ¿Qué tarjeta o billetera querés ver?",
+      "Ver opciones",
+      sources.slice(0, 10).map((s) => ({ id: `src:${s.id}`, title: `${s.kind === "CARD" ? "💳" : "📲"} ${s.name}` })),
+      "Tarjetas y billeteras",
+    );
+  } else if (option === "method") {
+    await setSession(ctx.phone, "query:method");
+    await ctx.out.list(
+      "💳 ¿Qué medio de pago querés ver?",
+      "Ver opciones",
+      (Object.keys(paymentMethodLabels) as PaymentMethodCode[]).map((m) => ({ id: `pm:${m}`, title: paymentMethodLabels[m] })),
+      "Medios de pago",
+    );
   } else await showQueryMenu(ctx);
+  return true;
+}
+
+/** Gastos del mes con una tarjeta o billetera */
+async function receiveQuerySource(ctx: Ctx, id: string | undefined, text: string) {
+  const sources = await listPaymentSources(ctx.userId);
+  const source = id?.startsWith("src:") ? sources.find((s) => s.id === id.slice(4)) : matchByName(sources, text);
+  if (!source) return receiveQuery(ctx, "q:source", "");
+  await sendSummary(ctx, `de este mes con ${source.name}`, { month: todayISO().slice(0, 7), paymentSourceId: source.id });
+  return true;
+}
+
+/** Gastos del mes con un medio de pago */
+async function receiveQueryMethod(ctx: Ctx, id: string | undefined, text: string) {
+  const methods = Object.keys(paymentMethodLabels) as PaymentMethodCode[];
+  const method = id?.startsWith("pm:")
+    ? methods.find((m) => m === id.slice(3))
+    : methods.find((m) => normalize(paymentMethodLabels[m]) === text);
+  if (!method) return receiveQuery(ctx, "q:method", "");
+  await sendSummary(ctx, `de este mes con ${paymentMethodLabels[method].toLowerCase()}`, {
+    month: todayISO().slice(0, 7),
+    paymentMethod: method,
+  });
   return true;
 }
 
@@ -445,7 +496,7 @@ function expenseLine(e: ExpenseDTO) {
 
 // ---------- Eliminar ----------
 
-async function showDeleteList(ctx: Ctx) {
+export async function showDeleteList(ctx: Ctx) {
   const last = await listExpenses(ctx.userId, { to: todayISO() }, 10);
   if (last.length === 0) {
     await clearSession(ctx.phone);
