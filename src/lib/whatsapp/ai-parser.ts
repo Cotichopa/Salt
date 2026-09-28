@@ -41,11 +41,17 @@ const aiSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("eliminar"), ...target }),
   z.object({ accion: z.literal("editar"), ...target, cambios: expenseShape.partial().optional() }),
   z.object({ accion: z.literal("otro"), pregunta: z.string().optional() }),
-  z.object({ accion: z.literal("seccion"), cual: z.enum(["fijo"]) }),
+  z.object({ accion: z.literal("seccion"), cual: z.enum(["fijo", "tarjeta"]) }),
 ]);
 
 /** Otras partes de la app que Chop maneja con una segunda llamada chica (ver sections/) */
-export type Section = "fijo";
+export type Section = "fijo" | "tarjeta";
+
+/**
+ * Atajo sin IA dentro de una sección (lo arma quick-parser.ts): "mis fijos" → listar,
+ * "qué tengo que pagar" → pagar, "resumen visa" → resumen de esa tarjeta.
+ */
+export type SectionQuick = { action: "listar" | "pagar" | "resumen"; name?: string };
 
 export type ParsedExpense = {
   amount: number;
@@ -73,8 +79,8 @@ export type Parsed =
   | { intent: "eliminar"; target: Target }
   | { intent: "editar"; target: Target; changes: Partial<ParsedExpense> }
   | { intent: "otro"; question: string }
-  // De otra sección: `list` = mostrar la lista (sin IA, ej: "mis fijos"); si no, la sección interpreta el mensaje
-  | { intent: "seccion"; section: Section; list?: boolean };
+  // De otra sección: con `quick` se resuelve sin IA; si no, la sección interpreta el mensaje
+  | { intent: "seccion"; section: Section; quick?: SectionQuick };
 
 export function isAiEnabled() {
   return process.env.AI_PARSER_ENABLED === "true" && !!process.env.ANTHROPIC_API_KEY;
@@ -87,12 +93,14 @@ const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Int
 {"accion":"editar","texto":"pizza","monto":18000,"cambios":{"monto":20000,"medio":"CASH"}}
 {"accion":"otro","pregunta":"¿Querés cargar un gasto de $15.000? ¿En qué categoría?"}
 {"accion":"seccion","cual":"fijo"}
+{"accion":"seccion","cual":"tarjeta"}
 
 ACCIONES
 - cargar: uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "chop cargame 5000 de nafta").
 - consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes".
 - eliminar / editar: un gasto ya cargado ("borrá el último", "eliminá la nafta", "el último eran 20000", "pasá la pizza a efectivo"). ultimo=true SOLO si dice "el último"; si no, texto = palabras que lo identifican y monto = el que tenía, si lo dice. En cambios, solo lo que cambia (mismas claves que un gasto).
-- seccion "fijo": gastos fijos que se cargan solos cada mes (ver, crear, pausar, reanudar, borrar o cambiar el monto: "netflix aumentó a 12000", "agregá un fijo de alquiler", "pausá el gimnasio"). No es cargar.
+- seccion "fijo": gastos fijos mensuales ("netflix aumentó a 12000", "agregá un fijo de alquiler", "pausá el gimnasio"). No es cargar.
+- seccion "tarjeta": resumen o pago de una tarjeta, vencimientos, días de cierre, agregar tarjeta o billetera ("cuánto me viene en la visa", "pagué la visa", "agregá la tarjeta galicia"). "Cuánto gasté con la visa" es consultar.
 - otro: saludos, gracias o mensajes confusos. Si parece un gasto incompleto, poné una pregunta corta; si no tiene que ver con gastos, omitila.
 
 DATOS
@@ -247,6 +255,17 @@ function toAiShape(p: ParsedExpense) {
     fecha: p.date,
     ...(p.description ? { desc: p.description } : {}),
   };
+}
+
+/**
+ * Un día del mes que dio el modelo, solo si está en el mensaje ("el 5", "día 5", "el primero"): el modelo a veces
+ * lo supone (el alquiler, el 1) y es mejor preguntarlo.
+ */
+export function saidDay(text: string, day: number | undefined) {
+  if (!day || !Number.isInteger(day) || day < 1 || day > 31) return undefined;
+  const t = normalize(text);
+  if (new RegExp(`(^|[^\\d.,])${day}([^\\d.,]|$)`).test(t)) return day;
+  return day === 1 && /\b(primero|1ro|1°)\b/.test(t) ? 1 : undefined;
 }
 
 /** Busca por nombre (sin tildes ni mayúsculas) entre las categorías o tarjetas del usuario */

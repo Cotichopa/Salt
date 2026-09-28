@@ -118,6 +118,31 @@ function splitWords(text: string) {
 // "mis fijos": la lista de gastos fijos
 const FIXED_LIST = ["fijos", "mis fijos", "los fijos", "ver fijos", "ver mis fijos", "gastos fijos", "mis gastos fijos", "ver gastos fijos", "que fijos tengo"];
 
+// "¿qué tengo que pagar?": resúmenes y fijos que faltan pagar este mes
+const WHAT_TO_PAY = [
+  "que tengo que pagar",
+  "que me falta pagar",
+  "que falta pagar",
+  "que debo",
+  "que debo pagar",
+  "que tengo que pagar este mes",
+  "que me vence",
+  "que vence",
+  "vencimientos",
+  "mis vencimientos",
+  "pagos del mes",
+];
+
+/**
+ * "resumen visa", "resumen de la visa", "cuánto me viene en la visa": el nombre de una tarjeta
+ * del usuario (tal cual, sin nada más). null si no es eso.
+ */
+function statementOf(joined: string, sources: Source[]) {
+  const m = /^(?:resumen|cuanto me viene|cuanto viene|cuanto vence|cuando vence)(?: de| en| con)?(?: la| el| mi)? (.+)$/.exec(joined);
+  if (!m) return null;
+  return sources.find((s) => s.kind === "CARD" && normalize(s.name) === m[1])?.name ?? null;
+}
+
 /** "borrá el último", "eliminar el último gasto", "borrame el ultimo" */
 export function isDeleteLast(text: string) {
   const joined = splitWords(text).words.join(" ");
@@ -127,7 +152,15 @@ export function isDeleteLast(text: string) {
 /** Lo que Chop puede entender sin IA: primero una carga, después una consulta. null si ninguna. */
 export function parseWithoutAI(text: string, categories: Category[], sources: Source[]): Parsed | null {
   if (isDeleteLast(text)) return { intent: "eliminar", target: { last: true, text: "", amount: 0 } };
-  if (FIXED_LIST.includes(splitWords(text).words.join(" "))) return { intent: "seccion", section: "fijo", list: true };
+  const joined = splitWords(text).words.join(" ");
+  if (FIXED_LIST.includes(joined)) return { intent: "seccion", section: "fijo", quick: { action: "listar" } };
+  if (WHAT_TO_PAY.includes(joined)) return { intent: "seccion", section: "tarjeta", quick: { action: "pagar" } };
+  const card = statementOf(joined, sources);
+  if (card) return { intent: "seccion", section: "tarjeta", quick: { action: "resumen", name: card } };
+  // "agregá la tarjeta galicia": directo a la sección de tarjetas (se ahorra la llamada principal)
+  if (/^(agrega|agregar|agregame|suma|sumar|crea|crear|nueva)( la| el| una| un| mi)? (tarjeta|billetera) \S/.test(joined)) {
+    return { intent: "seccion", section: "tarjeta" };
+  }
   const expense = parseQuick(text, categories, sources);
   if (expense) return { intent: "cargar", expenses: [expense] };
   return parseQuickQuery(text, categories, sources);

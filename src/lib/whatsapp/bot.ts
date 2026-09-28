@@ -77,7 +77,7 @@ export async function handleInput(ctx: Ctx, input: Input) {
     if (quick) console.log(`[quick-parser] ${quick.intent} resuelto sin IA`);
     if (quick?.intent === "cargar" && (await proposeExpenses(ctx, quick.expenses))) return;
     if (quick?.intent === "consultar") return void (await handleQuery(ctx, quick));
-    if (quick?.intent === "seccion" && (await handleSection(ctx, quick.section, input.text, quick.list))) return;
+    if (quick?.intent === "seccion" && (await handleSection(ctx, quick.section, input.text, quick.quick))) return;
 
     if (isAiEnabled()) return askAI(ctx, input.text, categories, sources);
   }
@@ -107,7 +107,7 @@ async function askAI(
   if (parsed.intent === "eliminar") return void (await handleDelete(ctx, parsed.target));
   if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));
   // De otra sección (fijos...): la sección hace su propia llamada chica a la IA
-  if (parsed.intent === "seccion" && (await handleSection(ctx, parsed.section, text, parsed.list))) return;
+  if (parsed.intent === "seccion" && (await handleSection(ctx, parsed.section, text))) return;
   // No entendió del todo: repregunta en vez de tirar el menú de una
   if (parsed.intent === "otro" && parsed.question) {
     await ctx.out.text(`${parsed.question}\n\n_Escribí *menu* si preferís los botones._`);

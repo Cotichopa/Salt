@@ -16,7 +16,7 @@ import {
   type LoadedRecurring,
   type RecurringDTO,
 } from "@/lib/services/recurring";
-import { askModel, isAiEnabled, listsLines, matchByName, MAX_CHARS, todayLine, type Lists } from "@/lib/whatsapp/ai-parser";
+import { askModel, isAiEnabled, listsLines, matchByName, MAX_CHARS, saidDay, todayLine, type Lists } from "@/lib/whatsapp/ai-parser";
 import {
   BACK,
   dollarRows,
@@ -183,16 +183,6 @@ const METHOD_HINTS: Record<"CASH" | "DEBIT" | "CREDIT" | "TRANSFER", string[]> =
   TRANSFER: ["transfer", "mercado pago", "mercadopago", "mp", "alias", "cvu", "cbu"],
 };
 
-/**
- * El día solo vale si está en el mensaje ("el 5", "día 5", "el primero"): el modelo a veces
- * lo supone (el alquiler, el 1) y es mejor preguntarlo.
- */
-function saidDay(text: string, day: number | undefined) {
-  if (!day || !Number.isInteger(day) || day < 1 || day > 31) return undefined;
-  const t = normalize(text);
-  if (new RegExp(`(^|[^\\d.,])${day}([^\\d.,]|$)`).test(t)) return day;
-  return day === 1 && /\b(primero|1ro|1°)\b/.test(t) ? 1 : undefined;
-}
 
 async function startCreate(
   ctx: Ctx,

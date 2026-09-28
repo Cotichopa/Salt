@@ -9,14 +9,15 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { db } from "../src/lib/db";
 import { listCategories } from "../src/lib/services/categories";
 import { listPaymentSources } from "../src/lib/services/payment-sources";
-import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense } from "../src/lib/whatsapp/ai-parser";
+import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense, type Section } from "../src/lib/whatsapp/ai-parser";
 import { parseWithoutAI } from "../src/lib/whatsapp/quick-parser";
 import { listRecurring } from "../src/lib/services/recurring";
 import { parseFixed } from "../src/lib/whatsapp/sections/fijos";
+import { parseCards } from "../src/lib/whatsapp/sections/tarjetas";
 
 // Acciones esperadas. Las de secciones nuevas (tarjeta, medio, fijo, presupuesto, categoria)
 // Chop todavía no las sabe hacer: sirven para ver cómo mejora en las próximas etapas.
-type Expected = Parsed["intent"] | "tarjeta" | "medio" | "fijo" | "presupuesto" | "categoria";
+type Expected = Exclude<Parsed["intent"], "seccion"> | Section | "presupuesto" | "categoria";
 
 // El tercer dato (opcional) son gastos ya propuestos que el mensaje corrige ("con efectivo")
 const NAFTA: ParsedExpense = {
@@ -58,8 +59,10 @@ const CASES: [string, Expected, ParsedExpense[]?][] = [
   // Secciones nuevas
   ["cuánto me viene en la visa", "tarjeta"],
   ["marcá como pagado el resumen de la visa", "tarjeta"],
-  ["la visa cierra el 25 y vence el 7", "medio"],
-  ["agregá la tarjeta galicia", "medio"],
+  ["la visa cierra el 25 y vence el 7", "tarjeta"],
+  ["agregá la tarjeta galicia", "tarjeta"],
+  ["qué tengo que pagar este mes?", "tarjeta"],
+  ["pagué la mastercard", "tarjeta"],
   ["netflix aumentó a 12000", "fijo"],
   ["agregá un gasto fijo de alquiler 350 mil el día 5", "fijo"],
   ["pausá el fijo del gimnasio", "fijo"],
@@ -114,7 +117,12 @@ async function main() {
     const quick = proposed ? null : parseWithoutAI(text, cats, sources);
     const parsed: Parsed | null = quick ?? (await parseMessage(text, lists, proposed));
     // Si es de una sección, también la segunda llamada (lo que realmente pasa en Chop)
-    const second = parsed?.intent === "seccion" && !parsed.list ? await parseFixed(text, lists, fixedNames) : null;
+    const second =
+      parsed?.intent !== "seccion" || parsed.quick
+        ? null
+        : parsed.section === "fijo"
+          ? await parseFixed(text, lists, fixedNames)
+          : await parseCards(text, lists.sources);
     const detail = second ? JSON.stringify(second) : describe(parsed);
     const got = parsed?.intent === "seccion" ? parsed.section : (parsed?.intent ?? "error");
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón

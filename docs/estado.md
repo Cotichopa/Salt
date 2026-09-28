@@ -142,8 +142,29 @@ Etapas (cada una se commitea aparte):
    veces responde `null` en vez de omitir. Por eso: los `null` se ignoran en `askModel`, y el día, el
    medio y la tarjeta de un fijo solo se aceptan si están en el mensaje; "aumentó a" es siempre cambio
    de monto (si ese fijo no existe, lo avisa en vez de crearlo).
-5. Tarjetas y billeteras (resumen, marcar pagado, crear, cierre/vencimiento).
-6. Presupuestos y categorías.
+5. **Tarjetas, billeteras y "¿qué tengo que pagar?"** — hecha. `sections/tarjetas.ts` (misma
+   arquitectura que fijos, segunda llamada de ~420 tokens):
+   - **Resumen** ("¿cuánto me viene en la Visa?", "resumen visa" sin IA): el último resumen cerrado sin
+     pagar (o el abierto), con estado, cierre, vencimiento, total en pesos (USD al oficial) y cuotas. Si
+     quedó otro anterior sin marcar, lo avisa. Botones **✅ Marcar pagado** (`pay:<tarjeta>:<mes>`,
+     valen siempre). Tarjeta sin días: lo gastado con crédito este mes.
+   - **Marcar pagado** ("pagué la visa"): si hay dos pendientes pregunta cuál; si tiene dólares, si los
+     pagó en pesos o en dólares. Igual que la web: fecha de hoy, dólar oficial y total estimado (se
+     corrige en la web si el banco cobró otro número). Con **↩️ Deshacer** (`unpay:`).
+   - **Días de cierre/vencimiento** ("la visa cierra el 25 y vence el 7") y **agregar tarjeta o
+     billetera** ("agregá la tarjeta galicia"; si no dice cuál es, pregunta con botones).
+   - **"¿Qué tengo que pagar?"** (sin IA; decisiones de Felipe): lo que vence **este mes** sin pagar
+     (y los resúmenes vencidos sin marcar), tarjetas sin días con lo gastado a crédito este mes ("sin
+     fecha de vencimiento") y los fijos que faltan cargar este mes (los fijos a crédito no, ya van en el
+     resumen). Total en pesos.
+   - En cualquier confirmación, si la persona escribe otra cosa, la confirmación se deja y el
+     mensaje se procesa normal (antes volvía a preguntar).
+   - Banco: 32/36 (fallan solo presupuestos y categorías), US$ 0,00098 por mensaje.
+6. **Menú completo + presupuestos y categorías** (pedido de Felipe, 2026-09-28): menú con 3 botones
+   **➕ Agregar · 📊 Consultar · 🗑️ Eliminar**, cada uno abre una lista (gasto, fijo, tarjeta/billetera,
+   categoría, presupuesto; en Consultar además "¿qué tengo que pagar?", resumen de tarjeta, fijos,
+   presupuestos; consultas de gastos por tarjeta o medio). Presupuestos y categorías también por texto.
+   Falta planificarla.
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
 principal; el resto en una segunda llamada chica con el prompt de su sección).
 
@@ -159,4 +180,7 @@ principal; el resto en una segunda llamada chica con el prompt de su sección).
   falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
 - `npm run db:seed` **pisa la contraseña del admin** con la del `.env`. Felipe decidió no tocarlo por
   ahora (no hay datos importantes), pero no hay que correrlo en el servidor con datos reales.
-- No hay tests automáticos: las pruebas de esta sesión se hicieron con scripts temporales.
+- No hay tests automáticos: las pruebas de esta sesión se hicieron con scripts temporales. Para Chop
+  está `npm run chop:bench` (ver arriba).
+- En la compu con Docker, la demo tiene la Visa **sin** días de cierre/vencimiento (en la otra compu
+  tenía 25/7). Las pruebas de Chop se los ponen un rato y los vuelven a sacar.
