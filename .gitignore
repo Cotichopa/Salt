@@ -45,3 +45,6 @@ next-env.d.ts
 
 # archivos personales
 Passphrase
+
+# mediciones de Chop (npm run chop:bench)
+/scripts/.bench/
