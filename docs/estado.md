@@ -11,44 +11,66 @@ qué se decidió y qué falta**.
 - Preferí preguntas numeradas en texto (1, 2, 3 con opciones a/b) antes que menús.
 - Pedí confirmación antes de commitear, pushear o borrar datos.
 
-## Última sesión: 2026-09-24/25 (compu nueva, levantada desde cero)
+## Hay dos compus
 
-**Puesta en marcha**
-- `.env` armado desde `.env.example` (no está en git: copialo por un medio seguro, nunca por el repo).
-- npm bloqueaba scripts de instalación: se aprobaron `esbuild`, `prisma`, `@prisma/engines` y
-  `unrs-resolver` (quedó en `package.json`, no hay que repetirlo).
-- El seed fallaba por `server-only`: ahora corre con `--conditions=react-server` (`prisma.config.ts`).
-- Túnel: ngrok con dominio fijo `clifton-monometrical-brook.ngrok-free.dev` (`npm run tunnel`). En
-  cada compu hay que instalar ngrok y correr `ngrok config add-authtoken <token>` una vez.
+- **Compu con Docker** (usuario `estilo`, i7-7700): la base corre en Docker (`salt-gastos-db-1`,
+  puerto 5434). Acá se hizo la sesión del 2026-09-28: tiene el `.env` completo (token permanente de
+  WhatsApp, API key de Anthropic) y Whisper compilado en `~/whisper`.
+- **Compu sin Docker** (usuario `laptop`): sin Docker ni `sudo`; la base es un PostgreSQL portátil
+  (`embedded-postgres`) en una carpeta temporal, puerto 5434 (ver "Pendientes chicos").
 
-**WhatsApp: conectado y probado.** Número de prueba de Meta, token **permanente** (no vence),
-webhook en `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con el campo
-`messages` suscripto. Chop contesta el menú por WhatsApp.
+## Para retomar en la otra compu (la sin Docker)
 
-**Categorías por cuenta** (migración `20260925025821_categorias_por_cuenta`)
-- Antes: 11 categorías "base" compartidas (`userId` null), que nadie podía editar ni borrar.
-- Ahora: cada cuenta tiene **sus propias** categorías. Al crear una cuenta se le copian las 11
-  iniciales (`DEFAULT_CATEGORIES` / `ensureDefaultCategories` en `src/lib/services/categories.ts`),
-  y desde ahí se editan y borran igual que las creadas a mano, sin afectar a nadie.
-- Los **gastos nunca se compartieron** entre cuentas; lo único compartido era la lista de nombres.
-- **"Otros" se puede borrar** (decisión de Felipe). Si no existe y Chop no encuentra la categoría
-  de un gasto, se la **pregunta** con la lista (antes el gasto se descartaba sin avisar).
-- Borrar una categoría con gastos: se elige **moverlos** a otra o **borrarlos** con ella.
-- Arreglado de paso: en Chop, tocar una tarjeta de la lista en "Completar" respondía
-  "Esa opción ya venció" (el estado `ai:missing` no aceptaba botones).
+1. `git pull` — trae los 9 commits de Chop del 2026-09-28 (último `7b20ca1`).
+2. `npm install` — hay una dependencia nueva, `ffmpeg-static` (baja el programa ffmpeg, ~80 MB).
+3. Levantar la base portátil si la compu se reinició, y `npx prisma migrate status`: no hay
+   migraciones nuevas desde el 2026-09-28 (la última, `gastos_fijos`, se hizo en esa compu).
+4. **`.env`**: traer desde la compu con Docker, por un medio seguro (nunca por git), lo que allá falta:
+   `ANTHROPIC_API_KEY` + `AI_PARSER_ENABLED=true`, y lo de WhatsApp (`WHATSAPP_TOKEN` permanente,
+   `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`). `DATABASE_URL` queda el
+   de esa compu. Para los audios: dejar `WHISPER_CLI`/`WHISPER_MODEL` vacíos (Chop dice que todavía no
+   escucha audios) o compilar whisper.cpp ahí (ver "Audios con Whisper local"; necesita cmake y gcc).
+5. **ngrok: una sola compu a la vez.** Las dos usan el mismo dominio fijo: cerrar el túnel en una antes
+   de abrirlo en la otra. Después: `npm run dev` y `npm run tunnel` (cada uno en su terminal).
+6. Probar: mandarle "hola" a Chop por WhatsApp (tienen que salir los botones ➕ Agregar · 📊 Consultar ·
+   🗑️ Eliminar). Si Chop no contesta, revisar el token (ver "Pendientes chicos").
+7. `npm run chop:bench -- <nombre>` funciona si está la API key (cuesta ~US$ 0,04 por corrida).
 
-## Pendiente (en orden)
+## Última sesión: 2026-09-28 (compu con Docker)
 
-1. **API key de Anthropic: cargada y andando** (2026-09-28, compu con Docker). Falta probar el
-   caso "categoría que no existe" por WhatsApp (debería preguntarla).
-2. **Chop más barato y que maneje toda la app** — en curso, ver la sección "En curso: Chop" más abajo.
-3. ~~Audios con Whisper~~ — hecho (ver "Audios con Whisper local" abajo). Antes decía: implementar `src/lib/transcribe.ts`. Se decide según el
-   servidor: sin placa de video conviene Whisper por API; local solo si el servidor tiene GPU o
-   CPU de sobra. Falta también descargar el audio de Meta (llega como id, formato OGG/Opus).
-4. **Subir al servidor** — lo hace Felipe con su papá (fuera de estas sesiones). Todavía no está definido cuál. Ver "Antes de desplegar" en el README;
-   lo más importante: backups de la base, dominio con HTTPS, número real de WhatsApp.
+- **Chop maneja toda la app** por WhatsApp y el chat web: gastos, fijos, tarjetas y billeteras
+  (resúmenes, marcar pagado, "¿qué tengo que pagar?"), presupuestos y categorías, por texto, por
+  audio o con el menú de botones (➕ Agregar · 📊 Consultar · 🗑️ Eliminar). Detalle abajo, en
+  "Chop más barato y que maneje toda la app".
+- **Costo**: ~US$ 0,001 por mensaje (−67% vs. el principio); 16 de 37 mensajes del banco van sin IA.
+  Felipe decidió no optimizar más (el ahorro que queda es de centavos por mes).
+- **Todo gasto se confirma antes de guardarse** (decisión de Felipe, por los audios), con Deshacer.
+- **Audios** con Whisper local (modelo small) — ver "Audios con Whisper local".
+- **Subir al servidor**: lo hace Felipe con su papá, fuera de estas sesiones.
 
-## En curso: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
+## Historial: sesión 2026-09-24/25 (compu sin Docker, levantada desde cero)
+
+- `.env` armado desde `.env.example`. npm bloqueaba scripts de instalación: se aprobaron `esbuild`,
+  `prisma`, `@prisma/engines` y `unrs-resolver` (quedó en `package.json`). El seed corre con
+  `--conditions=react-server` (`prisma.config.ts`).
+- Túnel: ngrok con dominio fijo `clifton-monometrical-brook.ngrok-free.dev` (`npm run tunnel`). En cada
+  compu: instalar ngrok y `ngrok config add-authtoken <token>` una vez.
+- **WhatsApp**: número de prueba de Meta, token **permanente** (no vence), webhook en
+  `https://clifton-monometrical-brook.ngrok-free.dev/api/whatsapp` con el campo `messages` suscripto.
+- **Categorías por cuenta** (migración `20260925025821_categorias_por_cuenta`): cada cuenta tiene sus
+  propias categorías (al crearla se le copian las 11 iniciales, `ensureDefaultCategories`). "Otros" se
+  puede borrar; borrar una categoría con gastos pide moverlos o borrarlos.
+
+## Pendiente
+
+1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
+   importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
+   hay que compilar whisper.cpp (ver "Audios con Whisper local").
+2. Confirmar con Felipe las **decisiones por defecto de los gastos fijos** (lista en "Dólar a pesos,
+   resumen de tarjetas y gastos fijos").
+3. Los "Pendientes chicos" del final.
+
+## Hecho: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
 
 Plan completo en 3 etapas (cada una se revisa y commitea por separado):
 1. **Dólar a pesos** — hecha y commiteada (`f0559b3`). Cada gasto guarda su valor en pesos y en dólares con
@@ -84,14 +106,11 @@ avisa en vez de preguntar; con otro medio se elige el dólar. Los gastos viejos 
    - Los fijos en USD guardan su dólar; la cotización es la del día en que se carga. Si no se
      consigue, no se carga y se reintenta la próxima vez.
 
-**Al retomar:** las 3 etapas están commiteadas. Quedan por confirmar con Felipe las decisiones por
-defecto de los fijos (lista de arriba). En la demo, los gastos en USD con crédito viejos siguen al
-dólar tarjeta; `npm run db:demo` los regenera al oficial (cambia la contraseña de la demo).
+Las 3 etapas están commiteadas. Falta confirmar con Felipe las decisiones por defecto de los fijos
+(lista de arriba). En la demo, los gastos en USD con crédito viejos siguen al dólar tarjeta;
+`npm run db:demo` los regenera al oficial (cambia la contraseña de la demo).
 
-**Lo de Chop que quedaba de estas etapas** va en las etapas 4 y 5 del plan de Chop (abajo): aviso por
-WhatsApp de los fijos cargados, "Netflix aumentó a 12.000" y resumen de la tarjeta por Chop.
-
-## En curso: Chop más barato y que maneje toda la app (plan del 2026-09-28)
+## Hecho: Chop más barato y que maneje toda la app (plan del 2026-09-28)
 
 Decisiones de Felipe: Chop va a manejar también fijos, resumen/pago de tarjeta, presupuestos,
 categorías y tarjetas/billeteras (admin y cuenta, no). ~~Un gasto simple se guarda directo con botón
@@ -116,17 +135,18 @@ Etapas (cada una se commitea aparte):
    "cuánto gasté / qué gasté / gastos / cómo vengo" + período, categoría (o palabra clave), tarjeta y
    medio; "borrá / eliminá el último" también es sin IA (`isDeleteLast`). `parseWithoutAI` junta todo
    y lo usan `bot.ts` y el banco. En el banco: 12 de 34 sin IA, **US$ 0,00084 por mensaje (−73% vs. la base)**.
-3. **Carga directa con Deshacer** — hecha. Un gasto se guarda enseguida y la respuesta trae
+3. **Carga con Deshacer** — hecha (y después cambiada: ahora **se confirma antes de guardar**, ver
+   arriba). Originalmente un gasto se guardaba enseguida; hoy, al guardar, la respuesta trae
    **↩️ Deshacer** (el id va en el botón, `undo:<id>.<id>`; borra también todas las cuotas; vale
    siempre, como los botones del menú). Antes de guardar pregunta solo lo imprescindible
    (`finishPending` en `menu.ts`): **"¿Cómo pagaste?"** si no dijo el medio (lista con efectivo, débito,
-   crédito, sus billeteras y transferencia; antes suponía el más usado y Felipe prefirió que pregunte),
+   crédito y sus billeteras; antes suponía el más usado y Felipe prefirió que pregunte),
    **con qué** si no es efectivo y no lo dijo: tarjeta para débito y crédito (sin ella una compra con
    crédito no entra en el resumen de la tarjeta), billetera para transferencia (si contesta otro medio,
    "mercado pago", se cambia el medio; si no se entiende, se guarda sin). La lista de "¿cómo pagaste?"
    no tiene "Transferencia" suelta: van las billeteras por nombre (decisión de Felipe). Igual en los
-   fijos y en la carga paso a paso del menú y **a qué dólar** si es en USD
-   sin crédito (con crédito, oficial y lo avisa). Al guardar en USD muestra cuánto quedó en pesos.
+   fijos y en la carga paso a paso del menú. Y **a qué dólar** si es en USD sin crédito (con
+   crédito, oficial y lo avisa). Al guardar en USD muestra cuánto quedó en pesos.
    Varios gastos en un mensaje siguen con "Guardar todos" (y también tienen Deshacer). La carga paso a
    paso del menú termina por el mismo camino. Se sacó el botón "Completar" (descripción/tarjeta
    opcionales). Los resúmenes de Chop suman **en pesos** (`amountArs`); solo los USD viejos sin
@@ -200,7 +220,7 @@ Etapas (cada una se commitea aparte):
 Regla: si al sumar secciones el prompt fijo pasa ~3000 tokens, se divide en dos llamadas (gastos en la
 principal; el resto en una segunda llamada chica con el prompt de su sección).
 
-## Audios con Whisper local — hecho (2026-09-28)
+## Hecho: audios con Whisper local (2026-09-28)
 
 Felipe eligió **Whisper en la propia compu** (whisper.cpp). En la compu con Docker (i7-7700, 8 hilos,
 AVX2, sin GPU NVIDIA) está compilado en `~/whisper/whisper.cpp` (fuera del repo), con los modelos base,
@@ -230,14 +250,18 @@ todo; base ya se equivocaba palabras).
 - `npm audit` marca 4 vulnerabilidades altas que vienen de Prisma (`deepmerge-ts` y `mysql2`, que la
   app no usa). Revisar cuando salga una versión de Prisma que las arregle (no usar `--force`).
 
-- **Compu sin Docker (2026-09-28):** esta compu no tiene Docker ni `sudo`, así que la base se levantó
-  con un PostgreSQL portátil (`embedded-postgres`) en una carpeta temporal, fuera del repo, en el
-  puerto 5434. Si se reinicia la compu hay que volver a levantarla (o instalar Docker). El `.env`
-  de acá tiene WhatsApp y la API key vacíos, y el admin es `fbrisig@gmail.com`.
+- **Compu sin Docker:** no tiene Docker ni `sudo`, así que la base se levantó con un PostgreSQL
+  portátil (`embedded-postgres`) en una carpeta temporal, fuera del repo, en el puerto 5434. Si se
+  reinicia la compu hay que volver a levantarla (o instalar Docker). Su `.env` tenía WhatsApp y la API
+  key vacíos (ver "Para retomar en la otra compu"); el admin es `fbrisig@gmail.com`.
+- **Si Chop no contesta por WhatsApp:** revisar el token con
+  `GET graph.facebook.com/<versión>/debug_token?input_token=<T>&access_token=<T>`: `expires_at: 0` =
+  permanente; "Session has expired" = vencido (el 2026-09-28 la compu con Docker tenía uno temporal
+  vencido y se reemplazó por el permanente). Al cambiar el `.env` hay que reiniciar `npm run dev`.
 - Después de una migración nueva hay que **reiniciar `npm run dev`**: si no, sigue con el cliente
   de Prisma viejo en memoria y la tabla nueva da `undefined`.
-- **Docker sin sudo:** el usuario `laptop` no está en el grupo `docker`, así que `npm run db:up`
-  falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
+- **Docker sin sudo (compu sin Docker):** el usuario `laptop` no está en el grupo `docker`, así que
+  `npm run db:up` falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
 - `npm run db:seed` **pisa la contraseña del admin** con la del `.env`. Felipe decidió no tocarlo por
   ahora (no hay datos importantes), pero no hay que correrlo en el servidor con datos reales.
 - No hay tests automáticos: las pruebas de esta sesión se hicieron con scripts temporales. Para Chop
