@@ -5,11 +5,12 @@ import { decrypt, renewedSession } from "@/lib/session";
 // cookie de sesión es válida (sin consultar la base). La verificación completa
 // la hace src/lib/dal.ts en cada página y acción.
 
-const publicRoutes = ["/login"];
+// Sin sesión: el login y "olvidé mi contraseña" (/recuperar y el link del mail, /recuperar/<token>)
+const publicRoutes = ["/login", "/recuperar"];
 
 export default async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  const isPublic = publicRoutes.includes(path);
+  const isPublic = publicRoutes.some((route) => path === route || path.startsWith(`${route}/`));
   const token = req.cookies.get("session")?.value;
   const session = await decrypt(token);
 

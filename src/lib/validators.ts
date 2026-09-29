@@ -41,6 +41,19 @@ export const changePasswordSchema = z
   })
   .refine((d) => d.next === d.confirm, { path: ["confirm"], message: "Las contraseñas no coinciden" });
 
+// "Olvidé mi contraseña": primero el email, después la contraseña nueva (con el token del mail)
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email("Email inválido")),
+});
+
+export const newPasswordSchema = z
+  .object({
+    token: z.string().min(1),
+    next: passwordRule,
+    confirm: z.string(),
+  })
+  .refine((d) => d.next === d.confirm, { path: ["confirm"], message: "Las contraseñas no coinciden" });
+
 export const updatePhoneSchema = z.object({
   userId: z.string().min(1),
   phone: phoneRule,

@@ -69,6 +69,19 @@ qué se decidió y qué falta**.
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. Los "Pendientes chicos" del final.
 
+## Hecho: olvidé mi contraseña (2026-09-29)
+
+- Login → "¿Olvidaste tu contraseña?" → `/recuperar` (email) → mail con link a `/recuperar/<token>` →
+  contraseña nueva → login con aviso. Probado de punta a punta por Felipe.
+- Mails por Gmail con contraseña de aplicación (`src/lib/mail.ts`, `nodemailer`; `GMAIL_USER`,
+  `GMAIL_APP_PASSWORD`). El link se arma con `APP_URL` (en esta compu apunta al túnel de Cloudflare:
+  **cambiarlo cada vez que cambie el túnel**, y en el servidor, a su dominio).
+- Tabla `password_resets` con el hash del token; vence en 1 hora, sirve una vez, pedir otro anula los
+  anteriores, máximo 3 por hora. Responde igual exista o no el email.
+- Las pantallas sin sesión comparten `src/components/auth-shell.tsx` (con "Made by Estilo").
+- Ideas de Felipe para después: mail más lindo (el botón/cuadro para restablecer) y una animación
+  al abrir la app en el celular.
+
 ## Hecho: app instalable (PWA) y "Made by Estilo" (2026-09-29)
 
 - `src/app/manifest.ts` (nombre, íconos en `public/icons/`, `display: standalone`), `public/sw.js` (service

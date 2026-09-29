@@ -71,8 +71,25 @@ model User {
   budgets        Budget[]
   recurring      RecurringExpense[]
   notices        Notice[]
+  passwordResets PasswordReset[]
 
   @@map("users")
+}
+
+// Links de "olvidé mi contraseña". Se guarda el hash (SHA-256) del token, no el token: el token
+// solo viaja en el mail. Vence en 1 hora y sirve una sola vez (usedAt).
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("password_resets")
 }
 
 // Avisos de Chop que ya se entregaron, para no repetirlos. Chop los manda cuando la persona le
