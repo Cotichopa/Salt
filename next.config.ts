@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "192.168.*.*", "10.*.*.*", "*.ngrok-free.dev", "*.trycloudflare.com"],
   // ffmpeg-static busca su programa en su propia carpeta: si Next lo empaqueta, no lo encuentra.
   // Así se carga tal cual desde node_modules (lo usa src/lib/transcribe.ts para los audios).
-  serverExternalPackages: ["ffmpeg-static"],
+  // pdfjs-dist, igual: en el servidor carga su "worker" desde su carpeta (src/lib/services/receipts.ts).
+  serverExternalPackages: ["ffmpeg-static", "pdfjs-dist"],
   // El service worker no se guarda en caché: así el celular siempre toma la última versión
   async headers() {
     return [

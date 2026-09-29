@@ -607,8 +607,8 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
  * Un solo gasto se guarda directo (con Deshacer); varios muestran Guardar todos / Cancelar.
  */
 async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string, receiptId?: string) {
-  // El borrador lleva la foto del ticket (si hay) por todas las preguntas hasta guardar
-  const d: Draft = receiptId ? { pending, receiptId } : { pending };
+  // El borrador lleva el ticket (si hay) y el título por todas las preguntas hasta guardar
+  const d: Draft = { pending, ...(receiptId ? { receiptId } : {}), ...(heading ? { heading } : {}) };
   if (pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
   return finishPending(ctx, d, false, heading);
 }
@@ -622,7 +622,7 @@ async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
   const pending = d.pending ?? [];
   await setSession(ctx.phone, "ai:confirm", d);
   const body = [
-    heading ?? (pending.length === 1 ? "¿Guardo este gasto? 👇" : `¿Guardo estos ${pending.length} gastos? 👇`),
+    heading ?? d.heading ?? (pending.length === 1 ? "¿Guardo este gasto? 👇" : `¿Guardo estos ${pending.length} gastos? 👇`),
     "",
     ...pending.map(describePending),
     "",
@@ -941,7 +941,7 @@ async function savePending(ctx: Ctx, pending: PendingExpense[], receiptId?: stri
       ? `\n_El medio de pago lo supuse. Si no es, decime por ej. "${saved.length === 1 ? "el último" : `el de ${formatMoney(saved[0].amount, saved[0].currency)}`} era con efectivo"._`
       : "",
     saved.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
-    receiptId && ids.length > 0 ? "🧾 _La foto del ticket quedó guardada con el gasto: la ves en la web, en Gastos._" : "",
+    receiptId && ids.length > 0 ? "🧾 _El ticket quedó guardado con el gasto: lo ves en la web, en Gastos._" : "",
   ]
     .filter(Boolean)
     .join("\n");

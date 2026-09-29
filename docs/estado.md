@@ -85,9 +85,13 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
-2. **Facturas en PDF por Chop** (pedido de Felipe, 2026-09-29, para después): aceptar el PDF adjunto
-   (tipo `document` de WhatsApp) además de la foto; Claude lee el PDF directo (CUIT y total exactos).
-   En la web, el PDF se ve **dentro del diálogo** del gasto, no en otra pestaña (decisión de Felipe).
+2. **Tickets en PDF y adjuntos** (plan del 2026-09-29, en etapas; cada una se commitea aparte):
+   1. ~~Chop por WhatsApp: PDF y fotos como documento~~ — hecha (ver "Hecho: fotos de tickets").
+   2. Web: el ticket (PDF con pdf.js, y la foto) se ve **dentro del diálogo** del gasto, sin abrir otra
+      pestaña (decisión de Felipe).
+   3. Chat de Chop en la web: botón ➕ con "Adjuntar foto" y "Adjuntar archivo"; rechaza lo que no sea
+      PDF o imagen.
+   4. Formulario de gasto: "Adjuntar ticket".
 3. Los "Pendientes chicos" del final.
 
 ## Hecho: fotos de tickets (2026-09-29)
@@ -112,6 +116,14 @@ categoría, **manda el texto**. Al confirmar, Chop cuenta qué pasa con el comer
 "no pude leer el CUIT"). En la web, cada categoría muestra la tarjeta **Comercios** (si tiene alguno)
 para pasarlos a otra categoría u olvidarlos. Al borrar una categoría moviendo sus gastos, los
 comercios se mueven con ellos.
+**Facturas en PDF** (2026-09-29): por WhatsApp como documento (📎). También fotos mandadas "como
+documento" (llegan sin comprimir); otros archivos se rechazan (`receiptKind` en `bot.ts`). El PDF se
+guarda completo en `receipts` (`mimeType` application/pdf) y la IA lee solo la **primera página** (las de
+ARCA repiten la página como ORIGINAL/DUPLICADO/TRIPLICADO): su **texto**, sacado con pdf.js
+(`firstPageText` en `receipts.ts`; exacto y ~US$ 0,0016), o si no tiene texto (escaneo) la primera página
+como documento (pdf-lib). Ojo: los PDF de ARCA vienen **cifrados sin contraseña** (se abren pero "no
+copiar"); pdf-lib no los abre, pdf.js sí. `processReceipt` (`bot.ts`) procesa foto o PDF para cualquier
+origen. La IA no juzga si un comprobante "es un gasto": todo lo que tenga total se propone.
 Límite visto: con fotos chicas (una captura de 507 px de una factura) Haiku lee mal los dígitos del CUIT
 y el QR de ARCA es muy chico para decodificarlo; el verificador lo rechaza y ese ticket no se asocia.
 

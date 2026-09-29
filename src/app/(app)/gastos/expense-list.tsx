@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircleIcon, ReceiptTextIcon, RepeatIcon } from "lucide-react";
+import { FileTextIcon, MessageCircleIcon, ReceiptTextIcon, RepeatIcon } from "lucide-react";
 import { dollarTypeLabels, formatDay, formatMoney, isoToDate, paymentMethodLabels } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Card, CardContent } from "@/components/ui/card";
@@ -73,7 +73,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                         <RepeatIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Gasto fijo" />
                       )}
                       {e.receiptId && (
-                        <ReceiptTextIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Tiene foto del ticket" />
+                        <ReceiptTextIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Tiene ticket" />
                       )}
                     </div>
                     <div className="truncate text-sm text-muted-foreground">{detailLine(e)}</div>
@@ -124,7 +124,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                       )}
                       {e.recurringId && <RepeatIcon className="size-3.5 text-muted-foreground" aria-label="Gasto fijo" />}
                       {e.receiptId && (
-                        <ReceiptTextIcon className="size-3.5 text-muted-foreground" aria-label="Tiene foto del ticket" />
+                        <ReceiptTextIcon className="size-3.5 text-muted-foreground" aria-label="Tiene ticket" />
                       )}
                     </span>
                   </TableCell>
@@ -154,7 +154,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
           </DialogHeader>
           {editing && (
             <>
-              {editing.receiptId && <ReceiptPreview id={editing.receiptId} />}
+              {editing.receiptId && <ReceiptPreview id={editing.receiptId} kind={editing.receiptKind} />}
               <ExpenseForm
                 categories={categories}
                 sources={sources}
@@ -213,8 +213,8 @@ function Amount({ e }: { e: ExpenseDTO }) {
   );
 }
 
-/** La foto del ticket del gasto (la que se mandó a Chop): chiquita, y tocándola se abre en grande */
-function ReceiptPreview({ id }: { id: string }) {
+/** El ticket del gasto (foto o PDF, el que se mandó a Chop): chiquito, y tocándolo se abre en grande */
+function ReceiptPreview({ id, kind }: { id: string; kind: ExpenseDTO["receiptKind"] }) {
   const src = `/api/tickets/${id}`;
   return (
     <a
@@ -223,11 +223,17 @@ function ReceiptPreview({ id }: { id: string }) {
       rel="noopener noreferrer"
       className="flex items-center gap-3 rounded-lg border p-2 text-sm hover:bg-muted/50"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- foto privada servida por nuestra API, sin optimizar */}
-      <img src={src} alt="Foto del ticket" className="size-16 rounded-md object-cover" />
+      {kind === "pdf" ? (
+        <span className="flex size-16 items-center justify-center rounded-md bg-muted">
+          <FileTextIcon className="size-7 text-muted-foreground" />
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element -- foto privada servida por nuestra API, sin optimizar
+        <img src={src} alt="Foto del ticket" className="size-16 rounded-md object-cover" />
+      )}
       <span className="flex items-center gap-1.5">
         <ReceiptTextIcon className="size-4" />
-        Ver foto del ticket
+        {kind === "pdf" ? "Ver factura (PDF)" : "Ver foto del ticket"}
       </span>
     </a>
   );

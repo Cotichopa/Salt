@@ -25,6 +25,7 @@ export type IncomingMessage = {
   text?: { body: string };
   audio?: { id: string; mime_type?: string; voice?: boolean }; // nota de voz: se baja con el id
   image?: { id: string; mime_type?: string; caption?: string }; // foto (de un ticket): se baja con el id
+  document?: { id: string; mime_type?: string; filename?: string; caption?: string }; // archivo adjunto (factura en PDF)
   interactive?: {
     type: "button_reply" | "list_reply";
     button_reply?: { id: string; title: string };

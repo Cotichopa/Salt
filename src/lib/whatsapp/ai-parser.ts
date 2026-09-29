@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { parseAmount, todayISO, TIME_ZONE, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
+import type { PdfForAi } from "@/lib/services/receipts";
 
 // Interpreta lo que escribe la persona con Claude Haiku: primero QUÉ quiere hacer
 // (cargar, consultar, eliminar, editar) y después los datos.
@@ -222,9 +223,10 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
 
 const DELETE_WORDS = /\b(borra|borrar|borralo|borrame|elimina|eliminar|eliminalo|eliminame|saca|sacar|sacalo|sacame)\b/;
 
-const RECEIPT_SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Te mando la foto de un ticket, factura o comprobante de pago. Respondé SOLO un objeto JSON, sin texto alrededor:
+const RECEIPT_SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Te mando la foto, el PDF o el texto de un PDF de un ticket, factura o comprobante de pago. Respondé SOLO un objeto JSON, sin texto alrededor:
 {"accion":"cargar","cuit":"30-12345678-9","gastos":[{"monto":45800.5,"cat":"Supermercado","medio":"DEBIT","tarjeta":"Visa","cuotas":3,"fecha":"2026-09-27","desc":"Carrefour"}]}
-Si no es el comprobante de un gasto o no se lee el total: {"accion":"otro","pregunta":"<qué no se ve, en una frase corta>"}
+Si no es un comprobante o no se lee el total: {"accion":"otro","pregunta":"<qué no se ve, en una frase corta>"}
+Todo comprobante con un total se propone como gasto (servicios, honorarios, impuestos, cuotas): no juzgues si es un gasto, la persona lo confirma.
 - monto: el TOTAL final pagado (con descuentos e impuestos), no subtotales ni ítems. En los tickets argentinos "45.800,50" = 45800.5.
 - usd: true solo si el total está en dólares (US$, USD).
 - cat: nombre EXACTO de la lista, según el comercio o lo que se compró. Si ninguna encaja, "Otros" si está; si no, omitila.
@@ -237,14 +239,17 @@ Si no es el comprobante de un gasto o no se lee el total: {"accion":"otro","preg
 // Lo mismo que un mensaje, más el CUIT del comercio (va aparte de los gastos: es uno por ticket)
 const receiptSchema = aiSchema.and(z.object({ cuit: z.string().optional() }));
 
+/** El ticket que lee la IA: una foto (JPEG), o de una factura en PDF su texto o su primera página */
+export type ReceiptFile = { kind: "image"; data: Buffer } | PdfForAi;
+
 /**
- * Lee la foto de un ticket (JPEG) y devuelve el gasto como si se hubiera escrito: "cargar" con lo
+ * Lee un ticket (foto o PDF) y devuelve el gasto como si se hubiera escrito: "cargar" con lo
  * que se leyó, u "otro" con qué faltó si no es un ticket, y el CUIT tal cual se leyó (se valida en
- * merchants.ts). `caption` es el texto que vino con la foto. null si la IA no está disponible o
+ * merchants.ts). `caption` es el texto que vino con el archivo. null si la IA no está disponible o
  * respondió algo inválido.
  */
 export async function parseReceipt(
-  jpeg: Buffer,
+  file: ReceiptFile,
   caption: string | undefined,
   lists: Lists,
 ): Promise<{ parsed: Parsed; cuit: string | null } | null> {
@@ -253,8 +258,12 @@ export async function parseReceipt(
   const result = await askModel(
     RECEIPT_SYSTEM,
     [
-      // La imagen va antes del texto (así lo recomienda la documentación de Claude)
-      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: jpeg.toString("base64") } },
+      // El archivo va antes del texto (así lo recomienda la documentación de Claude)
+      file.kind === "text"
+        ? { type: "text", text: `Texto del PDF:\n${file.text}` }
+        : file.kind === "pdf"
+          ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: file.data.toString("base64") } }
+          : { type: "image", source: { type: "base64", media_type: "image/jpeg", data: file.data.toString("base64") } },
       { type: "text", text },
     ],
     receiptSchema,

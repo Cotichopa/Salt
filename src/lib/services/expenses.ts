@@ -63,7 +63,8 @@ export type ExpenseDTO = {
   amountArs: number | null; // el gasto en pesos (null en gastos viejos sin convertir)
   amountUsd: number | null; // el gasto en dólares
   recurringId: string | null; // lo cargó solo un gasto fijo
-  receiptId: string | null; // tiene foto del ticket (se ve en /api/tickets/<id>)
+  receiptId: string | null; // tiene ticket (se ve en /api/tickets/<id>)
+  receiptKind: "image" | "pdf" | null; // el ticket es una foto o una factura en PDF
 };
 
 const expenseSelect = {
@@ -83,13 +84,15 @@ const expenseSelect = {
   amountUsd: true,
   recurringId: true,
   receiptId: true,
+  receipt: { select: { mimeType: true } },
   category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
 } satisfies Prisma.ExpenseSelect;
 
-function toDTO(e: Prisma.ExpenseGetPayload<{ select: typeof expenseSelect }>): ExpenseDTO {
+function toDTO({ receipt, ...e }: Prisma.ExpenseGetPayload<{ select: typeof expenseSelect }>): ExpenseDTO {
   return {
     ...e,
+    receiptKind: receipt ? (receipt.mimeType === "application/pdf" ? "pdf" : "image") : null,
     amount: e.amount.toNumber(),
     date: dateToISO(e.date),
     rate: e.rate?.toNumber() ?? null,
