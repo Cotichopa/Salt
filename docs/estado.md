@@ -16,8 +16,9 @@ qué se decidió y qué falta**.
 - **Compu con Docker** (usuario `estilo`, i7-7700): la base corre en Docker (`salt-gastos-db-1`,
   puerto 5434). Acá se hizo la sesión del 2026-09-28: tiene el `.env` completo (token permanente de
   WhatsApp, API key de Anthropic) y Whisper compilado en `~/whisper`.
-- **Compu sin Docker** (usuario `laptop`): sin Docker ni `sudo`; la base es un PostgreSQL portátil
-  (`embedded-postgres`) en una carpeta temporal, puerto 5434 (ver "Pendientes chicos").
+- **Compu sin Docker** (usuario `felipe`): sin Docker ni `sudo`; la base es un PostgreSQL portátil
+  (`embedded-postgres`) en `~/salt-db`, puerto 5434, que arranca sola (ver "Pendientes chicos").
+  Puesta al día el 2026-09-29: pull, `npm install`, `.env` completo y Whisper compilado en `~/whisper`.
 
 ## Para retomar en la otra compu (la sin Docker)
 
@@ -69,6 +70,24 @@ qué se decidió y qué falta**.
 2. Confirmar con Felipe las **decisiones por defecto de los gastos fijos** (lista en "Dólar a pesos,
    resumen de tarjetas y gastos fijos").
 3. Los "Pendientes chicos" del final.
+
+## Hecho: avisos de Chop (2026-09-29)
+
+Chop cuenta cosas de la cuenta sin que se las pregunten: **vencimiento de tarjeta** (3 días antes y el
+día anterior, si no está pagada; necesita cierre y vencimiento configurados), **resumen de la semana
+pasada** (lunes a domingo) y **del mes pasado** (con los presupuestos que se pasaron). Decisiones de
+Felipe:
+- Por el límite de 24 h de Meta, **se entregan cuando Felipe le escribe** (sin plantillas pagas):
+  con "hola" van en el saludo ("¡Hola Felo! … *Además:* …"); con otro mensaje, aparte y antes de la respuesta.
+- Se prenden/apagan en **Cuenta → Avisos de Chop** (`notifyCardDue`, `notifyWeekly`, `notifyMonthly` en `users`).
+- El aviso de presupuesto queda como estaba (lo da Chop al cargar; lo de la web se ve solo en pantalla).
+
+Cómo funciona: `pendingNotices` (`src/lib/services/notices.ts`) arma los que falten y los guarda en la
+tabla `notices` con una clave única (`due3:`/`due1:<tarjeta>:<mes>`, `week:<lunes>`, `month:<mes>`) para
+no repetirlos; se llama al principio de `handleInput` (`bot.ts`), igual que `noticeLoadedFixed`.
+Por defecto (Felipe puede cambiarlo): si pasan varias semanas sin escribir, va solo la última; si no
+hubo gastos en el período, no se manda; los resúmenes van en pesos y sin centavos.
+El primer resumen mensual es el de **septiembre 2026** (llega en octubre; `FIRST_MONTHLY`, decisión de Felipe).
 
 ## Hecho: dólar a pesos, resumen de tarjetas y gastos fijos (plan del 2026-09-26)
 
@@ -247,13 +266,21 @@ todo; base ya se equivocaba palabras).
 
 ## Pendientes chicos
 
-- `npm audit` marca 4 vulnerabilidades altas que vienen de Prisma (`deepmerge-ts` y `mysql2`, que la
-  app no usa). Revisar cuando salga una versión de Prisma que las arregle (no usar `--force`).
-
-- **Compu sin Docker:** no tiene Docker ni `sudo`, así que la base se levantó con un PostgreSQL
-  portátil (`embedded-postgres`) en una carpeta temporal, fuera del repo, en el puerto 5434. Si se
-  reinicia la compu hay que volver a levantarla (o instalar Docker). Su `.env` tenía WhatsApp y la API
+- `npm audit` marca 4 vulnerabilidades altas que vienen de Prisma (`deepmerge-ts` y `mysql2`,- **Compu sin Docker:** no tiene Docker ni `sudo`, así que la base es un PostgreSQL portátil
+  (`embedded-postgres`) en `~/salt-db` (fuera del repo), puerto 5434, datos en `~/salt-db/data`.
+  Arranca sola al iniciar sesión (servicio de usuario `salt-db` de systemd):
+  - Ver si anda: `systemctl --user status salt-db` · Reiniciarla: `systemctl --user restart salt-db`
+  - Log: `journalctl --user -u salt-db -n 20`
+  - Antes estaba en una carpeta temporal y se borró al reiniciar (2026-09-29; no tenía datos
+    importantes). Se rearmó con `prisma migrate deploy`, `db:seed` y `db:demo`.
+  - `.env`: WhatsApp, API key y Whisper cargados. El admin es `fbrisig@gmail.com`.
+  - Whisper: `~/whisper/whisper.cpp` con el modelo small, compilado con un `cmake` portátil
+    (`~/tools/cmake-3.31.6-linux-x86_64/bin`, bajado de GitHub porque no hay `sudo` ni `pip`).
+ WhatsApp y la API
   key vacíos (ver "Para retomar en la otra compu"); el admin es `fbrisig@gmail.com`.
+- **Datos de prueba en la cuenta de Felo (compu sin Docker, 2026-09-29):** 9 gastos con "(prueba)" en la
+  descripción (del 10 al 28/09) y la Visa con cierre 25 y vencimiento 2, para ver los avisos. Felipe los
+  va a borrar; ajustar la Visa a sus días reales.
 - **Si Chop no contesta por WhatsApp:** revisar el token con
   `GET graph.facebook.com/<versión>/debug_token?input_token=<T>&access_token=<T>`: `expires_at: 0` =
   permanente; "Session has expired" = vencido (el 2026-09-28 la compu con Docker tenía uno temporal
