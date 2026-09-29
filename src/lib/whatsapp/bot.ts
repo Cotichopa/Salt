@@ -5,7 +5,8 @@ import { downloadMedia, sendText } from "@/lib/whatsapp/client";
 import { isTranscriptionEnabled, transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
-import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
+import { isAiEnabled, parseMessage, parseReceipt } from "@/lib/whatsapp/ai-parser";
+import { ReceiptError, saveReceipt } from "@/lib/services/receipts";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { isDeleteLast, parseWithoutAI } from "@/lib/whatsapp/quick-parser";
 import {
@@ -42,6 +43,7 @@ export async function handleMessage(msg: IncomingMessage) {
   }
   const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
   if (msg.audio) return handleAudio(ctx, msg.audio.id);
+  if (msg.image) return handleReceipt(ctx, msg.image.id, msg.image.caption);
   const input: Input = {
     text: msg.text?.body,
     replyId: msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id,
@@ -62,6 +64,43 @@ async function handleAudio(ctx: Ctx, mediaId: string) {
   if (!result.ok) return ctx.out.text(transcriptionProblem(result.reason));
   await ctx.out.text(`🎙️ Entendí: «${result.text}»`);
   await handleInput(ctx, { text: result.text });
+}
+
+/**
+ * Foto de un ticket: se guarda, la IA la lee y se propone el gasto, que se confirma como cualquier
+ * otro (y se puede corregir escribiendo). Al guardarlo, la foto queda con el gasto para verla en la web.
+ * El texto que venga con la foto ("fue con la visa") manda sobre lo que se lee.
+ */
+async function handleReceipt(ctx: Ctx, mediaId: string, caption?: string) {
+  if (!isAiEnabled()) {
+    return ctx.out.text('Todavía no puedo leer fotos de tickets 😕 Escribime el gasto (ej: _"super 12500"_).');
+  }
+  const image = await downloadMedia(mediaId);
+  if (!image) return ctx.out.text("No pude bajar la foto 😕 Probá mandarla de nuevo.");
+  let receipt: Awaited<ReturnType<typeof saveReceipt>>;
+  try {
+    receipt = await saveReceipt(ctx.userId, image);
+  } catch (e) {
+    if (e instanceof ReceiptError) return ctx.out.text("No pude abrir esa imagen 😕 Probá sacarle otra foto al ticket.");
+    throw e;
+  }
+  const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+  const parsed = await parseReceipt(receipt.jpeg, caption, {
+    categories: categories.map((c) => c.name),
+    sources: sources.map((s) => s.name),
+  });
+  if (!parsed) {
+    return showMainMenu(
+      ctx,
+      "No pude leer el ticket: la IA no me respondió 😕 (suele ser algo pasajero).\n" +
+        'Probá mandarlo de nuevo en un rato o escribime el gasto (ej: _"super 12500"_):',
+    );
+  }
+  if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses, "🧾 Esto leí del ticket 👇", receipt.id))) return;
+  const why = parsed.intent === "otro" && parsed.question ? `${parsed.question} ` : "";
+  await ctx.out.text(
+    `🤔 No pude sacar el gasto de esa foto. ${why}\nProbá con una foto más de cerca y con buena luz, o escribime el gasto.`,
+  );
 }
 
 /** Palabras que ayudan a Whisper a entender los audios: las categorías y tarjetas de la persona */

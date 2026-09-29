@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageCircleIcon, RepeatIcon } from "lucide-react";
+import { MessageCircleIcon, ReceiptTextIcon, RepeatIcon } from "lucide-react";
 import { dollarTypeLabels, formatDay, formatMoney, isoToDate, paymentMethodLabels } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,6 +72,9 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                       {e.recurringId && (
                         <RepeatIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Gasto fijo" />
                       )}
+                      {e.receiptId && (
+                        <ReceiptTextIcon className="size-3.5 shrink-0 text-muted-foreground" aria-label="Tiene foto del ticket" />
+                      )}
                     </div>
                     <div className="truncate text-sm text-muted-foreground">{detailLine(e)}</div>
                   </div>
@@ -120,6 +123,9 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                         <MessageCircleIcon className="size-3.5 text-green-600" aria-label="Cargado por WhatsApp" />
                       )}
                       {e.recurringId && <RepeatIcon className="size-3.5 text-muted-foreground" aria-label="Gasto fijo" />}
+                      {e.receiptId && (
+                        <ReceiptTextIcon className="size-3.5 text-muted-foreground" aria-label="Tiene foto del ticket" />
+                      )}
                     </span>
                   </TableCell>
                   <TableCell className="max-w-64 truncate text-muted-foreground">
@@ -148,6 +154,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
           </DialogHeader>
           {editing && (
             <>
+              {editing.receiptId && <ReceiptPreview id={editing.receiptId} />}
               <ExpenseForm
                 categories={categories}
                 sources={sources}
@@ -203,5 +210,25 @@ function Amount({ e }: { e: ExpenseDTO }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** La foto del ticket del gasto (la que se mandó a Chop): chiquita, y tocándola se abre en grande */
+function ReceiptPreview({ id }: { id: string }) {
+  const src = `/api/tickets/${id}`;
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-3 rounded-lg border p-2 text-sm hover:bg-muted/50"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- foto privada servida por nuestra API, sin optimizar */}
+      <img src={src} alt="Foto del ticket" className="size-16 rounded-md object-cover" />
+      <span className="flex items-center gap-1.5">
+        <ReceiptTextIcon className="size-4" />
+        Ver foto del ticket
+      </span>
+    </a>
   );
 }

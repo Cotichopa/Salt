@@ -20,6 +20,7 @@ type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "doll
   rate?: number;
   recurringId?: string; // lo cargó un gasto fijo (ver recurring.ts)
   rateOptional?: boolean; // en dólares: si no hay cotización, se guarda sin pesos (se convierte después)
+  receiptId?: string; // foto del ticket (la mandó a Chop): en cuotas, todas la comparten
 };
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
@@ -61,6 +62,7 @@ export type ExpenseDTO = {
   amountArs: number | null; // el gasto en pesos (null en gastos viejos sin convertir)
   amountUsd: number | null; // el gasto en dólares
   recurringId: string | null; // lo cargó solo un gasto fijo
+  receiptId: string | null; // tiene foto del ticket (se ve en /api/tickets/<id>)
 };
 
 const expenseSelect = {
@@ -79,6 +81,7 @@ const expenseSelect = {
   amountArs: true,
   amountUsd: true,
   recurringId: true,
+  receiptId: true,
   category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
 } satisfies Prisma.ExpenseSelect;

@@ -567,7 +567,7 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
  * medio de pago del usuario. Un gasto solo se guarda directo; varios, se confirman.
  * Devuelve false si ninguno era válido.
  */
-export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string) {
+export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string, receiptId?: string) {
   const [cats, sources, fallbackMethod] = await Promise.all([
     listCategories(ctx.userId),
     listPaymentSources(ctx.userId),
@@ -597,16 +597,18 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
     });
   }
   if (pending.length === 0) return false;
-  return showProposal(ctx, pending, heading);
+  return showProposal(ctx, pending, heading, receiptId);
 }
 
 /**
  * Si alguno quedó sin categoría, primero pregunta cuál (sin categoría no se puede guardar).
  * Un solo gasto se guarda directo (con Deshacer); varios muestran Guardar todos / Cancelar.
  */
-async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string) {
-  if (pending.some((p) => !p.categoryId)) return askMissing(ctx, { pending });
-  return finishPending(ctx, { pending }, false, heading);
+async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string, receiptId?: string) {
+  // El borrador lleva la foto del ticket (si hay) por todas las preguntas hasta guardar
+  const d: Draft = receiptId ? { pending, receiptId } : { pending };
+  if (pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
+  return finishPending(ctx, d, false, heading);
 }
 
 /**
@@ -732,7 +734,7 @@ async function finishPending(ctx: Ctx, d: Draft, confirmed = false, heading?: st
   if (i >= 0) return askDollar(ctx, d, i);
   // Ya no falta nada: se confirma antes de guardar (la carga paso a paso ya confirmó)
   if (!confirmed && !d.confirmed) return confirmPending(ctx, d, heading);
-  return savePending(ctx, pending);
+  return savePending(ctx, pending, d.receiptId);
 }
 
 /** "¿Cómo pagaste?": los medios de pago, con las billeteras por nombre (Mercado Pago, MODO...) */
@@ -864,7 +866,7 @@ async function receiveDollar(ctx: Ctx, input: Input, d: Draft): Promise<boolean>
 }
 
 /** Guarda los gastos y responde con lo guardado y el botón Deshacer */
-async function savePending(ctx: Ctx, pending: PendingExpense[]): Promise<boolean> {
+async function savePending(ctx: Ctx, pending: PendingExpense[], receiptId?: string): Promise<boolean> {
   await clearSession(ctx.phone);
   const ids: string[] = [];
   const pesos: (number | null)[] = []; // lo que quedó en pesos cada gasto en USD
@@ -885,6 +887,7 @@ async function savePending(ctx: Ctx, pending: PendingExpense[]): Promise<boolean
           description: p.description,
           date: p.date,
           ...(p.dollarType ? { dollarType: p.dollarType } : {}),
+          ...(receiptId ? { receiptId } : {}),
         },
         ctx.source,
       );
@@ -923,6 +926,7 @@ async function savePending(ctx: Ctx, pending: PendingExpense[]): Promise<boolean
       ? `\n_El medio de pago lo supuse. Si no es, decime por ej. "${saved.length === 1 ? "el último" : `el de ${formatMoney(saved[0].amount, saved[0].currency)}`} era con efectivo"._`
       : "",
     saved.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
+    receiptId && ids.length > 0 ? "🧾 _La foto del ticket quedó guardada con el gasto: la ves en la web, en Gastos._" : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -1005,7 +1009,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
           : corrected?.intent === "editar" && proposed.length === 1 && Object.keys(corrected.changes).length > 0
             ? [{ ...proposed[0], ...corrected.changes }]
             : null;
-      if (fixed && (await proposeExpenses(ctx, fixed, "Corregido 👇"))) return true;
+      if (fixed && (await proposeExpenses(ctx, fixed, "Corregido 👇", d.receiptId))) return true;
     }
     await ctx.out.buttons(`No entendí la corrección 🤔 ¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`, [
       { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },

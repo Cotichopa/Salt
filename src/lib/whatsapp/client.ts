@@ -35,7 +35,8 @@ async function send(to: string, payload: Record<string, unknown>) {
   }
 }
 
-// Un audio de WhatsApp de 1 minuto pesa unos 100 KB: más de esto no lo bajamos
+// Un audio de WhatsApp de 1 minuto pesa unos 100 KB y una foto, menos de 1 MB (WhatsApp las achica):
+// más de esto no lo bajamos
 const MAX_MEDIA_BYTES = 5_000_000;
 
 /**

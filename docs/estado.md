@@ -69,6 +69,17 @@ qué se decidió y qué falta**.
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. Los "Pendientes chicos" del final.
 
+## Hecho: fotos de tickets (2026-09-29)
+
+Se le manda a Chop por WhatsApp la foto de un ticket (con texto opcional, que manda sobre la foto:
+"fue con la visa en 3 cuotas"). Chop la guarda achicada (JPEG 1568 px, tabla `receipts`), la lee con
+Haiku 4.5 (`parseReceipt` en `ai-parser.ts`: total final, fecha, comercio, categoría y, si figura, medio,
+tarjeta y cuotas; ~US$ 0,0017 por foto) y propone el gasto por el camino de siempre (preguntas,
+confirmación, correcciones). La foto viaja en el borrador de la sesión (`Draft.receiptId`) y queda en
+`expenses.receiptId` (en cuotas, todas la comparten). Fotos sin gasto se borran solas al día siguiente.
+En la web: ícono 🧾 en la lista y la foto en el diálogo de edición, servida por `/api/tickets/[id]`
+(solo al dueño). Decisión de Felipe: por ahora solo por WhatsApp, no desde el chat web.
+
 ## Hecho: buscador en el Inicio (2026-09-29)
 
 El buscador de Gastos ya existía completo (`src/lib/expense-search.ts`: todo el historial, errores de
@@ -81,10 +92,6 @@ ahora dice "No pude entender ese mensaje: la IA no me respondió". El 2026-09-29
 devolvía "503 credential validation failed" (problema pasajero de ellos: la consola mostraba
 "Temporarily unable to authenticate"). Para ver qué pasó con un mensaje de WhatsApp: la inspección de
 ngrok en http://127.0.0.1:4040 muestra cada pedido del webhook con su texto.
-
-**Pendiente del plan del 2026-09-29:** etapa 5, fotos de tickets (Chop lee la foto y propone el gasto;
-la foto queda guardada con el gasto y se ve en la web). Se hace cuando la IA vuelva a andar. Al
-terminar el plan, pushear los commits (Felipe lo pidió así).
 
 ## Hecho: preferencias y perfil (2026-09-29)
 

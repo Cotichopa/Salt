@@ -61,6 +61,7 @@ export type Draft = {
   // Chop hizo una pregunta: la respuesta se interpreta junto con el mensaje original (sin sección = IA principal)
   followup?: { section?: Section; text: string; question: string };
   pending?: PendingExpense[];
+  receiptId?: string; // foto del ticket de estos gastos: se guarda con ellos
   categoryId?: string;
   categoryLabel?: string;
   amount?: number;

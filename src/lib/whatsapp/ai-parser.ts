@@ -127,12 +127,13 @@ export function listsLines(lists: Lists) {
 
 /**
  * Le pasa a Haiku unas instrucciones y un mensaje, y valida el JSON que responde con `schema`.
+ * El mensaje puede ser texto o bloques (una foto + texto, ver parseReceipt).
  * La usan este archivo y las secciones (sections/). Devuelve null si la IA no está disponible,
  * falla o responde algo inválido: el bot sigue andando con el menú.
  */
 export async function askModel<T extends z.ZodType>(
   system: string,
-  content: string,
+  content: string | Anthropic.ContentBlockParam[],
   schema: T,
   tag = "ai-parser",
 ): Promise<z.infer<T> | null> {
@@ -220,6 +221,38 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
 }
 
 const DELETE_WORDS = /\b(borra|borrar|borralo|borrame|elimina|eliminar|eliminalo|eliminame|saca|sacar|sacalo|sacame)\b/;
+
+const RECEIPT_SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Te mando la foto de un ticket, factura o comprobante de pago. Respondé SOLO un objeto JSON, sin texto alrededor:
+{"accion":"cargar","gastos":[{"monto":45800.5,"cat":"Supermercado","medio":"DEBIT","tarjeta":"Visa","cuotas":3,"fecha":"2026-09-27","desc":"Carrefour"}]}
+Si no es el comprobante de un gasto o no se lee el total: {"accion":"otro","pregunta":"<qué no se ve, en una frase corta>"}
+- monto: el TOTAL final pagado (con descuentos e impuestos), no subtotales ni ítems. En los tickets argentinos "45.800,50" = 45800.5.
+- usd: true solo si el total está en dólares (US$, USD).
+- cat: nombre EXACTO de la lista, según el comercio o lo que se compró. Si ninguna encaja, "Otros" si está; si no, omitila.
+- medio, tarjeta y cuotas: solo si el ticket lo dice. Efectivo=CASH, débito=DEBIT, crédito=CREDIT, transferencia/QR/Mercado Pago=TRANSFER. tarjeta: nombre EXACTO de la lista si coincide la marca.
+- fecha YYYY-MM-DD de la compra, nunca futura. Omitila si no se ve.
+- desc: el nombre del comercio, corto ("Carrefour", "YPF").
+- Si hay un texto de la persona, manda sobre la foto ("fue con la visa", "es de nafta").`;
+
+/**
+ * Lee la foto de un ticket (JPEG) y devuelve el gasto como si se hubiera escrito: "cargar" con lo
+ * que se leyó, u "otro" con qué faltó si no es un ticket. `caption` es el texto que vino con la
+ * foto. null si la IA no está disponible o respondió algo inválido.
+ */
+export async function parseReceipt(jpeg: Buffer, caption: string | undefined, lists: Lists): Promise<Parsed | null> {
+  if (!isAiEnabled()) return null;
+  const text = [todayLine(), ...listsLines(lists), caption ? `\nTexto de la persona: "${caption.slice(0, MAX_CHARS)}"` : ""].join("\n");
+  const result = await askModel(
+    RECEIPT_SYSTEM,
+    [
+      // La imagen va antes del texto (así lo recomienda la documentación de Claude)
+      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: jpeg.toString("base64") } },
+      { type: "text", text },
+    ],
+    aiSchema,
+    "ai-ticket",
+  );
+  return result ? toParsed(result, todayISO()) : null;
+}
 
 function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
   switch (p.accion) {

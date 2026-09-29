@@ -24,6 +24,7 @@ export type IncomingMessage = {
   type: string; // "text", "interactive", "image", "audio", ...
   text?: { body: string };
   audio?: { id: string; mime_type?: string; voice?: boolean }; // nota de voz: se baja con el id
+  image?: { id: string; mime_type?: string; caption?: string }; // foto (de un ticket): se baja con el id
   interactive?: {
     type: "button_reply" | "list_reply";
     button_reply?: { id: string; title: string };

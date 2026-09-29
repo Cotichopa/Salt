@@ -78,8 +78,26 @@ model User {
   recurring      RecurringExpense[]
   notices        Notice[]
   passwordResets PasswordReset[]
+  receipts       Receipt[]
 
   @@map("users")
+}
+
+// Fotos de tickets que se mandan a Chop: Chop las lee y propone el gasto, y la foto queda con el
+// gasto para verla en la web. Se guardan en la base (JPEG achicado, ~200 KB), así entran en los
+// backups. Si no se llega a guardar ningún gasto con ella, se borra sola al día siguiente.
+model Receipt {
+  id        String   @id @default(cuid())
+  userId    String
+  data      Bytes
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([userId, createdAt])
+  @@map("receipts")
 }
 
 // Links de "olvidé mi contraseña". Se guarda el hash (SHA-256) del token, no el token: el token
@@ -193,6 +211,8 @@ model Expense {
   amountUsd  Decimal?    @db.Decimal(14, 2) // el gasto en dólares (en los ARS, al MEP del día)
   // Gasto fijo que lo cargó solo (null si se cargó a mano)
   recurringId String?
+  // Foto del ticket (mandada a Chop). En cuotas, todas las cuotas apuntan a la misma foto
+  receiptId String?
   source        Source        @default(WEB)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -203,6 +223,7 @@ model Expense {
   paymentSource PaymentSource? @relation(fields: [paymentSourceId], references: [id], onDelete: SetNull)
   // Si se borra el gasto fijo, los gastos que ya cargó quedan (como cargados a mano)
   recurring     RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  receipt       Receipt?          @relation(fields: [receiptId], references: [id], onDelete: SetNull)
 
   @@unique([recurringId, date]) // un fijo no puede cargar dos gastos el mismo día
   @@index([userId, date])
