@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ServiceWorker } from "@/components/service-worker";
 import { Splash } from "@/components/splash";
+import { getCurrentUser } from "@/lib/dal";
+import { getPreferences } from "@/lib/services/preferences";
 
 // Dos tipografías: una con carácter para la marca y los títulos, otra neutra para leer.
 const display = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"] });
@@ -25,11 +27,16 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Color principal elegido en "Cuenta" (sin sesión, el de siempre)
+  const user = await getCurrentUser();
+  const accent = user ? (await getPreferences(user.id)).accentColor : "neutral";
+
   return (
     // suppressHydrationWarning: next-themes escribe la clase del tema antes de que React arranque
     <html
       lang="es"
+      data-accent={accent}
       suppressHydrationWarning
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >

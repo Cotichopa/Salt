@@ -18,7 +18,7 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.nextUrl));
   }
   if (isPublic && session) {
-    return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
+    return NextResponse.redirect(new URL("/", req.nextUrl));
   }
   const res = NextResponse.next();
   // Usar la app renueva la sesión: solo vence si pasás 30 días sin abrirla

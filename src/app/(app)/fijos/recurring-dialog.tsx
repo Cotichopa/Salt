@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FieldError } from "@/components/field-error";
 import { CategoryIcon } from "@/components/category-icon";
 import type { CategoryOption, SourceOption } from "../gastos/expense-form";
+import { useFormDefaults } from "@/components/form-defaults";
 
 const currencies = Object.entries(currencyLabels).map(([value, label]) => ({ value, label }));
 const paymentMethods = Object.entries(paymentMethodLabels).map(([value, label]) => ({ value, label }));
@@ -68,6 +69,8 @@ export function RecurringDialog(props: Props) {
 }
 
 function RecurringForm({ categories, sources, recurring, today, onDone }: Props & { onDone: () => void }) {
+  // Lo que se propone al crear uno nuevo (preferencias de "Cuenta")
+  const defaults = useFormDefaults();
   const [state, action, pending] = useActionState(async (prev: FormState, formData: FormData) => {
     const result = await saveRecurring(prev, formData);
     if (result?.ok) {
@@ -77,11 +80,11 @@ function RecurringForm({ categories, sources, recurring, today, onDone }: Props 
     return result;
   }, undefined);
 
-  const [method, setMethod] = useState<PaymentMethodCode>(recurring?.paymentMethod ?? "DEBIT");
+  const [method, setMethod] = useState<PaymentMethodCode>(recurring?.paymentMethod ?? defaults.paymentMethod);
   const [currency, setCurrency] = useState<CurrencyCode>(recurring?.currency ?? "ARS");
   // Con crédito siempre es el oficial; con los demás medios, el que elijas
   const [chosenDollar, setChosenDollar] = useState<DollarTypeCode>(
-    recurring?.dollarType && recurring.paymentMethod !== "CREDIT" ? recurring.dollarType : "MEP",
+    recurring?.dollarType && recurring.paymentMethod !== "CREDIT" ? recurring.dollarType : defaults.dollarType,
   );
   const dollarType = dollarTypeFor(method, chosenDollar);
   const [amount, setAmount] = useState(recurring ? String(recurring.amount).replace(".", ",") : "");

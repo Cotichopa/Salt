@@ -34,6 +34,7 @@ import { updateExpense } from "@/lib/services/expenses";
 import type { ListRow, Outbox } from "@/lib/whatsapp/outbox";
 import type { Source } from "@/generated/prisma/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
+import { getPreferences } from "@/lib/services/preferences";
 
 // Menú paso a paso de Chop, armado como una "máquina de estados":
 // cada paso de la conversación es un estado (ej: "add:amount" = esperando el monto),
@@ -745,16 +746,27 @@ async function askPayment(ctx: Ctx, d: Draft) {
 /**
  * Filas de "¿cómo pagaste?" (se leen con readPayment): efectivo, débito, crédito y las billeteras
  * por nombre. No hay "Transferencia" suelta: una transferencia siempre sale de una billetera.
+ * El medio de pago por defecto de la persona (preferencias de "Cuenta") va primero y marcado;
+ * si es transferencia, van primero las billeteras.
  */
 export async function paymentRows(userId: string): Promise<ListRow[]> {
   // WhatsApp muestra hasta 10 filas: 3 medios + hasta 7 billeteras
-  const wallets = (await listPaymentSources(userId)).filter((s) => s.kind === "WALLET").slice(0, 7);
-  return [
+  const [sources, prefs] = await Promise.all([listPaymentSources(userId), getPreferences(userId)]);
+  const wallets = sources.filter((s) => s.kind === "WALLET").slice(0, 7).map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` }));
+  const methods: ListRow[] = [
     { id: "pm:CASH", title: "💵 Efectivo" },
     { id: "pm:DEBIT", title: "💳 Débito" },
     { id: "pm:CREDIT", title: "💳 Crédito" },
-    ...wallets.map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` })),
   ];
+  if (prefs.defaultPaymentMethod === "TRANSFER") return [...wallets, ...methods];
+  return firstAsDefault(methods, `pm:${prefs.defaultPaymentMethod}`).concat(wallets);
+}
+
+/** Pone primero la fila `id`, marcada como la de siempre */
+function firstAsDefault(rows: ListRow[], id: string): ListRow[] {
+  const chosen = rows.find((r) => r.id === id);
+  if (!chosen) return rows;
+  return [{ ...chosen, description: "⭐ El de siempre" }, ...rows.filter((r) => r !== chosen)];
 }
 
 async function receivePayment(ctx: Ctx, input: Input, d: Draft): Promise<boolean> {
@@ -815,8 +827,11 @@ function withPayment(p: PendingExpense, a: PaymentAnswer): PendingExpense {
 
 export const DOLLAR_TYPES = Object.keys(dollarTypeLabels) as DollarTypeCode[];
 
-/** Filas de "¿a qué dólar?" (ids "usd:MEP"...; se leen con readDollar) */
-export const dollarRows = (): ListRow[] => DOLLAR_TYPES.map((t) => ({ id: `usd:${t}`, title: `Dólar ${dollarTypeLabels[t]}` }));
+/** Filas de "¿a qué dólar?" (ids "usd:MEP"...; se leen con readDollar), con el de siempre primero */
+export async function dollarRows(userId: string): Promise<ListRow[]> {
+  const rows = DOLLAR_TYPES.map((t) => ({ id: `usd:${t}`, title: `Dólar ${dollarTypeLabels[t]}` }));
+  return firstAsDefault(rows, `usd:${(await getPreferences(userId)).defaultDollarType}`);
+}
 
 /** El dólar elegido con el botón o escrito ("el blue", "mep") */
 export function readDollar(input: Input): DollarTypeCode | undefined {
@@ -831,7 +846,7 @@ async function askDollar(ctx: Ctx, d: Draft, i: number) {
   await ctx.out.list(
     `💵 ¿A qué dólar pagaste *${formatMoney(p.amount, "USD")}*${p.description ? ` (${p.description})` : ""}? Con eso lo paso a pesos.`,
     "Elegir dólar",
-    dollarRows(),
+    await dollarRows(ctx.userId),
     "Dólar",
   );
   return true;

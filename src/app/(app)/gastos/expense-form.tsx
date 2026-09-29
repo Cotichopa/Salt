@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldError } from "@/components/field-error";
 import { CategoryIcon } from "@/components/category-icon";
+import { useFormDefaults } from "@/components/form-defaults";
 
 export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
@@ -39,6 +40,8 @@ type Props = {
 };
 
 export function ExpenseForm({ categories, sources, expense, today, onDone }: Props) {
+  // Lo que se propone al cargar uno nuevo (preferencias de "Cuenta")
+  const defaults = useFormDefaults();
   const [state, action, pending] = useActionState(async (prev: FormState, formData: FormData) => {
     const result = await saveExpense(prev, formData);
     if (result?.ok) {
@@ -51,7 +54,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   }, undefined);
 
   // El medio de pago define si se pide tarjeta, billetera o nada, y si hay cuotas
-  const [method, setMethod] = useState<PaymentMethodCode>(expense?.paymentMethod ?? "DEBIT");
+  const [method, setMethod] = useState<PaymentMethodCode>(expense?.paymentMethod ?? defaults.paymentMethod);
   const [amount, setAmount] = useState(expense ? String(expense.amount).replace(".", ",") : "");
   const [installments, setInstallments] = useState("1");
   const [date, setDate] = useState(expense?.date ?? today);
@@ -61,7 +64,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   // el dólar o la fecha, salvo que la hayas escrito a mano (rateTouched).
   const [currency, setCurrency] = useState<CurrencyCode>(expense?.currency ?? "ARS");
   const [chosenDollar, setChosenDollar] = useState<DollarTypeCode>(
-    expense?.dollarType && expense.paymentMethod !== "CREDIT" ? expense.dollarType : "MEP",
+    expense?.dollarType && expense.paymentMethod !== "CREDIT" ? expense.dollarType : defaults.dollarType,
   );
   const dollarType = dollarTypeFor(method, chosenDollar);
   // La cotización guardada solo sirve si es del mismo dólar (un gasto viejo con crédito puede

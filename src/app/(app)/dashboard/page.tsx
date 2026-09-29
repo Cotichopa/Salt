@@ -6,6 +6,7 @@ import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/for
 import { getDashboard, type Dashboard } from "@/lib/services/stats";
 import { listBudgets, type BudgetStatus } from "@/lib/services/budgets";
 import { loadDueRecurring } from "@/lib/services/recurring";
+import { getPreferences } from "@/lib/services/preferences";
 import { RecurringNotice } from "@/components/recurring-notice";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,7 +60,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     typeof params.mes === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.mes) && params.mes <= currentMonth
       ? params.mes
       : currentMonth;
-  const currency: CurrencyCode = params.moneda === "USD" ? "USD" : "ARS";
+  // Sin elegir en la URL, la moneda de las preferencias
+  const chosen = params.moneda;
+  const currency: CurrencyCode =
+    chosen === "USD" || chosen === "ARS" ? chosen : (await getPreferences(user.id)).defaultCurrency;
 
   // Primero se cargan los gastos fijos que ya llegaron a su día, así entran en los totales
   const loaded = await loadDueRecurring(user.id, today);

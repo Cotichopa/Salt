@@ -30,7 +30,7 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   if (!valid) return { message: "Email o contraseña incorrectos" };
 
   await createSession({ userId: user.id, role: user.role });
-  redirect("/dashboard");
+  redirect("/"); // la portada manda a la pantalla de inicio elegida
 }
 
 export async function logout() {

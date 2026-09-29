@@ -10,6 +10,7 @@ import { getCategoryStats, type CategoryPeriod } from "@/lib/services/category-s
 import { listExpenses } from "@/lib/services/expenses";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { getBudget } from "@/lib/services/budgets";
+import { getPreferences } from "@/lib/services/preferences";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CategoryIcon } from "@/components/category-icon";
@@ -41,7 +42,10 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
   const { id } = await params;
   const query = await searchParams;
   const period: CategoryPeriod = query.periodo === "semana" || query.periodo === "anio" ? query.periodo : "mes";
-  const currency: CurrencyCode = query.moneda === "USD" ? "USD" : "ARS";
+  // Sin elegir en la URL, la moneda de las preferencias
+  const chosen = query.moneda;
+  const currency: CurrencyCode =
+    chosen === "USD" || chosen === "ARS" ? chosen : (await getPreferences(user.id)).defaultCurrency;
 
   // Solo categorías propias: si el id es de otra cuenta, es como si no existiera
   const categories = await listCategoriesWithUsage(user.id);

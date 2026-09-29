@@ -124,6 +124,19 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ---------- Color principal elegido en "Cuenta" (data-accent en <html>, ver src/lib/preferences.ts) ----------
+   Cambia los botones principales y el foco. Tonos elegidos para que el texto encima se lea bien:
+   en claro, color oscuro con texto blanco; en oscuro, color claro con texto negro.
+   `.dark[data-accent]` va después y pesa lo mismo que `:root[data-accent]`, así gana en modo oscuro. */
+:root[data-accent="blue"] { --primary: #2563eb; --primary-foreground: #ffffff; --ring: #2563eb; }
+:root[data-accent="green"] { --primary: #15803d; --primary-foreground: #ffffff; --ring: #15803d; }
+:root[data-accent="violet"] { --primary: #7c3aed; --primary-foreground: #ffffff; --ring: #7c3aed; }
+:root[data-accent="orange"] { --primary: #c2410c; --primary-foreground: #ffffff; --ring: #c2410c; }
+.dark[data-accent="blue"] { --primary: #60a5fa; --primary-foreground: #0d0d0d; --ring: #60a5fa; }
+.dark[data-accent="green"] { --primary: #4ade80; --primary-foreground: #0d0d0d; --ring: #4ade80; }
+.dark[data-accent="violet"] { --primary: #a78bfa; --primary-foreground: #0d0d0d; --ring: #a78bfa; }
+.dark[data-accent="orange"] { --primary: #fb923c; --primary-foreground: #0d0d0d; --ring: #fb923c; }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

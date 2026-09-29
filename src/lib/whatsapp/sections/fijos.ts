@@ -286,7 +286,7 @@ async function nextFixedStep(ctx: Ctx, f: FixedDraft): Promise<boolean> {
   }
   if (needsDollar(f)) {
     await setSession(ctx.phone, "fixed:new", d);
-    await ctx.out.list(`💵 ¿A qué dólar pagás *${f.description}*? Con eso lo paso a pesos cada mes.`, "Elegir dólar", dollarRows(), "Dólar");
+    await ctx.out.list(`💵 ¿A qué dólar pagás *${f.description}*? Con eso lo paso a pesos cada mes.`, "Elegir dólar", await dollarRows(ctx.userId), "Dólar");
     return true;
   }
   return confirmCreate(ctx, f);

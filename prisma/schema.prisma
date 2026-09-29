@@ -51,19 +51,25 @@ enum PaymentSourceKind {
 // ---------- Tablas ----------
 
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  passwordHash  String
-  phone         String?  @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
-  role          Role     @default(MEMBER)
-  active        Boolean  @default(true)
+  id                   String        @id @default(cuid())
+  name                 String
+  email                String        @unique
+  passwordHash         String
+  phone                String?       @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
+  role                 Role          @default(MEMBER)
+  active               Boolean       @default(true)
   // Avisos de Chop (se apagan desde "Cuenta")
-  notifyCardDue Boolean  @default(true) // vencimiento de tarjeta: 3 días antes y el día anterior
-  notifyWeekly  Boolean  @default(true) // resumen de la semana pasada
-  notifyMonthly Boolean  @default(true) // resumen del mes pasado
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  notifyCardDue        Boolean       @default(true) // vencimiento de tarjeta: 3 días antes y el día anterior
+  notifyWeekly         Boolean       @default(true) // resumen de la semana pasada
+  notifyMonthly        Boolean       @default(true) // resumen del mes pasado
+  // Preferencias (se cambian desde "Cuenta")
+  homePage             String        @default("/dashboard") // pantalla con la que abre la app
+  defaultCurrency      Currency      @default(ARS) // moneda en que se ven los totales
+  accentColor          String        @default("neutral") // color principal de la app
+  defaultPaymentMethod PaymentMethod @default(DEBIT) // medio de pago que se propone primero
+  defaultDollarType    DollarType    @default(MEP) // dólar que se propone primero (USD sin crédito)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   expenses       Expense[]
   categories     Category[]

@@ -5,6 +5,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { DesktopNav, MobileNav } from "@/components/main-nav";
 import { ChopWidget } from "@/components/chop/chop-widget";
+import { FormDefaultsProvider } from "@/components/form-defaults";
+import { getPreferences } from "@/lib/services/preferences";
 
 // Layout de todas las páginas privadas: la carpeta "(app)" entre paréntesis agrupa
 // rutas sin agregar nada a la URL (/dashboard, no /app/dashboard).
@@ -12,6 +14,7 @@ import { ChopWidget } from "@/components/chop/chop-widget";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
+  const prefs = await getPreferences(user.id);
 
   return (
     <>
@@ -30,7 +33,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </div>
       </header>
       {/* pb-24: espacio abajo para que el botón de Chop no tape lo último de la página */}
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24">
+        <FormDefaultsProvider value={{ paymentMethod: prefs.defaultPaymentMethod, dollarType: prefs.defaultDollarType }}>
+          {children}
+        </FormDefaultsProvider>
+      </main>
       <ChopWidget userId={user.id} name={user.name} />
     </>
   );

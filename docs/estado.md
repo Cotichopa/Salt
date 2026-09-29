@@ -69,6 +69,17 @@ qué se decidió y qué falta**.
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. Los "Pendientes chicos" del final.
 
+## Hecho: preferencias y perfil (2026-09-29)
+
+En **Mi cuenta**: nombre (el que usa Chop) y WhatsApp (pide la contraseña actual; avisa si el número es
+de otra cuenta), y **Preferencias**: pantalla de inicio (`/` redirige ahí; también después del login),
+moneda de los totales (Inicio y detalle de categoría, si la URL no dice otra), color principal
+(`data-accent` en `<html>` + variables en `globals.css`), medio de pago y dólar de siempre (preelegidos en
+los formularios de gastos y fijos vía `FormDefaultsProvider`, y primeros con "⭐ El de siempre" en las
+listas de Chop). Campos en `users` (migración `preferencias`); opciones en `src/lib/preferences.ts`.
+Ojo: a un `Select` de Base UI no se le puede cambiar el `defaultValue` una vez montado (por eso el
+formulario de preferencias fija sus valores iniciales con `useState`).
+
 ## Hecho: olvidé mi contraseña (2026-09-29)
 
 - Login → "¿Olvidaste tu contraseña?" → `/recuperar` (email) → mail con link a `/recuperar/<token>` →

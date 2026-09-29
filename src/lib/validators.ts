@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { dollarTypeLabels, parseAmount, todayISO, type DollarTypeCode } from "@/lib/format";
+import { dollarTypeLabels, parseAmount, paymentMethodLabels, todayISO, type DollarTypeCode } from "@/lib/format";
+import { ACCENT_COLORS, HOME_PAGES } from "@/lib/preferences";
 import { parseKeywords } from "@/lib/text";
 import { CATEGORY_ICON_INFO, CATEGORY_ICON_KEYS } from "@/lib/category-icon-data";
 
@@ -53,6 +54,27 @@ export const newPasswordSchema = z
     confirm: z.string(),
   })
   .refine((d) => d.next === d.confirm, { path: ["confirm"], message: "Las contraseñas no coinciden" });
+
+// Preferencias y perfil ("Cuenta")
+const keysOf = <T extends object>(o: T) => Object.keys(o) as [Extract<keyof T, string>, ...Extract<keyof T, string>[]];
+
+export const preferencesSchema = z.object({
+  homePage: z.enum(keysOf(HOME_PAGES)),
+  defaultCurrency: z.enum(["ARS", "USD"]),
+  accentColor: z.enum(keysOf(ACCENT_COLORS)),
+  defaultPaymentMethod: z.enum(keysOf(paymentMethodLabels)),
+  defaultDollarType: z.enum(keysOf(dollarTypeLabels)),
+});
+
+export const profileSchema = z.object({
+  name: z.string().trim().min(2, "Ingresá tu nombre").max(40, "Máximo 40 caracteres"),
+});
+
+// Cambiar el propio WhatsApp pide la contraseña: el número también sirve para usar Chop
+export const ownPhoneSchema = z.object({
+  phone: phoneRule,
+  password: z.string().min(1, "Ingresá tu contraseña"),
+});
 
 export const updatePhoneSchema = z.object({
   userId: z.string().min(1),
