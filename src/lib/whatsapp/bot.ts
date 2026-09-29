@@ -7,6 +7,7 @@ import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
 import { isAiEnabled, parseMessage, parseReceipt } from "@/lib/whatsapp/ai-parser";
 import { ReceiptError, saveReceipt } from "@/lib/services/receipts";
+import { merchantCategory, setReceiptCuit, validCuit } from "@/lib/services/merchants";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { isDeleteLast, parseWithoutAI } from "@/lib/whatsapp/quick-parser";
 import {
@@ -85,22 +86,40 @@ async function handleReceipt(ctx: Ctx, mediaId: string, caption?: string) {
     throw e;
   }
   const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
-  const parsed = await parseReceipt(receipt.jpeg, caption, {
+  const result = await parseReceipt(receipt.jpeg, caption, {
     categories: categories.map((c) => c.name),
     sources: sources.map((s) => s.name),
   });
-  if (!parsed) {
+  if (!result) {
     return showMainMenu(
       ctx,
       "No pude leer el ticket: la IA no me respondió 😕 (suele ser algo pasajero).\n" +
         'Probá mandarlo de nuevo en un rato o escribime el gasto (ej: _"super 12500"_):',
     );
   }
+  const { parsed } = result;
+  // Comercio conocido (por su CUIT): va a la categoría de la última vez, salvo que el texto de la
+  // foto nombre otra ("esto es de regalos"). Al guardar, el CUIT queda anotado con la categoría final
+  // (la confirmación lo cuenta: merchantNote en menu.ts).
+  const cuit = validCuit(result.cuit);
+  if (cuit) {
+    await setReceiptCuit(ctx.userId, receipt.id, cuit);
+    const known = await merchantCategory(ctx.userId, cuit);
+    if (known && parsed.intent === "cargar" && !(caption && namesCategory(categories, caption))) {
+      for (const e of parsed.expenses) e.categoryName = known.name;
+    }
+  }
   if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses, "🧾 Esto leí del ticket 👇", receipt.id))) return;
   const why = parsed.intent === "otro" && parsed.question ? `${parsed.question} ` : "";
   await ctx.out.text(
     `🤔 No pude sacar el gasto de esa foto. ${why}\nProbá con una foto más de cerca y con buena luz, o escribime el gasto.`,
   );
+}
+
+/** Si el texto nombra una categoría ("esto es de regalos"): por su nombre o una de sus palabras clave */
+function namesCategory(cats: { name: string; keywords: string[] }[], text: string) {
+  const t = ` ${normalize(text).replace(/[^a-z0-9ñ]+/g, " ")} `;
+  return cats.some((c) => [c.name, ...c.keywords].some((w) => w && t.includes(` ${normalize(w)} `)));
 }
 
 /** Palabras que ayudan a Whisper a entender los audios: las categorías y tarjetas de la persona */

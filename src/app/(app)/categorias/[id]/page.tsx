@@ -10,6 +10,7 @@ import { getCategoryStats, type CategoryPeriod } from "@/lib/services/category-s
 import { listExpenses } from "@/lib/services/expenses";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { getBudget } from "@/lib/services/budgets";
+import { listMerchants } from "@/lib/services/merchants";
 import { getPreferences } from "@/lib/services/preferences";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,9 +21,11 @@ import { CategoryDialog } from "../category-dialog";
 import { DeleteCategoryButton } from "../delete-category-button";
 import { HistoryChart } from "./history-chart";
 import { BudgetCard } from "./budget-card";
+import { MerchantsCard } from "./merchants-card";
 
 // Pantalla de una categoría (/categorias/<id>): cuánto va esta semana, este mes y este año,
-// el presupuesto mensual, un gráfico con el historial y los gastos del período elegido.
+// el presupuesto mensual, los comercios de sus tickets, un gráfico con el historial y los gastos
+// del período elegido.
 // El período y la moneda en que se ve van en la URL (?periodo=semana&moneda=ARS), igual que en el inicio.
 
 const PERIODS = {
@@ -54,10 +57,11 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
 
   const today = todayISO();
   const stats = await getCategoryStats(user.id, id, currency, period);
-  const [expenses, sources, budget] = await Promise.all([
+  const [expenses, sources, budget, merchants] = await Promise.all([
     listExpenses(user.id, { categoryId: id, from: stats.periodStart, to: today }),
     listPaymentSources(user.id),
     getBudget(user.id, id),
+    listMerchants(user.id, id),
   ]);
   const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
   const href = (p: CategoryPeriod, c: CurrencyCode) => `/categorias/${id}?periodo=${p}&moneda=${c}`;
@@ -144,6 +148,8 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
 
       {/* El presupuesto es en pesos: con "Dólares" elegido no lo mostramos */}
       {currency === "ARS" && <BudgetCard budget={budget} categoryId={id} categoryName={category.name} today={today} />}
+
+      <MerchantsCard merchants={merchants} categoryId={id} categories={categoryOptions} />
 
       <Card>
         <CardHeader>

@@ -85,7 +85,10 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
-2. Los "Pendientes chicos" del final.
+2. **Facturas en PDF por Chop** (pedido de Felipe, 2026-09-29, para después): aceptar el PDF adjunto
+   (tipo `document` de WhatsApp) además de la foto; Claude lee el PDF directo (CUIT y total exactos).
+   En la web, el PDF se ve **dentro del diálogo** del gasto, no en otra pestaña (decisión de Felipe).
+3. Los "Pendientes chicos" del final.
 
 ## Hecho: fotos de tickets (2026-09-29)
 
@@ -97,6 +100,20 @@ confirmación, correcciones). La foto viaja en el borrador de la sesión (`Draft
 `expenses.receiptId` (en cuotas, todas la comparten). Fotos sin gasto se borran solas al día siguiente.
 En la web: ícono 🧾 en la lista y la foto en el diálogo de edición, servida por `/api/tickets/[id]`
 (solo al dueño). Decisión de Felipe: por ahora solo por WhatsApp, no desde el chat web.
+
+**Comercio por CUIT → categoría** (2026-09-29, migración `comercios_cuit`). La IA también lee el CUIT
+del emisor; `validCuit` (`src/lib/services/merchants.ts`) chequea el dígito verificador y descarta los
+mal leídos. El CUIT queda en `receipts.cuit`, y al guardar el gasto se anota en la tabla `merchants`
+(por cuenta: CUIT → categoría). El próximo ticket de ese CUIT viene con esa categoría ("la de la última
+vez en este comercio"). Decisiones de Felipe: vale **la última** categoría (si la cambiás al confirmar o
+después, en la web o por Chop, se actualiza: `updateExpense`); si el texto de la foto nombra una
+categoría, **manda el texto**. Al confirmar, Chop cuenta qué pasa con el comercio (`merchantNote` en
+`menu.ts`: "Guardo este comercio (CUIT …) en …", "es la de la última vez", "estaba en X: lo paso a Y" o
+"no pude leer el CUIT"). En la web, cada categoría muestra la tarjeta **Comercios** (si tiene alguno)
+para pasarlos a otra categoría u olvidarlos. Al borrar una categoría moviendo sus gastos, los
+comercios se mueven con ellos.
+Límite visto: con fotos chicas (una captura de 507 px de una factura) Haiku lee mal los dígitos del CUIT
+y el QR de ARCA es muy chico para decodificarlo; el verificador lo rechaza y ese ticket no se asocia.
 
 ## Hecho: buscador en el Inicio (2026-09-29)
 

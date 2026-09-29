@@ -79,6 +79,7 @@ model User {
   notices        Notice[]
   passwordResets PasswordReset[]
   receipts       Receipt[]
+  merchants      Merchant[]
 
   @@map("users")
 }
@@ -91,6 +92,7 @@ model Receipt {
   userId    String
   data      Bytes
   mimeType  String
+  cuit      String? // CUIT del comercio, si se leyó (11 dígitos, sin guiones): ver merchants.ts
   createdAt DateTime @default(now())
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -98,6 +100,24 @@ model Receipt {
 
   @@index([userId, createdAt])
   @@map("receipts")
+}
+
+// Comercios conocidos por su CUIT: a qué categoría van sus tickets. Se aprende al guardar un gasto
+// con foto de ticket (o al cambiarle la categoría después), y el próximo ticket de ese comercio
+// viene con esa categoría puesta. Cada cuenta tiene los suyos (las categorías son por cuenta).
+model Merchant {
+  id         String   @id @default(cuid())
+  userId     String
+  cuit       String // 11 dígitos, sin guiones
+  categoryId String
+  name       String? // el último nombre leído del ticket ("Carrefour")
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cuit])
+  @@map("merchants")
 }
 
 // Links de "olvidé mi contraseña". Se guarda el hash (SHA-256) del token, no el token: el token
@@ -144,6 +164,7 @@ model Category {
   expenses  Expense[]
   budgets   Budget[]
   recurring RecurringExpense[]
+  merchants Merchant[]
 
   @@unique([userId, name])
   @@map("categories")

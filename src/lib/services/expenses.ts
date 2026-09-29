@@ -11,6 +11,7 @@ import {
 } from "@/lib/format";
 import type { ExpenseInput } from "@/lib/validators";
 import { getRate, RateUnavailableError, tryGetRate } from "@/lib/services/exchange-rates";
+import { rememberMerchant } from "@/lib/services/merchants";
 
 // Los campos nuevos son opcionales para quien llama (el bot todavía no los manda)
 type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate"> & {
@@ -205,6 +206,8 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
 
   const installments = Math.max(1, Math.min(input.installments ?? 1, 36));
   const conversion = await conversionFor({ ...input, rateOptional });
+  // Con foto de ticket: el comercio (su CUIT) queda anotado en esta categoría para el próximo ticket
+  const remember = () => input.receiptId && rememberMerchant(userId, input.receiptId, input.categoryId, input.description);
   if (installments === 1) {
     const row = await db.expense.create({
       data: {
@@ -217,6 +220,7 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
       },
       select: expenseSelect,
     });
+    await remember();
     return toDTO(row);
   }
 
@@ -241,6 +245,7 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
     };
   });
   await db.expense.createMany({ data: rows });
+  await remember();
 
   const first = await db.expense.findFirstOrThrow({
     where: { purchaseId, installmentNumber: 1 },
@@ -254,7 +259,7 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
   await assertSourceAllowed(userId, input);
   const current = await db.expense.findFirst({
     where: { id, userId },
-    select: { amount: true, currency: true, date: true, dollarType: true, rate: true },
+    select: { amount: true, currency: true, date: true, dollarType: true, rate: true, categoryId: true, receiptId: true },
   });
   if (!current) throw new ExpenseError("Gasto no encontrado");
 
@@ -286,6 +291,10 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
     },
   });
   if (count === 0) throw new ExpenseError("Gasto no encontrado");
+  // Si vino de un ticket y se le cambió la categoría, el comercio pasa a la nueva
+  if (current.receiptId && current.categoryId !== input.categoryId) {
+    await rememberMerchant(userId, current.receiptId, input.categoryId);
+  }
 }
 
 /**

@@ -64,6 +64,11 @@ export function formatMoney(amount: number | string, currency: CurrencyCode) {
   }).format(n);
 }
 
+/** "20354495652" → "20-35449565-2" */
+export function formatCuit(cuit: string) {
+  return `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}`;
+}
+
 // ---------- Fechas ----------
 // En la base la fecha del gasto es solo un día (sin hora). Prisma la entrega como un Date
 // a las 00:00 UTC, así que siempre la convertimos y mostramos en UTC para no correr el día.

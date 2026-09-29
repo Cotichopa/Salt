@@ -1,6 +1,7 @@
 import "server-only";
 import {
   dollarTypeLabels,
+  formatCuit,
   formatMoney,
   paymentMethodLabels,
   parseAmount,
@@ -35,6 +36,7 @@ import type { ListRow, Outbox } from "@/lib/whatsapp/outbox";
 import type { Source } from "@/generated/prisma/client";
 import { clearSession, setSession, type Draft, type PendingExpense, type Session } from "@/lib/whatsapp/session";
 import { getPreferences } from "@/lib/services/preferences";
+import { receiptMerchant } from "@/lib/services/merchants";
 
 // Menú paso a paso de Chop, armado como una "máquina de estados":
 // cada paso de la conversación es un estado (ej: "add:amount" = esperando el monto),
@@ -626,6 +628,7 @@ async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
     "",
     pending.some((p) => p.guessedMethod) ? "_El medio de pago lo supuse: revisalo._" : "",
     pending.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
+    d.receiptId ? await merchantNote(ctx.userId, d.receiptId, pending[pending.length - 1]) : "",
     "_Si algo está mal, escribime la corrección (ej: \"era con efectivo\")._",
   ]
     .filter(Boolean)
@@ -635,6 +638,21 @@ async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
     { id: "aiconfirm:no", title: "❌ Cancelar" },
   ]);
   return true;
+}
+
+/**
+ * Qué pasa con el comercio del ticket al guardar (se anota su CUIT con la categoría, ver
+ * merchants.ts). Con varios gastos de un ticket, queda la categoría del último.
+ */
+async function merchantNote(userId: string, receiptId: string, p: PendingExpense) {
+  const merchant = await receiptMerchant(userId, receiptId);
+  if (!merchant) return "🏪 _No pude leer el CUIT del comercio, así que no lo voy a recordar._";
+  if (merchant.category?.id === p.categoryId) return "🏪 _La categoría es la de la última vez en este comercio._";
+  const cuit = formatCuit(merchant.cuit);
+  if (merchant.category) {
+    return `🏪 _Este comercio (CUIT ${cuit}) estaba en ${label(merchant.category)}: lo paso a ${p.categoryLabel} para sus próximos tickets._`;
+  }
+  return `🏪 _Guardo este comercio (CUIT ${cuit}) en ${p.categoryLabel}: sus próximos tickets van a venir con esa categoría._`;
 }
 
 const NO_CATEGORY = "❓ Sin categoría";

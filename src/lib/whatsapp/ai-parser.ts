@@ -223,7 +223,7 @@ export async function parseMessage(text: string, lists: Lists, proposed?: Parsed
 const DELETE_WORDS = /\b(borra|borrar|borralo|borrame|elimina|eliminar|eliminalo|eliminame|saca|sacar|sacalo|sacame)\b/;
 
 const RECEIPT_SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Te mando la foto de un ticket, factura o comprobante de pago. Respondé SOLO un objeto JSON, sin texto alrededor:
-{"accion":"cargar","gastos":[{"monto":45800.5,"cat":"Supermercado","medio":"DEBIT","tarjeta":"Visa","cuotas":3,"fecha":"2026-09-27","desc":"Carrefour"}]}
+{"accion":"cargar","cuit":"30-12345678-9","gastos":[{"monto":45800.5,"cat":"Supermercado","medio":"DEBIT","tarjeta":"Visa","cuotas":3,"fecha":"2026-09-27","desc":"Carrefour"}]}
 Si no es el comprobante de un gasto o no se lee el total: {"accion":"otro","pregunta":"<qué no se ve, en una frase corta>"}
 - monto: el TOTAL final pagado (con descuentos e impuestos), no subtotales ni ítems. En los tickets argentinos "45.800,50" = 45800.5.
 - usd: true solo si el total está en dólares (US$, USD).
@@ -231,14 +231,23 @@ Si no es el comprobante de un gasto o no se lee el total: {"accion":"otro","preg
 - medio, tarjeta y cuotas: solo si el ticket lo dice. Efectivo=CASH, débito=DEBIT, crédito=CREDIT, transferencia/QR/Mercado Pago=TRANSFER. tarjeta: nombre EXACTO de la lista si coincide la marca.
 - fecha YYYY-MM-DD de la compra, nunca futura. Omitila si no se ve.
 - desc: el nombre del comercio, corto ("Carrefour", "YPF").
+- cuit: el CUIT del comercio que emite el ticket (arriba, junto a su nombre), tal cual se lee. Nunca el del cliente. Omitilo si no se ve.
 - Si hay un texto de la persona, manda sobre la foto ("fue con la visa", "es de nafta").`;
+
+// Lo mismo que un mensaje, más el CUIT del comercio (va aparte de los gastos: es uno por ticket)
+const receiptSchema = aiSchema.and(z.object({ cuit: z.string().optional() }));
 
 /**
  * Lee la foto de un ticket (JPEG) y devuelve el gasto como si se hubiera escrito: "cargar" con lo
- * que se leyó, u "otro" con qué faltó si no es un ticket. `caption` es el texto que vino con la
- * foto. null si la IA no está disponible o respondió algo inválido.
+ * que se leyó, u "otro" con qué faltó si no es un ticket, y el CUIT tal cual se leyó (se valida en
+ * merchants.ts). `caption` es el texto que vino con la foto. null si la IA no está disponible o
+ * respondió algo inválido.
  */
-export async function parseReceipt(jpeg: Buffer, caption: string | undefined, lists: Lists): Promise<Parsed | null> {
+export async function parseReceipt(
+  jpeg: Buffer,
+  caption: string | undefined,
+  lists: Lists,
+): Promise<{ parsed: Parsed; cuit: string | null } | null> {
   if (!isAiEnabled()) return null;
   const text = [todayLine(), ...listsLines(lists), caption ? `\nTexto de la persona: "${caption.slice(0, MAX_CHARS)}"` : ""].join("\n");
   const result = await askModel(
@@ -248,10 +257,10 @@ export async function parseReceipt(jpeg: Buffer, caption: string | undefined, li
       { type: "image", source: { type: "base64", media_type: "image/jpeg", data: jpeg.toString("base64") } },
       { type: "text", text },
     ],
-    aiSchema,
+    receiptSchema,
     "ai-ticket",
   );
-  return result ? toParsed(result, todayISO()) : null;
+  return result ? { parsed: toParsed(result, todayISO()), cuit: result.cuit ?? null } : null;
 }
 
 function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
