@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/dal";
 import { transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
-import { audioHints, handleInput } from "@/lib/whatsapp/bot";
+import { audioHints, handleInput, processReceipt, receiptKind } from "@/lib/whatsapp/bot";
 import type { Ctx } from "@/lib/whatsapp/menu";
 import { collectingOutbox, type ChopMessage } from "@/lib/whatsapp/outbox";
 import { clearSession } from "@/lib/whatsapp/session";
@@ -64,6 +64,32 @@ export async function sendAudioToChop(formData: FormData): Promise<{ transcript:
   await handleInput(ctx, { text: result.text });
   revalidate();
   return { transcript: result.text, messages: out.messages };
+}
+
+// Un ticket (foto o PDF) desde el chat: hasta 5 MB, igual que por WhatsApp. Para que entre, el
+// límite de las Server Actions se subió a 6 MB (next.config.ts). Las fotos llegan ya achicadas
+// por el navegador (chop-chat.tsx), así que pesan mucho menos.
+const MAX_RECEIPT_BYTES = 5_000_000;
+
+/** Foto o factura en PDF adjunta en el chat → Chop la lee y propone el gasto, como por WhatsApp */
+export async function sendReceiptToChop(formData: FormData): Promise<ChopMessage[]> {
+  const file = formData.get("file");
+  const caption = formData.get("caption");
+  if (!(file instanceof File) || file.size === 0) {
+    return [{ type: "text", body: "No pude recibir el archivo 😕 Probá de nuevo." }];
+  }
+  // El tipo lo decide el navegador por la extensión; si no es foto ni PDF, no se procesa
+  const kind = receiptKind(file.type);
+  if (!kind) return [{ type: "text", body: "📎 Ese archivo no lo puedo leer. Mandame el ticket como foto o como PDF." }];
+  if (file.size > MAX_RECEIPT_BYTES) {
+    return [{ type: "text", body: "Ese archivo es muy grande 😕 (el máximo es 5 MB). Probá con una foto." }];
+  }
+
+  const { ctx, out } = await webCtx();
+  const text = typeof caption === "string" && caption.trim() ? caption.trim().slice(0, 500) : undefined;
+  await processReceipt(ctx, Buffer.from(await file.arrayBuffer()), kind, text);
+  revalidate();
+  return out.messages;
 }
 
 /** "Nueva conversación": Chop se olvida del paso del menú en el que estaba */

@@ -90,8 +90,10 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
    2. ~~Web: el ticket se ve dentro de la app~~ — hecha: `src/components/receipt-viewer.tsx` (visor encima
       del diálogo del gasto, con zoom y Descargar; el PDF se dibuja con pdf.js en `<canvas>`, cargado
       solo al abrirlo, con su worker como módulo en la misma página).
-   3. Chat de Chop en la web: botón ➕ con "Adjuntar foto" y "Adjuntar archivo"; rechaza lo que no sea
-      PDF o imagen.
+   3. ~~Chat de Chop en la web: botón ➕~~ — hecha: "Adjuntar foto" / "Adjuntar archivo" (`chop-chat.tsx`);
+      las fotos se achican en el navegador (1568 px JPEG) y todo pasa por `sendReceiptToChop` →
+      `processReceipt`. Otros archivos se rechazan en el navegador y en el servidor. Límite de las Server
+      Actions subido a 6 MB (`next.config.ts`) para PDFs de hasta 5 MB.
    4. Formulario de gasto: "Adjuntar ticket".
 3. Los "Pendientes chicos" del final.
 

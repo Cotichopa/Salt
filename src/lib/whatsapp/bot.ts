@@ -77,6 +77,8 @@ async function handleAudio(ctx: Ctx, mediaId: string) {
 
 type ReceiptKind = "image" | "pdf";
 
+const NO_RECEIPTS = 'Todavía no puedo leer tickets 😕 Escribime el gasto (ej: _"super 12500"_).';
+
 /** Qué tipo de ticket es un archivo, por su tipo (MIME): PDF o imagen. null si no es ninguno. */
 export function receiptKind(mimeType: string | undefined): ReceiptKind | null {
   if (mimeType === "application/pdf") return "pdf";
@@ -85,9 +87,7 @@ export function receiptKind(mimeType: string | undefined): ReceiptKind | null {
 
 /** Ticket por WhatsApp (foto o PDF): se baja y se procesa */
 async function handleReceipt(ctx: Ctx, mediaId: string, kind: ReceiptKind, caption?: string) {
-  if (!isAiEnabled()) {
-    return ctx.out.text('Todavía no puedo leer tickets 😕 Escribime el gasto (ej: _"super 12500"_).');
-  }
+  if (!isAiEnabled()) return ctx.out.text(NO_RECEIPTS);
   const file = await downloadMedia(mediaId);
   if (!file) return ctx.out.text(`No pude bajar ${kind === "pdf" ? "el PDF" : "la foto"} 😕 Probá mandarlo de nuevo.`);
   await processReceipt(ctx, file, kind, caption);
@@ -99,6 +99,7 @@ async function handleReceipt(ctx: Ctx, mediaId: string, kind: ReceiptKind, capti
  * para verlo en la web. El texto que venga con el archivo ("fue con la visa") manda sobre lo que se lee.
  */
 export async function processReceipt(ctx: Ctx, file: Buffer, kind: ReceiptKind, caption?: string) {
+  if (!isAiEnabled()) return ctx.out.text(NO_RECEIPTS);
   const pdf = kind === "pdf";
   let saved: { id: string; file: ReceiptFile };
   try {

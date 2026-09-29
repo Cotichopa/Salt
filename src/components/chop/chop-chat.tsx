@@ -1,14 +1,15 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState, useTransition } from "react";
-import { MicIcon, RotateCcwIcon, SendHorizontalIcon, XIcon } from "lucide-react";
+import { CameraIcon, MicIcon, PaperclipIcon, PlusIcon, RotateCcwIcon, SendHorizontalIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { resetChop, sendAudioToChop, talkToChop } from "@/lib/actions/chop";
+import { resetChop, sendAudioToChop, sendReceiptToChop, talkToChop } from "@/lib/actions/chop";
 import type { ChopMessage } from "@/lib/whatsapp/outbox";
 import { cn } from "@/lib/utils";
 import { ChopAvatar } from "./chop-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Chat con Chop (vive dentro de la ventana flotante, ver chop-widget.tsx). Cada mensaje va al
 // servidor (talkToChop), que lo procesa con el mismo cerebro que WhatsApp y devuelve las
@@ -22,6 +23,29 @@ type Entry =
 const MAX_HISTORY = 60; // mensajes que recordamos
 const MAX_RECORDING_S = 60; // un minuto de audio como máximo
 const SUGGESTIONS = ["menu", "¿Cuánto gasté este mes?", "super 12500 débito"];
+const MAX_FILE_BYTES = 5_000_000; // igual que por WhatsApp (ver sendReceiptToChop)
+const PHOTO_SIDE = 1568; // lado más largo de la foto que se manda: más grande la IA no lee mejor
+
+/**
+ * Achica la foto en el navegador (JPEG, 1568 px de lado como máximo) para que suba rápido aunque
+ * sea con datos: una foto del celular pesa 3 a 8 MB y así queda en ~300 KB. Si el navegador no la
+ * puede abrir (por ejemplo HEIC en Chrome), va como está y el servidor ve si la puede leer.
+ */
+async function shrinkPhoto(file: File): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, PHOTO_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    return blob ?? file;
+  } catch {
+    return file;
+  }
+}
 
 const storageKey = (userId: string) => `salt:chop:${userId}`;
 
@@ -120,6 +144,40 @@ export function ChopChat({
     });
   }
 
+  /**
+   * Un ticket adjunto (foto o PDF). Lo que esté escrito en el campo va con él, como el texto de una
+   * foto en WhatsApp ("fue con la visa"). Otro tipo de archivo se rechaza acá mismo.
+   */
+  function sendFile(file: File) {
+    const pdf = file.type === "application/pdf";
+    const caption = text.trim();
+    const label = pdf ? `📄 ${file.name}` : "📷 Foto del ticket";
+    if (!pdf && !file.type.startsWith("image/")) {
+      add(
+        { id: crypto.randomUUID(), from: "me", text: `📎 ${file.name}` },
+        ...fromChop([{ type: "text", body: "📎 Ese archivo no lo puedo leer. Mandame el ticket como foto o como PDF." }]),
+      );
+      return;
+    }
+    setText("");
+    add({ id: crypto.randomUUID(), from: "me", text: caption ? `${label}\n${caption}` : label });
+    startTransition(async () => {
+      try {
+        const body = pdf ? file : await shrinkPhoto(file);
+        if (body.size > MAX_FILE_BYTES) {
+          add(...fromChop([{ type: "text", body: "Ese archivo es muy grande 😕 (el máximo es 5 MB). Probá con una foto." }]));
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", body, pdf ? file.name : "ticket.jpg");
+        if (caption) formData.append("caption", caption);
+        add(...fromChop(await sendReceiptToChop(formData)));
+      } catch {
+        toast.error("No pude mandar el archivo. Probá de nuevo.");
+      }
+    });
+  }
+
   function restart() {
     setEntries([]);
     startTransition(() => resetChop());
@@ -212,6 +270,7 @@ export function ChopChat({
         pending={pending}
         onSubmit={submit}
         onAudio={sendAudio}
+        onFile={sendFile}
       />
     </div>
   );
@@ -300,8 +359,8 @@ function FormattedText({ text }: { text: string }) {
 const formatSeconds = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
 /**
- * Barra de abajo: campo de texto + botón. Sin texto, el botón es un micrófono (como en
- * WhatsApp); al grabar aparecen el tiempo, cancelar y enviar.
+ * Barra de abajo: ➕ (adjuntar foto o archivo), campo de texto y botón. Sin texto, el botón es un
+ * micrófono (como en WhatsApp); al grabar aparecen el tiempo, cancelar y enviar.
  */
 function Composer({
   text,
@@ -310,6 +369,7 @@ function Composer({
   pending,
   onSubmit,
   onAudio,
+  onFile,
 }: {
   text: string;
   setText: (v: string) => void;
@@ -317,7 +377,10 @@ function Composer({
   pending: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onAudio: (blob: Blob, seconds: number) => void;
+  onFile: (file: File) => void;
 }) {
+  const photoInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const cancelled = useRef(false);
@@ -385,8 +448,37 @@ function Composer({
     );
   }
 
+  // El archivo elegido se manda enseguida; se vacía el campo para poder elegir el mismo otra vez
+  function picked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) onFile(file);
+  }
+
   return (
     <form onSubmit={onSubmit} className="flex items-center gap-2 border-t px-4 py-3">
+      {/* "accept" solo sugiere qué mostrar: el tipo se vuelve a revisar al elegir (sendFile) */}
+      <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={picked} />
+      <input ref={fileInput} type="file" accept="application/pdf,image/*" className="hidden" onChange={picked} />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button type="button" variant="ghost" size="icon" className="size-10 shrink-0 rounded-full" />}
+          disabled={pending}
+          aria-label="Adjuntar ticket"
+        >
+          <PlusIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" className="w-48">
+          <DropdownMenuItem onClick={() => photoInput.current?.click()}>
+            <CameraIcon />
+            Adjuntar foto
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => fileInput.current?.click()}>
+            <PaperclipIcon />
+            Adjuntar archivo
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Input
         ref={inputRef}
         value={text}

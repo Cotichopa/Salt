@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
   // Así se carga tal cual desde node_modules (lo usa src/lib/transcribe.ts para los audios).
   // pdfjs-dist, igual: en el servidor carga su "worker" desde su carpeta (src/lib/services/receipts.ts).
   serverExternalPackages: ["ffmpeg-static", "pdfjs-dist"],
+  // Los tickets (foto o PDF) que se adjuntan en el chat de Chop pesan hasta 5 MB: el límite de las
+  // Server Actions es 1 MB por defecto (src/lib/actions/chop.ts → sendReceiptToChop)
+  experimental: {
+    serverActions: { bodySizeLimit: "6mb" },
+  },
   // El service worker no se guarda en caché: así el celular siempre toma la última versión
   async headers() {
     return [
