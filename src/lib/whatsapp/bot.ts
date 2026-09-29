@@ -5,9 +5,9 @@ import { downloadMedia, sendText } from "@/lib/whatsapp/client";
 import { isTranscriptionEnabled, transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
-import { isAiEnabled, parseMessage, parseReceipt, type ReceiptFile } from "@/lib/whatsapp/ai-parser";
-import { ReceiptError, savePdfReceipt, saveReceipt } from "@/lib/services/receipts";
-import { merchantCategory, setReceiptCuit, validCuit } from "@/lib/services/merchants";
+import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
+import { ReceiptError } from "@/lib/services/receipts";
+import { readReceipt, receiptKind, type ReceiptKind } from "@/lib/services/receipt-reading";
 import { listPaymentSources } from "@/lib/services/payment-sources";
 import { isDeleteLast, parseWithoutAI } from "@/lib/whatsapp/quick-parser";
 import {
@@ -75,15 +75,7 @@ async function handleAudio(ctx: Ctx, mediaId: string) {
   await handleInput(ctx, { text: result.text });
 }
 
-type ReceiptKind = "image" | "pdf";
-
 const NO_RECEIPTS = 'Todavía no puedo leer tickets 😕 Escribime el gasto (ej: _"super 12500"_).';
-
-/** Qué tipo de ticket es un archivo, por su tipo (MIME): PDF o imagen. null si no es ninguno. */
-export function receiptKind(mimeType: string | undefined): ReceiptKind | null {
-  if (mimeType === "application/pdf") return "pdf";
-  return mimeType?.startsWith("image/") ? "image" : null;
-}
 
 /** Ticket por WhatsApp (foto o PDF): se baja y se procesa */
 async function handleReceipt(ctx: Ctx, mediaId: string, kind: ReceiptKind, caption?: string) {
@@ -94,22 +86,17 @@ async function handleReceipt(ctx: Ctx, mediaId: string, kind: ReceiptKind, capti
 }
 
 /**
- * Un ticket (foto o factura en PDF): se guarda, la IA lo lee y se propone el gasto, que se confirma
- * como cualquier otro (y se puede corregir escribiendo). Al guardarlo, el archivo queda con el gasto
- * para verlo en la web. El texto que venga con el archivo ("fue con la visa") manda sobre lo que se lee.
+ * Un ticket (foto o factura en PDF): se guarda, la IA lo lee (readReceipt, que también aplica el
+ * comercio conocido por su CUIT) y se propone el gasto, que se confirma como cualquier otro (y se
+ * puede corregir escribiendo). Al guardarlo, el archivo queda con el gasto para verlo en la web.
+ * El texto que venga con el archivo ("fue con la visa") manda sobre lo que se lee.
  */
 export async function processReceipt(ctx: Ctx, file: Buffer, kind: ReceiptKind, caption?: string) {
   if (!isAiEnabled()) return ctx.out.text(NO_RECEIPTS);
   const pdf = kind === "pdf";
-  let saved: { id: string; file: ReceiptFile };
+  let reading: Awaited<ReturnType<typeof readReceipt>>;
   try {
-    if (pdf) {
-      const r = await savePdfReceipt(ctx.userId, file);
-      saved = { id: r.id, file: r.forAi };
-    } else {
-      const r = await saveReceipt(ctx.userId, file);
-      saved = { id: r.id, file: { kind: "image", data: r.jpeg } };
-    }
+    reading = await readReceipt(ctx.userId, file, kind, caption);
   } catch (e) {
     if (!(e instanceof ReceiptError)) throw e;
     return ctx.out.text(
@@ -118,44 +105,22 @@ export async function processReceipt(ctx: Ctx, file: Buffer, kind: ReceiptKind, 
         : "No pude abrir esa imagen 😕 Probá sacarle otra foto al ticket.",
     );
   }
-  const [categories, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
-  const result = await parseReceipt(saved.file, caption, {
-    categories: categories.map((c) => c.name),
-    sources: sources.map((s) => s.name),
-  });
-  if (!result) {
+  const { parsed, receiptId } = reading;
+  if (!parsed) {
     return showMainMenu(
       ctx,
       "No pude leer el ticket: la IA no me respondió 😕 (suele ser algo pasajero).\n" +
         'Probá mandarlo de nuevo en un rato o escribime el gasto (ej: _"super 12500"_):',
     );
   }
-  const { parsed } = result;
-  // Comercio conocido (por su CUIT): va a la categoría de la última vez, salvo que el texto del
-  // ticket nombre otra ("esto es de regalos"). Al guardar, el CUIT queda anotado con la categoría final
-  // (la confirmación lo cuenta: merchantNote en menu.ts).
-  const cuit = validCuit(result.cuit);
-  if (cuit) {
-    await setReceiptCuit(ctx.userId, saved.id, cuit);
-    const known = await merchantCategory(ctx.userId, cuit);
-    if (known && parsed.intent === "cargar" && !(caption && namesCategory(categories, caption))) {
-      for (const e of parsed.expenses) e.categoryName = known.name;
-    }
-  }
   const heading = pdf ? "📄 Esto leí de la factura 👇" : "🧾 Esto leí del ticket 👇";
-  if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses, heading, saved.id))) return;
+  if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses, heading, receiptId))) return;
   const why = parsed.intent === "otro" && parsed.question ? `${parsed.question} ` : "";
   await ctx.out.text(
     pdf
       ? `🤔 No pude sacar el gasto de ese PDF. ${why}\nProbá mandándome una foto de la factura, o escribime el gasto.`
       : `🤔 No pude sacar el gasto de esa foto. ${why}\nProbá con una foto más de cerca y con buena luz, o escribime el gasto.`,
   );
-}
-
-/** Si el texto nombra una categoría ("esto es de regalos"): por su nombre o una de sus palabras clave */
-function namesCategory(cats: { name: string; keywords: string[] }[], text: string) {
-  const t = ` ${normalize(text).replace(/[^a-z0-9ñ]+/g, " ")} `;
-  return cats.some((c) => [c.name, ...c.keywords].some((w) => w && t.includes(` ${normalize(w)} `)));
 }
 
 /** Palabras que ayudan a Whisper a entender los audios: las categorías y tarjetas de la persona */

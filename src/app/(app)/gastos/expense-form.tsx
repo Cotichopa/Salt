@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
+import { LoaderCircleIcon, ReceiptTextIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
-import { getRateAction, saveExpense } from "@/lib/actions/expenses";
+import { getRateAction, readReceiptForForm, saveExpense, type ReceiptFill } from "@/lib/actions/expenses";
+import { shrinkPhoto } from "@/lib/shrink-photo";
 import {
   currencyLabels,
   dollarTypeFor,
@@ -23,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FieldError } from "@/components/field-error";
 import { CategoryIcon } from "@/components/category-icon";
 import { useFormDefaults } from "@/components/form-defaults";
+import { ReceiptViewer } from "@/components/receipt-viewer";
 
 export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
@@ -58,6 +61,10 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   const [amount, setAmount] = useState(expense ? String(expense.amount).replace(".", ",") : "");
   const [installments, setInstallments] = useState("1");
   const [date, setDate] = useState(expense?.date ?? today);
+  // Controlados (con value y no defaultValue) para poder completarlos con lo que se lee del ticket
+  const [categoryId, setCategoryId] = useState<string | null>(expense?.category.id ?? null);
+  const [sourceId, setSourceId] = useState<string | null>(expense?.paymentSource?.id ?? null);
+  const [description, setDescription] = useState(expense?.description ?? "");
 
   // Dólares: a qué dólar y a qué cotización. Con crédito siempre es el oficial (no se elige);
   // con los demás medios, el que elijas (chosenDollar). La cotización se busca sola al cambiar
@@ -98,6 +105,8 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   }
   function changeMethod(value: PaymentMethodCode) {
     setMethod(value);
+    // Al pasar de tarjeta a billetera (o a efectivo) se limpia la elección anterior
+    if (sourceKind(value) !== sourceKind(method)) setSourceId(null);
     // Pasar a crédito (o salir de crédito) cambia el dólar: se busca su cotización
     const next = dollarTypeFor(value, chosenDollar);
     if (next !== dollarType && currency === "USD") loadRate(next, date);
@@ -107,7 +116,21 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
     if (currency === "USD" && value) loadRate(dollarType, value);
   }
 
-  const kind = method === "TRANSFER" ? "WALLET" : method === "CASH" ? null : "CARD";
+  /** Completa el formulario con lo que se leyó del ticket (se puede revisar y corregir antes de guardar) */
+  function applyFill(fill: ReceiptFill) {
+    const nextMethod = fill.paymentMethod ?? method;
+    setAmount(String(fill.amount).replace(".", ","));
+    setCurrency(fill.currency);
+    setDate(fill.date);
+    if (fill.categoryId) setCategoryId(fill.categoryId);
+    setMethod(nextMethod);
+    setSourceId(fill.sourceId);
+    setInstallments(String(fill.installments));
+    if (fill.description) setDescription(fill.description);
+    if (fill.currency === "USD") loadRate(dollarTypeFor(nextMethod, chosenDollar), fill.date);
+  }
+
+  const kind = sourceKind(method);
   const sourceOptions = sources.filter((s) => s.kind === kind).map((s) => ({ value: s.id, label: s.name }));
   const categoryItems = categories.map((c) => ({ value: c.id, label: c.name }));
   const errors = state?.errors;
@@ -121,6 +144,9 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   return (
     <form action={action} className="grid gap-4 sm:grid-cols-2">
       {expense && <input type="hidden" name="id" value={expense.id} />}
+
+      {/* Si el gasto ya tiene ticket, se ve arriba del formulario (expense-list.tsx) */}
+      {!expense?.receiptId && <AttachReceipt fill={!expense} onFill={applyFill} />}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="amount">Monto {installmentCount > 1 && "total de la compra"}</Label>
@@ -218,7 +244,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
 
       <div className="flex flex-col gap-2">
         <Label>Categoría</Label>
-        <Select name="categoryId" items={categoryItems} defaultValue={expense?.category.id ?? null}>
+        <Select name="categoryId" items={categoryItems} value={categoryId} onValueChange={(v) => setCategoryId(v as string)}>
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Elegí una categoría" />
           </SelectTrigger>
@@ -261,12 +287,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
       {kind && (
         <div className="flex flex-col gap-2">
           <Label>{kind === "CARD" ? "Tarjeta" : "Billetera"} (opcional)</Label>
-          <Select
-            name="paymentSourceId"
-            items={sourceOptions}
-            defaultValue={expense?.paymentSource?.id ?? null}
-            key={kind} // al cambiar de tarjeta a billetera, se limpia la elección anterior
-          >
+          <Select name="paymentSourceId" items={sourceOptions} value={sourceId} onValueChange={(v) => setSourceId(v as string)}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder={kind === "CARD" ? "¿Con cuál?" : "¿Con cuál?"} />
             </SelectTrigger>
@@ -320,7 +341,13 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="description">Descripción (opcional)</Label>
-        <Input id="description" name="description" placeholder="Pizza con amigos" defaultValue={expense?.description ?? ""} />
+        <Input
+          id="description"
+          name="description"
+          placeholder="Pizza con amigos"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
         <FieldError errors={errors?.description} />
       </div>
 
@@ -330,5 +357,85 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
         {pending ? "Guardando..." : expense ? "Guardar cambios" : "Cargar gasto"}
       </Button>
     </form>
+  );
+}
+
+const sourceKind = (method: PaymentMethodCode) => (method === "TRANSFER" ? "WALLET" : method === "CASH" ? null : "CARD");
+
+/**
+ * "Adjuntar ticket": foto o PDF. Al cargar un gasto nuevo (`fill`), la IA lo lee y completa el
+ * formulario; al editar, solo se adjunta (para no pisar lo que ya está cargado). El ticket ya queda
+ * guardado; se asocia al gasto con el campo oculto receiptId al guardar.
+ */
+function AttachReceipt({ fill, onFill }: { fill: boolean; onFill: (fill: ReceiptFill) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [receipt, setReceipt] = useState<{ id: string; kind: "image" | "pdf" } | null>(null);
+  const [reading, startReading] = useTransition();
+
+  function picked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // para poder elegir el mismo archivo otra vez
+    if (!file) return;
+    const pdf = file.type === "application/pdf";
+    if (!pdf && !file.type.startsWith("image/")) {
+      toast.error("Ese archivo no lo puedo leer: adjuntá el ticket como foto o como PDF.");
+      return;
+    }
+    startReading(async () => {
+      try {
+        const formData = new FormData();
+        formData.append("file", pdf ? file : await shrinkPhoto(file), pdf ? file.name : "ticket.jpg");
+        if (fill) formData.append("fill", "1");
+        const result = await readReceiptForForm(formData);
+        if (!result.ok) {
+          toast.error(result.message);
+          return;
+        }
+        setReceipt({ id: result.receiptId, kind: result.kind });
+        if (result.fill) {
+          onFill(result.fill);
+          toast.success(result.message);
+        } else if (fill) toast.warning(result.message, { duration: 8000 });
+        else toast.success(result.message);
+      } catch {
+        toast.error("No pude subir el ticket. Probá de nuevo.");
+      }
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 sm:col-span-2">
+      <input ref={input} type="file" accept="image/*,application/pdf" className="hidden" onChange={picked} />
+      {receipt ? (
+        <div className="flex items-center gap-2">
+          <input type="hidden" name="receiptId" value={receipt.id} />
+          <div className="min-w-0 flex-1">
+            <ReceiptViewer id={receipt.id} kind={receipt.kind} />
+          </div>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Quitar ticket" onClick={() => setReceipt(null)}>
+            <XIcon />
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={reading}
+          onClick={() => input.current?.click()}
+          className="flex items-center gap-3 rounded-lg border border-dashed p-3 text-left text-sm hover:bg-muted/50 disabled:opacity-70"
+        >
+          {reading ? (
+            <LoaderCircleIcon className="size-5 shrink-0 animate-spin text-muted-foreground" />
+          ) : (
+            <ReceiptTextIcon className="size-5 shrink-0 text-muted-foreground" />
+          )}
+          <span className="flex flex-col">
+            <span className="font-medium">{reading ? "Leyendo el ticket..." : "Adjuntar ticket"}</span>
+            <span className="text-xs text-muted-foreground">
+              {fill ? "Foto o PDF: lo leo y completo el formulario" : "Foto o PDF"}
+            </span>
+          </span>
+        </button>
+      )}
+    </div>
   );
 }

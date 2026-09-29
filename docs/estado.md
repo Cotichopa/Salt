@@ -94,7 +94,12 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
       las fotos se achican en el navegador (1568 px JPEG) y todo pasa por `sendReceiptToChop` →
       `processReceipt`. Otros archivos se rechazan en el navegador y en el servidor. Límite de las Server
       Actions subido a 6 MB (`next.config.ts`) para PDFs de hasta 5 MB.
-   4. Formulario de gasto: "Adjuntar ticket".
+   4. ~~Formulario de gasto: "Adjuntar ticket"~~ — hecha: al cargar uno nuevo la IA lo lee y completa
+      el formulario (`readReceiptForForm` en `actions/expenses.ts`, con el comercio por CUIT); al editar
+      un gasto sin ticket, solo lo adjunta (decisión: no pisar lo cargado). El ticket viaja en el campo
+      oculto `receiptId` y el servicio chequea que sea de la persona. Chop y el formulario comparten
+      `readReceipt` (`src/lib/services/receipt-reading.ts`); `shrinkPhoto` (`src/lib/shrink-photo.ts`)
+      achica las fotos en el navegador para los dos.
 3. Los "Pendientes chicos" del final.
 
 ## Hecho: fotos de tickets (2026-09-29)

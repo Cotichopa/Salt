@@ -14,7 +14,7 @@ import { getRate, RateUnavailableError, tryGetRate } from "@/lib/services/exchan
 import { rememberMerchant } from "@/lib/services/merchants";
 
 // Los campos nuevos son opcionales para quien llama (el bot todavía no los manda)
-type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate"> & {
+type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate" | "receiptId"> & {
   installments?: number;
   paymentSourceId?: string;
   dollarType?: DollarTypeCode;
@@ -143,6 +143,13 @@ async function assertCategoryAllowed(userId: string, categoryId: string) {
   }
 }
 
+/** El ticket tiene que ser de la persona (el id llega desde el formulario) */
+async function assertReceiptAllowed(userId: string, receiptId: string | undefined) {
+  if (!receiptId) return;
+  const receipt = await db.receipt.findFirst({ where: { id: receiptId, userId }, select: { id: true } });
+  if (!receipt) throw new ExpenseError("No encontré el ticket adjunto: probá adjuntarlo de nuevo");
+}
+
 async function assertSourceAllowed(userId: string, input: ExpenseData) {
   if (!input.paymentSourceId) return;
   try {
@@ -206,6 +213,7 @@ function addMonths(iso: string, months: number) {
 export async function createExpense(userId: string, { rateOptional, ...input }: ExpenseData, source: Source = "WEB") {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
+  await assertReceiptAllowed(userId, input.receiptId);
 
   const installments = Math.max(1, Math.min(input.installments ?? 1, 36));
   const conversion = await conversionFor({ ...input, rateOptional });
@@ -260,6 +268,7 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
 export async function updateExpense(userId: string, id: string, input: ExpenseData) {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
+  await assertReceiptAllowed(userId, input.receiptId);
   const current = await db.expense.findFirst({
     where: { id, userId },
     select: { amount: true, currency: true, date: true, dollarType: true, rate: true, categoryId: true, receiptId: true },
@@ -290,13 +299,17 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
       description: input.description,
       paymentSourceId: input.paymentSourceId ?? null,
       date: isoToDate(input.date),
+      // Ticket adjuntado al editar (uno que no tenía): solo a este movimiento, no a las otras cuotas
+      ...(input.receiptId ? { receiptId: input.receiptId } : {}),
       ...conversion,
     },
   });
   if (count === 0) throw new ExpenseError("Gasto no encontrado");
-  // Si vino de un ticket y se le cambió la categoría, el comercio pasa a la nueva
-  if (current.receiptId && current.categoryId !== input.categoryId) {
-    await rememberMerchant(userId, current.receiptId, input.categoryId);
+  // Si vino de un ticket y se le cambió la categoría (o se le acaba de adjuntar uno), el comercio
+  // queda anotado en esta categoría
+  const receiptId = input.receiptId ?? current.receiptId;
+  if (receiptId && (receiptId !== current.receiptId || current.categoryId !== input.categoryId)) {
+    await rememberMerchant(userId, receiptId, input.categoryId);
   }
 }
 

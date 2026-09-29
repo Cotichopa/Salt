@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { resetChop, sendAudioToChop, sendReceiptToChop, talkToChop } from "@/lib/actions/chop";
 import type { ChopMessage } from "@/lib/whatsapp/outbox";
 import { cn } from "@/lib/utils";
+import { shrinkPhoto } from "@/lib/shrink-photo";
 import { ChopAvatar } from "./chop-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,28 +25,6 @@ const MAX_HISTORY = 60; // mensajes que recordamos
 const MAX_RECORDING_S = 60; // un minuto de audio como máximo
 const SUGGESTIONS = ["menu", "¿Cuánto gasté este mes?", "super 12500 débito"];
 const MAX_FILE_BYTES = 5_000_000; // igual que por WhatsApp (ver sendReceiptToChop)
-const PHOTO_SIDE = 1568; // lado más largo de la foto que se manda: más grande la IA no lee mejor
-
-/**
- * Achica la foto en el navegador (JPEG, 1568 px de lado como máximo) para que suba rápido aunque
- * sea con datos: una foto del celular pesa 3 a 8 MB y así queda en ~300 KB. Si el navegador no la
- * puede abrir (por ejemplo HEIC en Chrome), va como está y el servidor ve si la puede leer.
- */
-async function shrinkPhoto(file: File): Promise<Blob> {
-  try {
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-    const scale = Math.min(1, PHOTO_SIDE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-    return blob ?? file;
-  } catch {
-    return file;
-  }
-}
 
 const storageKey = (userId: string) => `salt:chop:${userId}`;
 

@@ -131,6 +131,12 @@ export const expenseSchema = z.object({
       }
       return n;
     }),
+  // Ticket adjunto (foto o PDF, ya guardado: readReceiptForForm). "" = sin ticket.
+  receiptId: z
+    .string()
+    .max(40)
+    .optional()
+    .transform((v) => v || undefined),
   // Cuotas: se crea un gasto por cuota, uno por mes
   installments: z.coerce
     .number()
