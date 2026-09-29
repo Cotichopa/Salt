@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileTextIcon, MessageCircleIcon, ReceiptTextIcon, RepeatIcon } from "lucide-react";
+import { MessageCircleIcon, ReceiptTextIcon, RepeatIcon } from "lucide-react";
 import { dollarTypeLabels, formatDay, formatMoney, isoToDate, paymentMethodLabels } from "@/lib/format";
 import type { ExpenseDTO } from "@/lib/services/expenses";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CategoryIcon } from "@/components/category-icon";
+import { ReceiptViewer } from "@/components/receipt-viewer";
 import { ExpenseForm, type CategoryOption, type SourceOption } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
 
@@ -154,7 +155,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
           </DialogHeader>
           {editing && (
             <>
-              {editing.receiptId && <ReceiptPreview id={editing.receiptId} kind={editing.receiptKind} />}
+              {editing.receiptId && <ReceiptViewer id={editing.receiptId} kind={editing.receiptKind} />}
               <ExpenseForm
                 categories={categories}
                 sources={sources}
@@ -210,31 +211,5 @@ function Amount({ e }: { e: ExpenseDTO }) {
         </span>
       )}
     </span>
-  );
-}
-
-/** El ticket del gasto (foto o PDF, el que se mandó a Chop): chiquito, y tocándolo se abre en grande */
-function ReceiptPreview({ id, kind }: { id: string; kind: ExpenseDTO["receiptKind"] }) {
-  const src = `/api/tickets/${id}`;
-  return (
-    <a
-      href={src}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 rounded-lg border p-2 text-sm hover:bg-muted/50"
-    >
-      {kind === "pdf" ? (
-        <span className="flex size-16 items-center justify-center rounded-md bg-muted">
-          <FileTextIcon className="size-7 text-muted-foreground" />
-        </span>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element -- foto privada servida por nuestra API, sin optimizar
-        <img src={src} alt="Foto del ticket" className="size-16 rounded-md object-cover" />
-      )}
-      <span className="flex items-center gap-1.5">
-        <ReceiptTextIcon className="size-4" />
-        {kind === "pdf" ? "Ver factura (PDF)" : "Ver foto del ticket"}
-      </span>
-    </a>
   );
 }

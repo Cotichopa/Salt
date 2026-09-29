@@ -87,8 +87,9 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. **Tickets en PDF y adjuntos** (plan del 2026-09-29, en etapas; cada una se commitea aparte):
    1. ~~Chop por WhatsApp: PDF y fotos como documento~~ — hecha (ver "Hecho: fotos de tickets").
-   2. Web: el ticket (PDF con pdf.js, y la foto) se ve **dentro del diálogo** del gasto, sin abrir otra
-      pestaña (decisión de Felipe).
+   2. ~~Web: el ticket se ve dentro de la app~~ — hecha: `src/components/receipt-viewer.tsx` (visor encima
+      del diálogo del gasto, con zoom y Descargar; el PDF se dibuja con pdf.js en `<canvas>`, cargado
+      solo al abrirlo, con su worker como módulo en la misma página).
    3. Chat de Chop en la web: botón ➕ con "Adjuntar foto" y "Adjuntar archivo"; rechaza lo que no sea
       PDF o imagen.
    4. Formulario de gasto: "Adjuntar ticket".
