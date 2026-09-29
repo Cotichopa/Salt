@@ -51,23 +51,43 @@ enum PaymentSourceKind {
 // ---------- Tablas ----------
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  phone        String?  @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
-  role         Role     @default(MEMBER)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  phone         String?  @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
+  role          Role     @default(MEMBER)
+  active        Boolean  @default(true)
+  // Avisos de Chop (se apagan desde "Cuenta")
+  notifyCardDue Boolean  @default(true) // vencimiento de tarjeta: 3 días antes y el día anterior
+  notifyWeekly  Boolean  @default(true) // resumen de la semana pasada
+  notifyMonthly Boolean  @default(true) // resumen del mes pasado
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   expenses       Expense[]
   categories     Category[]
   paymentSources PaymentSource[]
   budgets        Budget[]
   recurring      RecurringExpense[]
+  notices        Notice[]
 
   @@map("users")
+}
+
+// Avisos de Chop que ya se entregaron, para no repetirlos. Chop los manda cuando la persona le
+// escribe (Meta no deja escribir primero sin plantillas pagas). La clave dice qué aviso es:
+// "due3:<tarjeta>:<mes>", "due1:<tarjeta>:<mes>", "week:<lunes>" o "month:<mes>".
+model Notice {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("notices")
 }
 
 model Category {

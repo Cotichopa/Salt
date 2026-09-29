@@ -20,6 +20,7 @@ import {
 } from "@/lib/whatsapp/menu";
 import { clearSession, getSession } from "@/lib/whatsapp/session";
 import { loadDueRecurring } from "@/lib/services/recurring";
+import { pendingNotices } from "@/lib/services/notices";
 import { handleSection, handleSectionState } from "@/lib/whatsapp/sections";
 import { askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { loadedFixedText } from "@/lib/whatsapp/sections/fijos";
@@ -76,7 +77,20 @@ export async function audioHints(userId: string) {
 export async function handleInput(ctx: Ctx, input: Input) {
   await noticeLoadedFixed(ctx);
   const text = normalize(input.text ?? "").replace(/[!¡?¿.]/g, "");
-  if (MENU_WORDS.includes(text)) return showMainMenu(ctx, `¡Hola ${ctx.name}! 👋 Soy *Chop*. Contame un gasto (ej: _"nafta 15000"_) o elegí una opción:`);
+  const notices = await accountNotices(ctx);
+  if (MENU_WORDS.includes(text)) {
+    const hello = `¡Hola ${ctx.name}! 👋 Soy *Chop*. Contame un gasto (ej: _"nafta 15000"_) o elegí una opción:`;
+    const withNotices = notices ? `${hello}
+
+*Además:*
+${notices}` : hello;
+    // El texto de un mensaje con botones tiene un límite (1024): si no entra, los avisos van antes
+    if (withNotices.length <= 1000) return showMainMenu(ctx, withNotices);
+    await ctx.out.text(notices);
+    return showMainMenu(ctx, hello);
+  }
+  // Cualquier otro mensaje: los avisos van aparte, antes de la respuesta
+  if (notices) await ctx.out.text(notices);
   if (CANCEL_WORDS.includes(text)) {
     await clearSession(ctx.phone);
     return ctx.out.text("Listo, cancelado 👌 Escribime cuando quieras.");
@@ -165,5 +179,18 @@ async function noticeLoadedFixed(ctx: Ctx) {
     if (notice) await ctx.out.text(notice);
   } catch (e) {
     console.error("[fijos]", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Avisos de la cuenta que todavía no se entregaron (vencimiento de tarjetas, resumen de la semana
+ * y del mes), juntos en un texto. Vacío si no hay. Si falla, Chop sigue igual.
+ */
+async function accountNotices(ctx: Ctx) {
+  try {
+    return (await pendingNotices(ctx.userId)).join("\n\n");
+  } catch (e) {
+    console.error("[avisos]", e instanceof Error ? e.message : e);
+    return "";
   }
 }
