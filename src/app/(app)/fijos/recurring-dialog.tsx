@@ -92,7 +92,7 @@ function RecurringForm({ categories, sources, recurring, today, onDone }: Props 
   const categoryItems = categories.map((c) => ({ value: c.id, label: c.name }));
   const errors = state?.errors;
 
-  // Al crearlo: si el día de este mes ya pasó, preguntamos si cargar también el de este mes
+  // Al crearlo: si el día de este mes ya pasó, preguntamos siempre si cargar también el de este mes
   const dayNumber = Number(day);
   const dayPassed = !recurring && Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= Number(today.slice(8, 10));
   // Al editar: si cambió el monto (en la misma moneda), preguntamos desde cuándo vale
@@ -293,15 +293,20 @@ function RecurringForm({ categories, sources, recurring, today, onDone }: Props 
       )}
 
       {dayPassed && (
-        <label className="flex items-start gap-2 text-sm sm:col-span-2">
-          <input type="checkbox" name="loadThisMonth" className="mt-0.5 accent-primary" />
-          <span>
-            Cargar también el de {thisMonth}
-            <span className="block text-muted-foreground">
-              El día {dayNumber} ya pasó. Si no lo marcás, empieza el mes que viene.
+        <fieldset className="flex flex-col gap-2 rounded-lg border p-3 sm:col-span-2">
+          <legend className="px-1 text-sm font-medium">El día {dayNumber} de {thisMonth} ya pasó: ¿lo cargo?</legend>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="radio" name="loadThisMonth" value="yes" required className="mt-0.5 accent-primary" />
+            <span>
+              Sí, cargar el de {thisMonth}
+              <span className="block text-muted-foreground">Queda con fecha del día {dayNumber}.</span>
             </span>
-          </span>
-        </label>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="radio" name="loadThisMonth" value="no" className="mt-0.5 accent-primary" />
+            <span>No, empezar el mes que viene</span>
+          </label>
+        </fieldset>
       )}
 
       {state?.message && !state.ok && <p className="text-sm text-destructive sm:col-span-2">{state.message}</p>}

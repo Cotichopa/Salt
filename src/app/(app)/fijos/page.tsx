@@ -96,7 +96,7 @@ export default async function RecurringPage() {
               </div>
               <div className="flex">
                 <RecurringDialog categories={categoryOptions} sources={sources} recurring={r} today={today} />
-                <PauseRecurringButton id={r.id} name={r.description} active={r.active} />
+                <PauseRecurringButton id={r.id} name={r.description} active={r.active} pausedMonths={r.pausedMonths} />
                 <DeleteRecurringButton id={r.id} name={r.description} />
               </div>
             </div>

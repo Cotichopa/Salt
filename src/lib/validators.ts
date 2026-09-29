@@ -195,8 +195,8 @@ export const recurringSchema = z
       .transform((v) => v || undefined),
     categoryId: z.string().min(1, "Elegí una categoría"),
     day: z.coerce.number("Día inválido").int("Día inválido").min(1, "Entre 1 y 31").max(31, "Entre 1 y 31"),
-    // Al crearlo, si el día de este mes ya pasó: ¿cargar también el de este mes? (checkbox: "on")
-    loadThisMonth: z.preprocess((v) => v === "on", z.boolean()),
+    // Al crearlo, si el día de este mes ya pasó: ¿cargar también el de este mes? ("yes" / "no")
+    loadThisMonth: z.preprocess((v) => v === "yes", z.boolean()),
     // Al cambiar el monto: ¿desde este mes o desde el próximo?
     from: z.preprocess((v) => v || "this", z.enum(["this", "next"])),
   })

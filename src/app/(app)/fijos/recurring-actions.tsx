@@ -1,8 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { PauseIcon, PlayIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import { formatMonthList } from "@/lib/format";
 import { removeRecurring, toggleRecurring } from "@/lib/actions/recurring";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,26 +18,71 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-/** Pausar (deja de cargarse) o reanudar un gasto fijo */
-export function PauseRecurringButton({ id, name, active }: { id: string; name: string; active: boolean }) {
+/**
+ * Pausar (deja de cargarse) o reanudar un gasto fijo. Si al reanudar hay meses que llegaron a su
+ * día mientras estaba pausado, pregunta si cargarlos.
+ */
+export function PauseRecurringButton({
+  id,
+  name,
+  active,
+  pausedMonths,
+}: {
+  id: string;
+  name: string;
+  active: boolean;
+  pausedMonths: string[];
+}) {
   const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
+  const toggle = (loadPaused = false) =>
+    startTransition(async () => {
+      setOpen(false);
+      const result = await toggleRecurring(id, !active, loadPaused);
+      if (result?.ok) toast.success(result.message);
+      else toast.error(result?.message ?? "No se pudo cambiar");
+    });
+  const label = active ? `Pausar ${name}` : `Reanudar ${name}`;
+
+  if (active || pausedMonths.length === 0) {
+    return (
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={pending}
+        aria-label={label}
+        title={active ? "Pausar" : "Reanudar"}
+        onClick={() => toggle()}
+      >
+        {active ? <PauseIcon /> : <PlayIcon />}
+      </Button>
+    );
+  }
+
+  const months = formatMonthList(pausedMonths);
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      disabled={pending}
-      aria-label={active ? `Pausar ${name}` : `Reanudar ${name}`}
-      title={active ? "Pausar" : "Reanudar"}
-      onClick={() =>
-        startTransition(async () => {
-          const result = await toggleRecurring(id, !active);
-          if (result?.ok) toast.success(result.message);
-          else toast.error(result?.message ?? "No se pudo cambiar");
-        })
-      }
-    >
-      {active ? <PauseIcon /> : <PlayIcon />}
-    </Button>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger
+        render={<Button variant="ghost" size="icon-sm" aria-label={label} title="Reanudar" disabled={pending} />}
+      >
+        <PlayIcon />
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>¿Reanudar {name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Estuvo pausado en {months}. ¿Cargo {pausedMonths.length === 1 ? "ese mes" : "esos meses"} también?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction variant="outline" onClick={() => toggle(false)}>
+            Solo reanudar
+          </AlertDialogAction>
+          <AlertDialogAction onClick={() => toggle(true)}>Reanudar y cargar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

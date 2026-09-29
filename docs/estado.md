@@ -67,9 +67,7 @@ qué se decidió y qué falta**.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
-2. Confirmar con Felipe las **decisiones por defecto de los gastos fijos** (lista en "Dólar a pesos,
-   resumen de tarjetas y gastos fijos").
-3. Los "Pendientes chicos" del final.
+2. Los "Pendientes chicos" del final.
 
 ## Hecho: avisos de Chop (2026-09-29)
 
@@ -111,22 +109,24 @@ avisa en vez de preguntar; con otro medio se elige el dólar. Los gastos viejos 
 3. **Gastos fijos** — hecha (2026-09-28). Se cargan solos cada mes al abrir Inicio, Gastos o Fijos
    (`loadDueRecurring` en `src/lib/services/recurring.ts`), con un **solo aviso** que lista todo lo
    cargado (`src/components/recurring-notice.tsx`). Tabla `recurring_expenses`; cada gasto cargado
-   guarda `recurringId` (único por día). Página `/fijos` (menú "Fijos"). Decisiones tomadas por
-   defecto (Felipe puede cambiarlas):
-   - Al crear un fijo cuyo día ya pasó este mes, empieza el mes que viene, salvo que se marque
-     "Cargar también el de este mes".
+   guarda `recurringId` (único por día). Página `/fijos` (menú "Fijos"). Reglas (confirmadas
+   por Felipe el 2026-09-29):
+   - Al crear un fijo cuyo día ya pasó este mes, **siempre se pregunta** si cargar el de este mes
+     (en la web, una opción obligatoria sin nada marcado; en Chop, dos botones).
    - Si pasás meses sin entrar, al volver carga todos los que faltan (cada uno con su fecha).
    - Borrar el gasto que cargó un fijo no hace que se vuelva a cargar. Borrar el fijo no borra
      sus gastos.
-   - Se pueden **pausar**: al reanudar no se cargan los meses pausados.
+   - Se pueden **pausar**. Al reanudar, si hubo meses que llegaron a su día mientras estaba pausado
+     (`pausedMonths`), **se pregunta** si cargarlos (web y Chop); si no, sigue desde el próximo.
    - Al cambiar el monto: "desde este mes" corrige también el gasto de este mes si ya se cargó;
      "desde el próximo" lo deja (y si todavía no se cargó, se carga con el monto viejo).
      Los demás cambios (categoría, medio, día...) valen para los meses que vienen.
    - Los fijos en USD guardan su dólar; la cotización es la del día en que se carga. Si no se
-     consigue, no se carga y se reintenta la próxima vez.
+     consigue, **se carga igual en dólares** (sin valor en pesos) y se convierte solo en una próxima
+     carga (`convertPendingRecurring`). Ojo: `getRate` usa la última cotización guardada si la API
+     está caída, así que esto pasa solo si no hay ninguna guardada de ese dólar.
 
-Las 3 etapas están commiteadas. Falta confirmar con Felipe las decisiones por defecto de los fijos
-(lista de arriba). En la demo, los gastos en USD con crédito viejos siguen al dólar tarjeta;
+Las 3 etapas están commiteadas. En la demo, los gastos en USD con crédito viejos siguen al dólar tarjeta;
 `npm run db:demo` los regenera al oficial (cambia la contraseña de la demo).
 
 ## Hecho: Chop más barato y que maneje toda la app (plan del 2026-09-28)
@@ -278,9 +278,6 @@ todo; base ya se equivocaba palabras).
     (`~/tools/cmake-3.31.6-linux-x86_64/bin`, bajado de GitHub porque no hay `sudo` ni `pip`).
  WhatsApp y la API
   key vacíos (ver "Para retomar en la otra compu"); el admin es `fbrisig@gmail.com`.
-- **Datos de prueba en la cuenta de Felo (compu sin Docker, 2026-09-29):** 9 gastos con "(prueba)" en la
-  descripción (del 10 al 28/09) y la Visa con cierre 25 y vencimiento 2, para ver los avisos. Felipe los
-  va a borrar; ajustar la Visa a sus días reales.
 - **Si Chop no contesta por WhatsApp:** revisar el token con
   `GET graph.facebook.com/<versión>/debug_token?input_token=<T>&access_token=<T>`: `expires_at: 0` =
   permanente; "Session has expired" = vencido (el 2026-09-28 la compu con Docker tenía uno temporal

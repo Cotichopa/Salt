@@ -105,3 +105,13 @@ export function formatMonth(month: string) {
   const text = new Intl.DateTimeFormat("es-AR", { timeZone: "UTC", month: "long", year: "numeric" }).format(from);
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** ["2026-08", "2026-09"] → "agosto y septiembre" (con el año si no son todos del mismo) */
+export function formatMonthList(months: string[]) {
+  const sameYear = new Set(months.map((m) => m.slice(0, 4))).size <= 1;
+  const names = months.map((m) => {
+    const text = formatMonth(m).toLowerCase();
+    return sameYear ? text.replace(/ de \d+$/, "") : text;
+  });
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} y ${names.at(-1)}`;
+}

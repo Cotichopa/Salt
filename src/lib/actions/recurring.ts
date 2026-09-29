@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/dal";
 import {
   createRecurring,
   deleteRecurring,
+  loadDueRecurring,
   RecurringError,
   setRecurringActive,
   updateRecurring,
@@ -38,16 +39,20 @@ export async function saveRecurring(_prev: FormState, formData: FormData): Promi
   return { ok: true, message: id ? "Gasto fijo actualizado" : `"${parsed.data.description}" agregado` };
 }
 
-export async function toggleRecurring(id: string, active: boolean): Promise<FormState> {
+/** Pausar o reanudar. Al reanudar, `loadPaused` carga los meses que estuvo pausado. */
+export async function toggleRecurring(id: string, active: boolean, loadPaused = false): Promise<FormState> {
   const user = await requireUser();
+  let loaded = 0;
   try {
-    await setRecurringActive(user.id, id, active === true);
+    await setRecurringActive(user.id, id, active === true, loadPaused === true);
+    if (active && loadPaused) loaded = (await loadDueRecurring(user.id)).length;
   } catch (e) {
     if (e instanceof RecurringError) return { message: e.message };
     throw e;
   }
   revalidate();
-  return { ok: true, message: active ? "Reanudado" : "Pausado: no se va a cargar hasta que lo reanudes" };
+  if (!active) return { ok: true, message: "Pausado: no se va a cargar hasta que lo reanudes" };
+  return { ok: true, message: loaded > 0 ? `Reanudado: cargué ${loaded} ${loaded === 1 ? "gasto" : "gastos"}` : "Reanudado" };
 }
 
 export async function removeRecurring(id: string): Promise<FormState> {

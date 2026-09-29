@@ -19,6 +19,7 @@ type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "doll
   dollarType?: DollarTypeCode;
   rate?: number;
   recurringId?: string; // lo cargó un gasto fijo (ver recurring.ts)
+  rateOptional?: boolean; // en dólares: si no hay cotización, se guarda sin pesos (se convierte después)
 };
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
@@ -162,7 +163,8 @@ async function conversionFor(input: ExpenseData) {
   const dollarType = dollarTypeFor(input.paymentMethod, input.dollarType);
   if (input.rate) return { dollarType, rate: input.rate, mep: null };
   try {
-    const rate = input.dollarType ? await getRate(dollarType, input.date) : await tryGetRate(dollarType, input.date);
+    const rate =
+      input.dollarType && !input.rateOptional ? await getRate(dollarType, input.date) : await tryGetRate(dollarType, input.date);
     return { dollarType, rate: rate?.sell ?? null, mep: null };
   } catch (e) {
     if (e instanceof RateUnavailableError) throw new ExpenseError(e.message);
@@ -170,10 +172,10 @@ async function conversionFor(input: ExpenseData) {
   }
 }
 
-type Conversion = Awaited<ReturnType<typeof conversionFor>>;
+export type Conversion = Awaited<ReturnType<typeof conversionFor>>;
 
 /** Las columnas de conversión para un monto (cada cuota usa la cotización del día de la compra) */
-function convertAmount(amount: number, currency: CurrencyCode, c: Conversion) {
+export function convertAmount(amount: number, currency: CurrencyCode, c: Conversion) {
   return {
     dollarType: c.dollarType,
     rate: c.rate,
@@ -194,12 +196,12 @@ function addMonths(iso: string, months: number) {
  * uno por mes: así cada mes muestra lo que realmente se paga ese mes.
  * El monto que llega es el TOTAL de la compra.
  */
-export async function createExpense(userId: string, input: ExpenseData, source: Source = "WEB") {
+export async function createExpense(userId: string, { rateOptional, ...input }: ExpenseData, source: Source = "WEB") {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
 
   const installments = Math.max(1, Math.min(input.installments ?? 1, 36));
-  const conversion = await conversionFor(input);
+  const conversion = await conversionFor({ ...input, rateOptional });
   if (installments === 1) {
     const row = await db.expense.create({
       data: {

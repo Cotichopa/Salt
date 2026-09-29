@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { dollarTypeLabels, formatMoney, parseAmount, paymentMethodLabels, todayISO } from "@/lib/format";
+import { dollarTypeLabels, formatMoney, formatMonthList, parseAmount, paymentMethodLabels, todayISO } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import { listCategories } from "@/lib/services/categories";
 import { kindForMethod, listPaymentSources } from "@/lib/services/payment-sources";
@@ -445,13 +445,30 @@ async function askPause(ctx: Ctx, f: RecurringDTO, pause: boolean) {
     await ctx.out.text(`*${f.description}* ya está ${pause ? "pausado" : "activo"} 👌${BACK}`);
     return true;
   }
+  if (pause) {
+    return askConfirm(ctx, {
+      type: "fixed:pause",
+      data: { id: f.id },
+      body: `⏸️ ¿Pauso *${f.description}*? No se carga hasta que lo reanudes.`,
+      options: [{ id: "yes", title: "⏸️ Pausar", words: ["pausar"] }],
+    });
+  }
+  // Si llegó a su día mientras estaba pausado, se pregunta si cargar esos meses
+  const missed = f.pausedMonths;
   return askConfirm(ctx, {
-    type: pause ? "fixed:pause" : "fixed:resume",
+    type: "fixed:resume",
     data: { id: f.id },
-    body: pause
-      ? `⏸️ ¿Pauso *${f.description}*? No se carga hasta que lo reanudes.`
-      : `▶️ ¿Reanudo *${f.description}*? Los meses que estuvo pausado no se cargan.`,
-    options: [{ id: "yes", title: pause ? "⏸️ Pausar" : "▶️ Reanudar", words: [pause ? "pausar" : "reanudar"] }],
+    body:
+      missed.length === 0
+        ? `▶️ ¿Reanudo *${f.description}*?`
+        : `▶️ ¿Reanudo *${f.description}*? Estuvo pausado en ${formatMonthList(missed)}: ¿${missed.length === 1 ? "lo cargo" : "los cargo"} también?`,
+    options: [
+      // Si pregunta "¿los cargo?", "sí" es cargarlos; "reanudar" solo vale cuando no hay nada que preguntar
+      missed.length > 0
+        ? { id: "yes", title: "▶️ Solo reanudar", words: ["solo"] }
+        : { id: "yes", title: "▶️ Reanudar", words: ["reanudar"] },
+      ...(missed.length > 0 ? [{ id: "load", title: "📥 Sí, cargarlos", words: ["cargar", "cargalos", "tambien", "si"] }] : []),
+    ],
   });
 }
 
@@ -520,13 +537,17 @@ export async function runFixedAction(ctx: Ctx, type: string, data: Record<string
       await ctx.out.text(
         `✅ *${f.description}* pasa a ${formatMoney(amount, currency)} ${option === "next" ? "desde el mes que viene" : "desde este mes"}.${BACK}`,
       );
-    } else if (type === "fixed:pause" || type === "fixed:resume") {
-      await setRecurringActive(ctx.userId, f.id, type === "fixed:resume");
-      const next = type === "fixed:resume" ? (await listRecurring(ctx.userId)).find((x) => x.id === f.id)?.nextDate : null;
+    } else if (type === "fixed:pause") {
+      await setRecurringActive(ctx.userId, f.id, false);
+      await ctx.out.text(`⏸️ Pausé *${f.description}*: no se carga hasta que lo reanudes.${BACK}`);
+    } else if (type === "fixed:resume") {
+      await setRecurringActive(ctx.userId, f.id, true, option === "load");
+      // "Reanudar y cargar": los meses pausados se cargan ahora mismo
+      const notice = option === "load" ? loadedFixedText(await loadDueRecurring(ctx.userId)) : "";
+      const next = (await listRecurring(ctx.userId)).find((x) => x.id === f.id)?.nextDate;
       await ctx.out.text(
-        type === "fixed:pause"
-          ? `⏸️ Pausé *${f.description}*: no se carga hasta que lo reanudes.${BACK}`
-          : `▶️ Reanudé *${f.description}*${next ? `: el próximo se carga el ${shortDate(next)}` : ""}.${BACK}`,
+        `▶️ Reanudé *${f.description}*${next ? `: el próximo se carga el ${shortDate(next)}` : ""}.` +
+          `${notice ? `\n\n${notice}` : ""}${BACK}`,
       );
     } else if (type === "fixed:delete") {
       await deleteRecurring(ctx.userId, f.id);

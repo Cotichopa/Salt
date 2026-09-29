@@ -1,10 +1,11 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { dollarTypeFor, monthRange, todayISO, type CurrencyCode, type DollarTypeCode, type PaymentMethodCode } from "@/lib/format";
+import { dateToISO, dollarTypeFor, monthRange, todayISO, type CurrencyCode, type DollarTypeCode, type PaymentMethodCode } from "@/lib/format";
 import type { RecurringInput } from "@/lib/validators";
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
-import { createExpense, ExpenseError, getExpense, updateExpense } from "@/lib/services/expenses";
+import { convertAmount, createExpense, ExpenseError, getExpense, updateExpense } from "@/lib/services/expenses";
+import { tryGetRate } from "@/lib/services/exchange-rates";
 import { Prisma } from "@/generated/prisma/client";
 
 // Gastos fijos: se cargan solos una vez por mes, el día elegido, al abrir Inicio o Gastos
@@ -12,6 +13,8 @@ import { Prisma } from "@/generated/prisma/client";
 // - si pasaste dos meses sin abrir la app, al volver se cargan los dos;
 // - si borrás el gasto que cargó, no lo vuelve a cargar.
 // Y cada gasto cargado guarda su recurringId (único por día), para no duplicar nunca.
+// Los fijos en dólares se cargan aunque ese día no se consiga la cotización: quedan sin su valor en
+// pesos y se convierten solos en una próxima carga (convertPendingRecurring).
 
 export class RecurringError extends Error {}
 
@@ -30,6 +33,7 @@ export type RecurringDTO = {
   nextAmountFrom: string | null;
   nextDate: string | null; // "YYYY-MM-DD" de la próxima carga (null si está pausado)
   loadedThisMonth: boolean; // el de este mes ya se cargó (o se salteó)
+  pausedMonths: string[]; // pausado: los meses que llegaron a su día sin cargarse ("2026-08", ...)
 };
 
 /** Lo que se cargó solo, para el aviso */
@@ -59,6 +63,14 @@ function initialLastMonth(day: number, today: string, loadThisMonth: boolean) {
   const current = today.slice(0, 7);
   const alreadyPassed = dateInMonth(current, day) <= today;
   return alreadyPassed && !loadThisMonth ? current : shiftMonth(current, -1);
+}
+
+/** Los meses que llegaron a su día mientras estaba pausado (se pueden cargar al reanudar) */
+function missedMonths(lastMonth: string, day: number, today: string) {
+  const months: string[] = [];
+  const until = initialLastMonth(day, today, false);
+  for (let m = shiftMonth(lastMonth, 1); m <= until; m = shiftMonth(m, 1)) months.push(m);
+  return months;
 }
 
 // ---------- Consultas ----------
@@ -92,6 +104,7 @@ export async function listRecurring(userId: string, today = todayISO()): Promise
     nextAmount: r.nextAmount?.toNumber() ?? null,
     nextDate: r.active ? dateInMonth(shiftMonth(lastMonth, 1), r.day) : null,
     loadedThisMonth: lastMonth >= current,
+    pausedMonths: r.active ? [] : missedMonths(lastMonth, r.day, today),
   }));
 }
 
@@ -197,13 +210,20 @@ export async function updateRecurring(
 }
 
 /**
- * Pausar o reanudar. Al reanudar no se cargan los meses que estuvo pausado: arranca como si
- * lo crearas hoy (si el día de este mes ya pasó, desde el próximo).
+ * Pausar o reanudar. Al reanudar se pregunta qué hacer con los meses que estuvo pausado:
+ * con `loadPaused` se cargan (cada uno con su fecha, en la próxima carga); si no, arranca como
+ * si lo crearas hoy (si el día de este mes ya pasó, desde el próximo).
  */
-export async function setRecurringActive(userId: string, id: string, active: boolean, today = todayISO()) {
+export async function setRecurringActive(
+  userId: string,
+  id: string,
+  active: boolean,
+  loadPaused = false,
+  today = todayISO(),
+) {
   const current = await findOwn(userId, id);
   const data: Prisma.RecurringExpenseUpdateInput = { active };
-  if (active && !current.active) {
+  if (active && !current.active && !loadPaused) {
     const start = initialLastMonth(current.day, today, false);
     if (start > current.lastMonth) data.lastMonth = start;
   }
@@ -224,6 +244,7 @@ export async function deleteRecurring(userId: string, id: string) {
  * frena el duplicado y la segunda simplemente no lo cuenta.
  */
 export async function loadDueRecurring(userId: string, today = todayISO()): Promise<LoadedRecurring[]> {
+  await convertPendingRecurring(userId);
   const current = today.slice(0, 7);
   const due = await db.recurringExpense.findMany({
     where: { userId, active: true, lastMonth: { lt: current } },
@@ -250,13 +271,14 @@ export async function loadDueRecurring(userId: string, today = todayISO()): Prom
           description: r.description,
           date,
           recurringId: r.id,
+          rateOptional: true, // sin cotización se carga igual y se pasa a pesos después
         });
         loaded.push({ description: r.description, amount, currency: r.currency, date });
       } catch (e) {
         // Ya lo cargó otra pestaña: no se cuenta, pero se da por cargado
         const duplicate = e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
         if (!duplicate) {
-          // Por ejemplo, no se consiguió la cotización del dólar: se reintenta la próxima vez
+          // Por ejemplo, la categoría o la tarjeta ya no se pueden usar: se reintenta la próxima vez
           if (e instanceof ExpenseError) {
             console.warn(`[fijos] no se pudo cargar "${r.description}" del ${date}: ${e.message}`);
             break;
@@ -280,4 +302,24 @@ export async function loadDueRecurring(userId: string, today = todayISO()): Prom
     }
   }
   return loaded;
+}
+
+/**
+ * Los fijos en dólares que se cargaron sin cotización (no se consiguió ese día): se pasan a pesos
+ * con la cotización de su día apenas se consigue. Si todavía no hay, quedan para la próxima.
+ */
+async function convertPendingRecurring(userId: string) {
+  const pending = await db.expense.findMany({
+    where: { userId, recurringId: { not: null }, currency: "USD", amountArs: null },
+    select: { id: true, amount: true, date: true, dollarType: true, paymentMethod: true },
+  });
+  for (const e of pending) {
+    const dollarType = e.dollarType ?? dollarTypeFor(e.paymentMethod);
+    const rate = await tryGetRate(dollarType, dateToISO(e.date));
+    if (!rate) continue;
+    await db.expense.update({
+      where: { id: e.id },
+      data: convertAmount(e.amount.toNumber(), "USD", { dollarType, rate: rate.sell, mep: null }),
+    });
+  }
 }
