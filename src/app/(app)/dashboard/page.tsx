@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
 import { requireUser } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
 import { getDashboard, type Dashboard } from "@/lib/services/stats";
@@ -9,6 +9,7 @@ import { loadDueRecurring } from "@/lib/services/recurring";
 import { getPreferences } from "@/lib/services/preferences";
 import { RecurringNotice } from "@/components/recurring-notice";
 import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ChartDataTable } from "@/components/chart-data-table";
@@ -83,6 +84,19 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <p className="text-sm text-muted-foreground">{chopGreeting(data, budgets, month, currentMonth, currency)}</p>
         </div>
       </div>
+
+      {/* Buscador: lleva a Gastos con los resultados de todo el historial (el mismo buscador de allá) */}
+      <form action="/gastos" role="search" className="relative">
+        <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          name="q"
+          enterKeyHint="search"
+          placeholder="Buscar gastos: super, 15.000, 24/09, septiembre..."
+          className="h-10 pl-9"
+          aria-label="Buscar gastos en todo el historial"
+        />
+      </form>
 
       {/* Una sola fila de filtros que aplica a todo el dashboard */}
       <div className="flex flex-wrap items-center gap-2">

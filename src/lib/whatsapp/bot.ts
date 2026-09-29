@@ -149,8 +149,13 @@ async function askAI(
   });
 
   if (parsed === null) {
-    // La IA no está disponible (sin crédito, sin internet, error): seguimos con el menú
-    await showMainMenu(ctx, "Uf, no pude interpretar eso 😕 Probá con el menú:");
+    // La IA no respondió (caída, sin crédito, sin internet) o respondió algo inválido: que se entienda
+    // que no es culpa del mensaje, y que los gastos simples y el menú andan igual (van sin IA)
+    await showMainMenu(
+      ctx,
+      "No pude entender ese mensaje: la IA no me respondió 😕 (suele ser algo pasajero).\n" +
+        'Probá de nuevo en un rato, escribí el gasto simple (ej: _"nafta 15000"_) o usá el menú:',
+    );
     return;
   }
   if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses))) return;

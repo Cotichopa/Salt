@@ -69,6 +69,23 @@ qué se decidió y qué falta**.
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. Los "Pendientes chicos" del final.
 
+## Hecho: buscador en el Inicio (2026-09-29)
+
+El buscador de Gastos ya existía completo (`src/lib/expense-search.ts`: todo el historial, errores de
+tipeo, montos, fechas y meses, con total y exportar). Se sumó un campo en el Inicio que manda a
+`/gastos?q=...`. Chop no busca por descripción: Felipe prefirió no sumarlo por ahora.
+
+**Ojo al diagnosticar Chop:** muchas frases se resuelven sin IA (quick-parser) y otras parecidas no
+("cuánto llevo gastado de ropa" va sin IA; "... en ropa este año" necesita IA). Si la IA falla, Chop
+ahora dice "No pude entender ese mensaje: la IA no me respondió". El 2026-09-29 la API de Anthropic
+devolvía "503 credential validation failed" (problema pasajero de ellos: la consola mostraba
+"Temporarily unable to authenticate"). Para ver qué pasó con un mensaje de WhatsApp: la inspección de
+ngrok en http://127.0.0.1:4040 muestra cada pedido del webhook con su texto.
+
+**Pendiente del plan del 2026-09-29:** etapa 5, fotos de tickets (Chop lee la foto y propone el gasto;
+la foto queda guardada con el gasto y se ve en la web). Se hace cuando la IA vuelva a andar. Al
+terminar el plan, pushear los commits (Felipe lo pidió así).
+
 ## Hecho: preferencias y perfil (2026-09-29)
 
 En **Mi cuenta**: nombre (el que usa Chop) y WhatsApp (pide la contraseña actual; avisa si el número es
