@@ -40,6 +40,17 @@ export default function LoginPage() {
           </div>
           <LoginForm />
         </div>
+        <p className="pt-8 text-center text-xs text-muted-foreground">
+          Made by{" "}
+          <a
+            href="https://estilo.com.ar/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Estilo
+          </a>
+        </p>
       </section>
     </main>
   );

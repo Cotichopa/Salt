@@ -69,6 +69,21 @@ qué se decidió y qué falta**.
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
 2. Los "Pendientes chicos" del final.
 
+## Hecho: app instalable (PWA) y "Made by Estilo" (2026-09-29)
+
+- `src/app/manifest.ts` (nombre, íconos en `public/icons/`, `display: standalone`), `public/sw.js` (service
+  worker mínimo, sin caché; lo registra `src/components/service-worker.tsx`), color de barra y datos de
+  iPhone en `layout.tsx`. El proxy deja pasar `manifest.webmanifest` y `sw.js` sin sesión.
+- **Con ngrok NO se puede instalar**: Chrome pide el manifiesto sin cookies y ngrok gratis le devuelve su
+  página de advertencia. Para probar se usa **Cloudflare Tunnel** (sin advertencia):
+  `~/tools/cloudflared tunnel --url http://localhost:3001` → da una dirección `*.trycloudflare.com`
+  **que cambia cada vez** (sirve para probar; para dejarla instalada hace falta dirección fija: el servidor
+  o un túnel con nombre, ej. `salt.estilo.com.ar`). Los dos túneles están en `allowedDevOrigins`.
+  Probado en Android: se instala y anda.
+- La sesión se renueva sola al usar la app (`renewedSession` en `session.ts`, desde el proxy): solo vence
+  tras 30 días sin abrirla.
+- Login: "Made by Estilo" con link a https://estilo.com.ar/.
+
 ## Hecho: avisos de Chop (2026-09-29)
 
 Chop cuenta cosas de la cuenta sin que se las pregunten: **vencimiento de tarjeta** (3 días antes y el
