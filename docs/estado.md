@@ -79,8 +79,8 @@ qué se decidió y qué falta**.
 - Tabla `password_resets` con el hash del token; vence en 1 hora, sirve una vez, pedir otro anula los
   anteriores, máximo 3 por hora. Responde igual exista o no el email.
 - Las pantallas sin sesión comparten `src/components/auth-shell.tsx` (con "Made by Estilo").
-- Ideas de Felipe para después: mail más lindo (el botón/cuadro para restablecer) y una animación
-  al abrir la app en el celular.
+- El mail usa la plantilla `mailLayout` (`mail.ts`): tarjeta blanca, ánfora adjunta por `cid` (Gmail
+  no muestra SVG), botón negro y "Made by Estilo". Sirve para mails futuros.
 
 ## Hecho: app instalable (PWA) y "Made by Estilo" (2026-09-29)
 
@@ -96,6 +96,12 @@ qué se decidió y qué falta**.
 - La sesión se renueva sola al usar la app (`renewedSession` en `session.ts`, desde el proxy): solo vence
   tras 30 días sin abrirla.
 - Login: "Made by Estilo" con link a https://estilo.com.ar/.
+- Ícono de la app: el ánfora **de líneas** (blanca sobre negro, trazo 1,6). La favicon del navegador sigue
+  siendo el ánfora lleno (`src/app/icon.svg`).
+- **Animación al abrir** desde el ícono instalado (`src/components/splash.tsx` + final de `globals.css`,
+  ~2 s): arranca igual que la pantalla de carga de Android, el ánfora se llena de sal de abajo hacia
+  arriba, aparece "Salt" y se desvanece. Un script previo al pintado decide si mostrarla (solo instalada,
+  una vez por apertura, no con "reducir animaciones").
 
 ## Hecho: avisos de Chop (2026-09-29)
 

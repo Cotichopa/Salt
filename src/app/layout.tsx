@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ServiceWorker } from "@/components/service-worker";
+import { Splash } from "@/components/splash";
 
 // Dos tipografías: una con carácter para la marca y los títulos, otra neutra para leer.
 const display = Bricolage_Grotesque({ variable: "--font-display", subsets: ["latin"] });
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
+        <Splash />
         <ThemeProvider>
           {children}
           <Toaster richColors position="top-center" />

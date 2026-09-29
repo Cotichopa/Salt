@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { sendMail } from "@/lib/mail";
+import { mailLayout, sendMail } from "@/lib/mail";
 
 // "Olvidé mi contraseña": se manda por mail un link con un token al azar. En la base se guarda
 // solo el hash del token (si alguien viera la base, no podría usar los links). El link vence en
@@ -48,12 +48,16 @@ export async function requestPasswordReset(email: string) {
     "Salt: cambiá tu contraseña",
     `Hola ${user.name}:\n\nPara elegir una contraseña nueva, entrá a este link (vence en 1 hora):\n${link}\n\n` +
       "Si no lo pediste vos, ignorá este mail: tu contraseña sigue igual.\n\nSalt",
-    `<p>Hola ${escapeHtml(user.name)}:</p>
-<p>Para elegir una contraseña nueva, tocá el botón (vence en 1 hora):</p>
-<p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#0d0d0d;color:#fafafa;border-radius:8px;text-decoration:none">Cambiar contraseña</a></p>
-<p style="color:#666;font-size:13px">Si el botón no anda, copiá este link: ${link}</p>
-<p style="color:#666;font-size:13px">Si no lo pediste vos, ignorá este mail: tu contraseña sigue igual.</p>
-<p>Salt</p>`,
+    mailLayout({
+      preheader: "Elegí una contraseña nueva para tu cuenta de Salt.",
+      title: "Cambiá tu contraseña",
+      paragraphs: [`¡Hola ${user.name}!`, "Nos pediste cambiar la contraseña de Salt. Tocá el botón para elegir una nueva."],
+      button: { label: "Elegir contraseña nueva", href: link },
+      footnote: [
+        "El link vence en 1 hora y se puede usar una sola vez.",
+        "Si no lo pediste vos, ignorá este mail: tu contraseña sigue igual.",
+      ],
+    }),
   );
 }
 
@@ -79,8 +83,4 @@ export async function resetPassword(token: string, password: string) {
     db.user.update({ where: { id: reset.userId }, data: { passwordHash: await bcrypt.hash(password, 10) } }),
     db.passwordReset.updateMany({ where: { userId: reset.userId, usedAt: null }, data: { usedAt: new Date() } }),
   ]);
-}
-
-function escapeHtml(text: string) {
-  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
