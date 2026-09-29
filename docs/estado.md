@@ -20,6 +20,24 @@ qué se decidió y qué falta**.
   (`embedded-postgres`) en `~/salt-db`, puerto 5434, que arranca sola (ver "Pendientes chicos").
   Puesta al día el 2026-09-29: pull, `npm install`, `.env` completo y Whisper compilado en `~/whisper`.
 
+## Rutina después de cada `git pull` (en cualquier compu)
+
+```
+git pull
+npm install                 # por si hay dependencias nuevas
+npx prisma migrate deploy   # aplica las migraciones nuevas que trajo el pull
+npm run dev                 # si ya estaba corriendo, reiniciarlo
+```
+
+- Una **migración** es una carpeta en `prisma/migrations/` con un `migration.sql` que crea o cambia
+  tablas. Git la trae pero **no la aplica**: si el código nuevo usa una tabla que la base no tiene, falla.
+- `npx prisma migrate status` muestra cuáles faltan aplicar.
+- **`migrate deploy`** solo aplica las que ya existen (después de un pull, y en el servidor).
+  **`migrate dev`** (`npm run db:migrate`) es para *crear* una migración cuando cambiás
+  `schema.prisma`; si ve diferencias raras puede proponer borrar la base: no usarlo para ponerse al día.
+- Si el `.env.example` trae variables nuevas, copiarlas al `.env` (los valores secretos, de la otra
+  compu por un medio seguro, nunca por git).
+
 ## Para retomar en la otra compu (la sin Docker)
 
 1. `git pull` — trae los 9 commits de Chop del 2026-09-28 (último `7b20ca1`).
@@ -228,11 +246,11 @@ Etapas (cada una se commitea aparte):
    **↩️ Deshacer** (el id va en el botón, `undo:<id>.<id>`; borra también todas las cuotas; vale
    siempre, como los botones del menú). Antes de guardar pregunta solo lo imprescindible
    (`finishPending` en `menu.ts`): **"¿Cómo pagaste?"** si no dijo el medio (lista con efectivo, débito,
-   crédito y sus billeteras; antes suponía el más usado y Felipe prefirió que pregunte),
+   crédito y transferencia; antes suponía el más usado y Felipe prefirió que pregunte),
    **con qué** si no es efectivo y no lo dijo: tarjeta para débito y crédito (sin ella una compra con
    crédito no entra en el resumen de la tarjeta), billetera para transferencia (si contesta otro medio,
    "mercado pago", se cambia el medio; si no se entiende, se guarda sin). La lista de "¿cómo pagaste?"
-   no tiene "Transferencia" suelta: van las billeteras por nombre (decisión de Felipe). Igual en los
+   tiene Efectivo, Débito, Crédito y Transferencia; después de Transferencia, Chop muestra las billeteras (cambió el 2026-09-29, decisión de Felipe: antes iban las billeteras por nombre). Igual en los
    fijos y en la carga paso a paso del menú. Y **a qué dólar** si es en USD sin crédito (con
    crédito, oficial y lo avisa). Al guardar en USD muestra cuánto quedó en pesos.
    Varios gastos en un mensaje siguen con "Guardar todos" (y también tienen Deshacer). La carga paso a

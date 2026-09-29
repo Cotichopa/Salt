@@ -746,22 +746,19 @@ async function askPayment(ctx: Ctx, d: Draft) {
 }
 
 /**
- * Filas de "¿cómo pagaste?" (se leen con readPayment): efectivo, débito, crédito y las billeteras
- * por nombre. No hay "Transferencia" suelta: una transferencia siempre sale de una billetera.
- * El medio de pago por defecto de la persona (preferencias de "Cuenta") va primero y marcado;
- * si es transferencia, van primero las billeteras.
+ * Filas de "¿cómo pagaste?" (se leen con readPayment): efectivo, débito, crédito y transferencia.
+ * Después de débito o crédito se pregunta la tarjeta, y después de transferencia, la billetera
+ * (needsSource). El medio de pago por defecto de la persona (preferencias de "Cuenta") va primero y marcado.
  */
 export async function paymentRows(userId: string): Promise<ListRow[]> {
-  // WhatsApp muestra hasta 10 filas: 3 medios + hasta 7 billeteras
-  const [sources, prefs] = await Promise.all([listPaymentSources(userId), getPreferences(userId)]);
-  const wallets = sources.filter((s) => s.kind === "WALLET").slice(0, 7).map((s) => ({ id: `src:${s.id}`, title: `📲 ${s.name}` }));
+  const prefs = await getPreferences(userId);
   const methods: ListRow[] = [
     { id: "pm:CASH", title: "💵 Efectivo" },
     { id: "pm:DEBIT", title: "💳 Débito" },
     { id: "pm:CREDIT", title: "💳 Crédito" },
+    { id: "pm:TRANSFER", title: "📲 Transferencia" },
   ];
-  if (prefs.defaultPaymentMethod === "TRANSFER") return [...wallets, ...methods];
-  return firstAsDefault(methods, `pm:${prefs.defaultPaymentMethod}`).concat(wallets);
+  return firstAsDefault(methods, `pm:${prefs.defaultPaymentMethod}`);
 }
 
 /** Pone primero la fila `id`, marcada como la de siempre */
