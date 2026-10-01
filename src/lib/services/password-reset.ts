@@ -65,7 +65,13 @@ export async function requestPasswordReset(email: string) {
 async function validReset(token: string) {
   const reset = await db.passwordReset.findUnique({
     where: { tokenHash: hash(token) },
-    select: { id: true, userId: true, expiresAt: true, usedAt: true, user: { select: { active: true } } },
+    select: {
+      id: true,
+      userId: true,
+      expiresAt: true,
+      usedAt: true,
+      user: { select: { active: true, email: true } },
+    },
   });
   if (!reset || reset.usedAt || reset.expiresAt < new Date() || !reset.user.active) return null;
   return reset;
@@ -82,5 +88,7 @@ export async function resetPassword(token: string, password: string) {
   await db.$transaction([
     db.user.update({ where: { id: reset.userId }, data: { passwordHash: await bcrypt.hash(password, 10) } }),
     db.passwordReset.updateMany({ where: { userId: reset.userId, usedAt: null }, data: { usedAt: new Date() } }),
+    // Si el login estaba bloqueado por intentos fallidos, con la contraseña nueva ya puede entrar
+    db.loginAttempt.deleteMany({ where: { email: reset.user.email } }),
   ]);
 }

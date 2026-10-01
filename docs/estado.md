@@ -101,6 +101,21 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
       `readReceipt` (`src/lib/services/receipt-reading.ts`); `shrinkPhoto` (`src/lib/shrink-photo.ts`)
       achica las fotos en el navegador para los dos.
 3. Los "Pendientes chicos" del final.
+4. **Versión 1.0** (decidido el 2026-10-01, ver "Rumbo a la v1").
+
+## Rumbo a la v1 (2026-10-01)
+
+Felipe decidió versionar sin sumar funciones nuevas. Antes de la etiqueta `v1.0.0` se cierran dos huecos
+de seguridad y datos; otros (tope de IA por persona, que el seed no pise la contraseña del admin, tests
+mínimos) quedan para después. Contexto: la usa solo la familia; cada cuenta sigue separada (sin
+total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
+1. ~~Límite de intentos en el login~~ — hecha: 5 contraseñas mal en 15 minutos para un mismo email lo
+   bloquean hasta que el más viejo de esos intentos tenga 15 minutos (`src/lib/services/login-attempts.ts`,
+   tabla `login_attempts`, migración `intentos_login`). Bloqueado, ni se prueba la contraseña ni se
+   anotan intentos nuevos. Va por email (también los que no existen, para no revelar cuáles tienen
+   cuenta). Entrar bien o cambiar la contraseña con el link del mail borra los intentos.
+2. **Backups de la base** — pendiente.
+3. Después: `package.json` a 1.0.0 y `git tag v1.0.0`.
 
 ## Hecho: fotos de tickets (2026-09-29)
 

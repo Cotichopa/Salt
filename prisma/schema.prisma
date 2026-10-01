@@ -136,6 +136,18 @@ model PasswordReset {
   @@map("password_resets")
 }
 
+// Intentos fallidos de entrar con contraseña, para frenar a quien pruebe contraseñas al azar
+// (ver login-attempts.ts). Va por email y no por cuenta: también cuentan los emails que no existen,
+// así el bloqueo no revela cuáles tienen cuenta. Se borran al entrar bien y a los días.
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@map("login_attempts")
+}
+
 // Avisos de Chop que ya se entregaron, para no repetirlos. Chop los manda cuando la persona le
 // escribe (Meta no deja escribir primero sin plantillas pagas). La clave dice qué aviso es:
 // "due3:<tarjeta>:<mes>", "due1:<tarjeta>:<mes>", "week:<lunes>" o "month:<mes>".
