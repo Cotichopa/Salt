@@ -13,6 +13,8 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "db:seed": "prisma db seed",
+    "db:backup": "scripts/backup-db.sh",
+    "db:restore": "scripts/restore-db.sh",
     "db:demo": "tsx --conditions=react-server prisma/demo.ts",
     "chop:bench": "tsx --conditions=react-server scripts/chop-bench.ts",
     "tunnel": "ngrok http 3001 --url=clifton-monometrical-brook.ngrok-free.dev"

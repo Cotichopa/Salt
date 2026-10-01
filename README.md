@@ -37,6 +37,8 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 | `npm run db:seed` | Crea la cuenta admin y les carga las categorías, tarjetas y billeteras iniciales a las cuentas que no tienen. ⚠️ **Resetea la contraseña del admin** a la del `.env` |
 | `npm run db:demo` | Crea (o recrea) la cuenta `demo@salt.local` con un año de gastos de ejemplo. Muestra la contraseña en la terminal |
 | `npm run db:studio` | Visor de las tablas en el navegador |
+| `npm run db:backup` | Copia de seguridad de la base (ver "Backups") |
+| `npm run db:restore -- <archivo>` | Vuelve a cargar una copia. ⚠️ Reemplaza todo lo que hay en la base |
 | `npm run lint` | Revisa el código |
 | `npm run tunnel` | Expone el puerto 3001 en internet (ngrok) |
 
@@ -64,7 +66,7 @@ variables que hay que completar.
 | Estilos | **Tailwind CSS 4** + **shadcn/ui** (sobre Base UI) | Componentes editables, copiados dentro del proyecto |
 | Íconos | **lucide-react** | Íconos de línea, del mismo estilo que el logo |
 | Gráficos | **Recharts** (vía shadcn `chart`) | Integrado con los componentes |
-| Base de datos | **PostgreSQL 17** en Docker | Igual en desarrollo y en producción |
+| Base de datos | **PostgreSQL 17** | En desarrollo, en Docker (`docker-compose.yml`); en el servidor (una VM de Proxmox), instalado directo, sin Docker |
 | ORM | **Prisma 7** | Consultas en TypeScript, migraciones versionadas, permite cambiar de motor |
 | Sesiones | **jose** (JWT en cookie) + capa de acceso propia | Lo que recomienda la documentación de Next.js |
 | Validación | **zod** | Las mismas reglas para la web y para WhatsApp |
@@ -186,6 +188,35 @@ public/
   dólares se pasan a pesos al dólar **oficial** del vencimiento (el banco cobra al oficial del día) (o al de hoy, como estimado, si todavía
   no venció). Al marcarlo como pagado se guardan los números reales del pago, que reemplazan al
   estimado. El pago no se carga como gasto (los gastos ya están uno por uno).
+
+### Backups
+
+`scripts/backup-db.sh` (`npm run db:backup`) saca una copia de toda la base con `pg_dump` (incluidas
+las fotos de los tickets; hoy ~3,5 MB comprimida) a `~/salt-backups/` (o a `BACKUP_DIR`, si está
+definida): una por día en `diario/` (quedan las últimas 14) y la primera de cada mes en `mensual/`
+(quedan las últimas 12). Usa el `DATABASE_URL` del `.env` y necesita `pg_dump` de la misma versión de
+PostgreSQL que la base (o más nueva). Las copias quedan solo en la VM: lo que la protege si se rompe
+el disco son los backups de la VM entera que hace Proxmox.
+
+**En la VM** (PostgreSQL instalado directo, sin Docker), una vez:
+1. En `deploy/salt-backup.service`, cambiar `User` y las dos rutas por el usuario y la carpeta
+   donde quedó Salt.
+2. Instalar y prender el timer (corre todas las noches a las 3:30; si la VM estaba apagada a esa
+   hora, la copia se hace apenas prende):
+   ```bash
+   sudo cp deploy/salt-backup.service deploy/salt-backup.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now salt-backup.timer
+   sudo systemctl start salt-backup.service   # una copia ya, para probar
+   ```
+3. Revisar: `systemctl list-timers salt-backup.timer` (cuándo es la próxima),
+   `journalctl -u salt-backup -n 20` (qué pasó en la última) y `ls ~/salt-backups/diario`.
+
+**Restaurar** (`scripts/restore-db.sh`): frenar la app, `npm run db:restore -- ~/salt-backups/diario/salt-AAAA-MM-DD.dump`,
+escribir `SI` y volver a arrancar la app. Reemplaza todo: lo cargado después de esa copia se pierde.
+Si algo falla a la mitad no se aplica nada. Para mirar una copia sin tocar la base de verdad, se
+restaura en otra base vacía pasándola como segundo parámetro (instrucciones en el script).
+Conviene probar una restauración así de vez en cuando: un backup que nunca se restauró no está probado.
 
 ---
 
@@ -407,7 +438,8 @@ versión visible en la app.
 - [ ] Apuntar el webhook de Meta al dominio definitivo.
 - [ ] **La cuenta de WhatsApp Business (WABA) tiene que estar suscripta a la app** en Meta: no alcanza
       con configurar el webhook. Sin eso, los mensajes no llegan nunca.
-- [ ] Definir copias de seguridad de la base de datos (hoy no hay ninguna, y los borrados son definitivos).
+- [ ] Instalar el timer de los backups en la VM y comprobar que se hizo la primera copia (ver "Backups";
+      los borrados de la app son definitivos).
 - [ ] No crear la cuenta demo en el servidor (o borrarla): tiene contraseña simple y datos de mentira.
 - [ ] Poner el proyecto en una versión (`package.json` dice 0.1.0) y etiquetarla en git (`git tag v1.0.0`).
 - [ ] Revisar el límite de gasto de la API de Anthropic y que el crédito alcance.

@@ -114,7 +114,13 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    tabla `login_attempts`, migración `intentos_login`). Bloqueado, ni se prueba la contraseña ni se
    anotan intentos nuevos. Va por email (también los que no existen, para no revelar cuáles tienen
    cuenta). Entrar bien o cambiar la contraseña con el link del mail borra los intentos.
-2. **Backups de la base** — pendiente.
+2. ~~Backups de la base~~ — hecha: `npm run db:backup` (`scripts/backup-db.sh`, `pg_dump`) guarda en
+   `~/salt-backups/` las últimas 14 diarias y 12 mensuales; `npm run db:restore -- <archivo>` la vuelve
+   a cargar (pide escribir SI; todo o nada). Corre cada noche con `deploy/salt-backup.timer` (systemd).
+   Decisiones de Felipe: en la VM PostgreSQL va **instalado directo, sin Docker**; las copias quedan
+   solo en la VM (sin cifrar) y lo de afuera lo cubren los backups de Proxmox que hace su papá.
+   Probado acá: restaurada en una base aparte, mismas filas en las 16 tablas. **Falta en la VM**:
+   ajustar usuario y rutas en `deploy/salt-backup.service` e instalar el timer (README, "Backups").
 3. Después: `package.json` a 1.0.0 y `git tag v1.0.0`.
 
 ## Hecho: fotos de tickets (2026-09-29)

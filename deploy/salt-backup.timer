@@ -1,0 +1,12 @@
+# Dispara salt-backup.service todas las noches a las 3:30.
+# Persistent=true: si la VM estaba apagada a esa hora, la copia se hace apenas vuelve a prender.
+
+[Unit]
+Description=Salt: copia de seguridad de la base, todas las noches
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
