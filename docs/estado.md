@@ -119,9 +119,22 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    a cargar (pide escribir SI; todo o nada). Corre cada noche con `deploy/salt-backup.timer` (systemd).
    Decisiones de Felipe: en la VM PostgreSQL va **instalado directo, sin Docker**; las copias quedan
    solo en la VM (sin cifrar) y lo de afuera lo cubren los backups de Proxmox que hace su papá.
-   Probado acá: restaurada en una base aparte, mismas filas en las 16 tablas. **Falta en la VM**:
-   ajustar usuario y rutas en `deploy/salt-backup.service` e instalar el timer (README, "Backups").
-3. Después: `package.json` a 1.0.0 y `git tag v1.0.0`.
+   Probado acá: restaurada en una base aparte, mismas filas en las 16 tablas. El timer lo instala
+   `deploy/install.sh`.
+3. ~~Script de instalación~~ — hecho (pedido de Felipe): `deploy/install.sh <dominio>` deja la VM
+   andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (trae Node 20.19 y
+   PostgreSQL 17 sin repos extra), VM solo para Salt, **Caddy** con dominio propio para el HTTPS
+   (puertos 80/443 del router a la VM), y el script instala todo con sudo. Se corre con el usuario de
+   la app (no root) y se puede repetir. Arma el `.env` (contraseña de la base al azar, `AUTH_SECRET`,
+   token de verificación, `APP_URL`, Whisper), corre el seed solo si no hay cuentas y después vacía
+   `ADMIN_PASSWORD` (así `db:seed` en el servidor falla en vez de pisar la contraseña). Los servicios
+   salen de plantillas en `deploy/` (`__USER__`, `__APP_DIR__`, `__DOMAIN__`). `deploy/update.sh`
+   actualiza (backup, pull, `npm ci`, migraciones, build, reinicio).
+   Probado en un contenedor con Debian 13 limpio (con un imitador de systemctl): instala, el admin
+   entra, Whisper transcribe, la app contesta y una segunda corrida no pisa nada. `update.sh` no se
+   probó (necesita el repo clonado de GitHub). En la VM, el tipo de CPU de Proxmox tiene que ser
+   `host` (si no, Whisper no ve AVX2).
+4. Después, cuando esté andando en la VM: `package.json` a 1.0.0 y `git tag v1.0.0`.
 
 ## Hecho: fotos de tickets (2026-09-29)
 

@@ -198,19 +198,10 @@ definida): una por día en `diario/` (quedan las últimas 14) y la primera de ca
 PostgreSQL que la base (o más nueva). Las copias quedan solo en la VM: lo que la protege si se rompe
 el disco son los backups de la VM entera que hace Proxmox.
 
-**En la VM** (PostgreSQL instalado directo, sin Docker), una vez:
-1. En `deploy/salt-backup.service`, cambiar `User` y las dos rutas por el usuario y la carpeta
-   donde quedó Salt.
-2. Instalar y prender el timer (corre todas las noches a las 3:30; si la VM estaba apagada a esa
-   hora, la copia se hace apenas prende):
-   ```bash
-   sudo cp deploy/salt-backup.service deploy/salt-backup.timer /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now salt-backup.timer
-   sudo systemctl start salt-backup.service   # una copia ya, para probar
-   ```
-3. Revisar: `systemctl list-timers salt-backup.timer` (cuándo es la próxima),
-   `journalctl -u salt-backup -n 20` (qué pasó en la última) y `ls ~/salt-backups/diario`.
+**En la VM**, el timer que la corre todas las noches a las 3:30 lo instala `deploy/install.sh` (si la VM
+estaba apagada a esa hora, la copia se hace apenas prende). Para revisar:
+`systemctl list-timers salt-backup.timer` (cuándo es la próxima), `journalctl -u salt-backup -n 20`
+(qué pasó en la última) y `ls ~/salt-backups/diario`.
 
 **Restaurar** (`scripts/restore-db.sh`): frenar la app, `npm run db:restore -- ~/salt-backups/diario/salt-AAAA-MM-DD.dump`,
 escribir `SI` y volver a arrancar la app. Reemplaza todo: lo cargado después de esa copia se pierde.
@@ -431,6 +422,52 @@ versión visible en la app.
 
 ---
 
+## Instalar en el servidor
+
+El servidor es una **VM de Proxmox con Debian 13**, solo para Salt, con PostgreSQL instalado directo
+(sin Docker) y **Caddy** para el HTTPS. `deploy/install.sh` instala y configura todo; se puede volver a
+correr sin romper nada.
+
+**Antes** (una vez, en Proxmox y en la casa):
+- VM con Debian 13, 2 núcleos o más, 4 GB de RAM y 20 GB de disco. **Tipo de CPU: `host`** (si no,
+  Whisper no ve las instrucciones AVX2 y los audios tardan varias veces más).
+- Un usuario común con `sudo` (por ejemplo `salt`): la app corre con ese usuario, no como root.
+- El dominio (ej. `salt.estilo.com.ar`) apuntando a la IP pública de la casa, y el router mandando
+  los puertos **80 y 443** a la VM. Si la IP de la casa cambia, hace falta DNS dinámico.
+- Acceso de la VM al repo (es privado): una *deploy key* de solo lectura (en la VM
+  `ssh-keygen -t ed25519`, y la clave `.pub` en GitHub → el repo → Settings → Deploy keys).
+
+**Instalar**, con ese usuario:
+```bash
+sudo apt install -y git
+git clone git@github.com:Cotichopa/Salt.git ~/Salt
+cd ~/Salt
+deploy/install.sh salt.estilo.com.ar
+```
+Pide el nombre, el email y la contraseña del admin, y hace, en orden:
+1. Instala Node 20, PostgreSQL 17, Caddy y lo necesario para compilar Whisper (apt).
+2. Crea la base `salt` con una contraseña al azar (solo se puede entrar desde la VM).
+3. Arma el `.env` desde `.env.example`: base, `AUTH_SECRET`, token de verificación de WhatsApp,
+   `APP_URL` y Whisper. Si ya hay un `.env`, no lo pisa.
+4. Compila whisper.cpp en `~/whisper` y baja el modelo small.
+5. `npm ci`, migraciones, el seed (solo si la base no tiene cuentas; después borra `ADMIN_PASSWORD` del
+   `.env`, así un `db:seed` por error no pisa la contraseña) y `npm run build`.
+6. La app como servicio `salt` (`deploy/salt.service`): arranca sola con la VM, se reinicia si se cae y
+   escucha solo en `127.0.0.1:3001`.
+7. Los backups de cada noche (ver "Backups") y una primera copia.
+8. Caddy (`deploy/Caddyfile`): HTTPS con certificado de Let's Encrypt, que saca y renueva solo.
+
+Al final dice lo que falta a mano: los secretos que no van por git (WhatsApp, Anthropic, Gmail) en el
+`.env`, `sudo systemctl restart salt` y el webhook en Meta (`https://<dominio>/api/whatsapp`).
+
+**Actualizar** después de cambios: `deploy/update.sh` (copia de la base, `git pull`, `npm ci`,
+migraciones, build y reinicio).
+
+**Para mirar:** `systemctl status salt` · `journalctl -u salt -n 50` (log de la app) ·
+`journalctl -u caddy -n 50` (certificado) · `sudo systemctl restart salt`.
+
+---
+
 ## Antes de desplegar
 
 - [x] Cambiar el token temporal de WhatsApp por uno **permanente** (usuario del sistema en Meta).
@@ -438,8 +475,8 @@ versión visible en la app.
 - [ ] Apuntar el webhook de Meta al dominio definitivo.
 - [ ] **La cuenta de WhatsApp Business (WABA) tiene que estar suscripta a la app** en Meta: no alcanza
       con configurar el webhook. Sin eso, los mensajes no llegan nunca.
-- [ ] Instalar el timer de los backups en la VM y comprobar que se hizo la primera copia (ver "Backups";
-      los borrados de la app son definitivos).
+- [ ] Instalar con `deploy/install.sh` (ver "Instalar en el servidor") y comprobar que se hizo la
+      primera copia de la base (`ls ~/salt-backups/diario`; los borrados de la app son definitivos).
 - [ ] No crear la cuenta demo en el servidor (o borrarla): tiene contraseña simple y datos de mentira.
 - [ ] Poner el proyecto en una versión (`package.json` dice 0.1.0) y etiquetarla en git (`git tag v1.0.0`).
 - [ ] Revisar el límite de gasto de la API de Anthropic y que el crédito alcance.

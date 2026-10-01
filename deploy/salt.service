@@ -1,0 +1,20 @@
+# La app (Next.js en modo producción). Arranca sola al prender la VM y se reinicia si se cae.
+# Escucha solo en 127.0.0.1:3001: desde internet se llega por Caddy (HTTPS), nunca directo.
+# Plantilla: deploy/install.sh reemplaza __USER__ y __APP_DIR__ y la copia a /etc/systemd/system/.
+#   Ver si anda: systemctl status salt · Log: journalctl -u salt -n 50 · Reiniciar: sudo systemctl restart salt
+
+[Unit]
+Description=Salt (web, WhatsApp y Chop)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__APP_DIR__
+Environment=NODE_ENV=production
+ExecStart=__APP_DIR__/node_modules/.bin/next start -H 127.0.0.1 -p 3001
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

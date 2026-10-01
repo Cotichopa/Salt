@@ -1,0 +1,8 @@
+# Caddy: recibe las visitas de internet por HTTPS y se las pasa a la app (127.0.0.1:3001).
+# Saca y renueva solo el certificado (Let's Encrypt): para eso, el dominio tiene que apuntar a la
+# casa y el router tiene que mandar los puertos 80 y 443 a esta VM.
+# Plantilla: deploy/install.sh reemplaza __DOMAIN__ y la copia a /etc/caddy/Caddyfile.
+
+__DOMAIN__ {
+	reverse_proxy 127.0.0.1:3001
+}

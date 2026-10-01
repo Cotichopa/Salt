@@ -1,6 +1,5 @@
 # Corre la copia de seguridad de la base (scripts/backup-db.sh). La dispara salt-backup.timer.
-# Instalación en la VM: ver "Backups" en el README.
-# ⚠️ Cambiar User y WorkingDirectory por el usuario y la carpeta donde quedó Salt en la VM.
+# Plantilla: deploy/install.sh reemplaza __USER__ y __APP_DIR__ y la copia a /etc/systemd/system/.
 
 [Unit]
 Description=Salt: copia de seguridad de la base
@@ -8,6 +7,6 @@ After=postgresql.service
 
 [Service]
 Type=oneshot
-User=salt
-WorkingDirectory=/home/salt/Salt
-ExecStart=/home/salt/Salt/scripts/backup-db.sh
+User=__USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=__APP_DIR__/scripts/backup-db.sh
