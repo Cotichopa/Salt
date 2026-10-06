@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/dal";
 import { createSession, deleteSession } from "@/lib/session";
 import { MailError } from "@/lib/mail";
 import { PasswordResetError, requestPasswordReset, resetPassword } from "@/lib/services/password-reset";
-import { clearFailedLogins, loginBlockedMinutes, recordFailedLogin } from "@/lib/services/login-attempts";
+import { claimLoginAttempt, clearFailedLogins } from "@/lib/services/login-attempts";
 import {
   changePasswordSchema,
   forgotPasswordSchema,
@@ -25,8 +25,9 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
   const { email, password } = parsed.data;
-  // Bloqueado por muchos intentos: ni se prueba la contraseña (aunque esta vez sea la correcta)
-  const minutes = await loginBlockedMinutes(email);
+  // Se anota el intento antes de probar. Bloqueado por muchos intentos: ni se prueba la contraseña
+  // (aunque esta vez sea la correcta)
+  const minutes = await claimLoginAttempt(email);
   if (minutes > 0) {
     return {
       message:
@@ -37,11 +38,9 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
 
   const user = await db.user.findUnique({ where: { email } });
   const valid = user && user.active && (await bcrypt.compare(password, user.passwordHash));
-  // Mismo mensaje para email o contraseña incorrectos: no le decimos a un intruso cuál acertó
-  if (!valid) {
-    await recordFailedLogin(email);
-    return { message: "Email o contraseña incorrectos" };
-  }
+  // Mismo mensaje para email o contraseña incorrectos: no le decimos a un intruso cuál acertó.
+  // El intento fallido ya quedó anotado (claimLoginAttempt)
+  if (!valid) return { message: "Email o contraseña incorrectos" };
 
   await clearFailedLogins(email);
   await createSession({ userId: user.id, role: user.role, ver: user.sessionVersion });

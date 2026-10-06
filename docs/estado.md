@@ -134,7 +134,17 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    entra, Whisper transcribe, la app contesta y una segunda corrida no pisa nada. `update.sh` no se
    probó (necesita el repo clonado de GitHub). En la VM, el tipo de CPU de Proxmox tiene que ser
    `host` (si no, Whisper no ve AVX2).
-4. Después, cuando esté andando en la VM: `package.json` a 1.0.0 y `git tag v1.0.0`.
+4. ~~Análisis de seguridad~~ — hecho (2026-10-06, con la guía `security-review` de Sentry, sin instalarla).
+   Se arreglaron dos cosas: **cambiar la contraseña cierra las sesiones abiertas** (`users.sessionVersion`,
+   migración `sesiones`; va en la cookie y `dal.ts` la compara) y el **límite de intentos del login ya no se
+   saltea con pedidos simultáneos** (`claimLoginAttempt` anota el intento antes de probar la contraseña;
+   probado: 30 a la vez → ninguno pasa; de a uno → 5 y bloqueo de 15 min). Quedaron sin tocar
+   (decisión de Felipe, es una app familiar): `sharp` 0.35.4 abre SVG y tiene una falla en librsvg (se
+   arregla con 0.35.5 y aceptando solo JPEG/PNG/WebP/HEIC); faltan headers de seguridad (X-Frame-Options,
+   nosniff, HSTS); el login tarda distinto si el email no existe; `next` 16.3.5 tiene un aviso en
+   `next/og` (Salt no lo usa; 16.3.8 lo arregla) y `pdfjs-dist` otro que no aplica (no usa el visor
+   con scripting).
+5. Después, cuando esté andando en la VM: `package.json` a 1.0.0 y `git tag v1.0.0`.
 
 ## Hecho: fotos de tickets (2026-09-29)
 

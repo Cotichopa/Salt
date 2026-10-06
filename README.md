@@ -229,6 +229,9 @@ Cada página y cada acción del servidor verifica permisos por su cuenta: escond
   usuario al entrar; cambiar la contraseña (en Mi cuenta, con el link del mail o desde el admin) la sube
   y las cookies viejas dejan de valer. En el dispositivo donde la cambiaste seguís adentro (se te da
   una cookie nueva).
+- **Límite de intentos:** 5 contraseñas mal en 15 minutos bloquean ese email
+  (`src/lib/services/login-attempts.ts`). El intento se anota *antes* de probar la contraseña, así
+  muchos pedidos mandados a la vez no se saltean el límite.
 
 ---
 
