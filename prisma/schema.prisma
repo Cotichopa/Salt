@@ -58,6 +58,8 @@ model User {
   phone                String?       @unique // formato internacional sin "+", ej: 5491122334455 (así lo manda WhatsApp)
   role                 Role          @default(MEMBER)
   active               Boolean       @default(true)
+  // Va en la cookie de sesión: cambiar la contraseña lo sube y las sesiones abiertas dejan de valer
+  sessionVersion       Int           @default(0)
   // Avisos de Chop (se apagan desde "Cuenta")
   notifyCardDue        Boolean       @default(true) // vencimiento de tarjeta: 3 días antes y el día anterior
   notifyWeekly         Boolean       @default(true) // resumen de la semana pasada

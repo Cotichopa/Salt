@@ -6,7 +6,9 @@ import type { Role } from "@/generated/prisma/client";
 // La sesión vive en una cookie firmada (JWT). La firma con AUTH_SECRET impide
 // que alguien la modifique: si cambia un solo carácter, la verificación falla.
 
-export type SessionPayload = { userId: string; role: Role };
+// `ver` es la sessionVersion del usuario al entrar: si después cambia la contraseña, ya no coincide
+// y la sesión deja de valer (lo revisa src/lib/dal.ts). Las cookies de antes de esto no la traen: 0.
+export type SessionPayload = { userId: string; role: Role; ver: number };
 
 const COOKIE_NAME = "session";
 const DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
@@ -32,7 +34,7 @@ export async function decrypt(token: string | undefined): Promise<SessionPayload
   if (!token) return null;
   try {
     const { payload } = await jwtVerify<SessionPayload>(token, getKey(), { algorithms: ["HS256"] });
-    return { userId: payload.userId, role: payload.role };
+    return { userId: payload.userId, role: payload.role, ver: payload.ver ?? 0 };
   } catch {
     return null; // firma inválida o vencida
   }
@@ -65,7 +67,7 @@ export async function renewedSession(token: string | undefined) {
     const { payload } = await jwtVerify<SessionPayload>(token, getKey(), { algorithms: ["HS256"] });
     if (!payload.iat || Date.now() - payload.iat * 1000 < RENEW_AFTER_MS) return null;
     const expiresAt = new Date(Date.now() + DURATION_MS);
-    const value = await encrypt({ userId: payload.userId, role: payload.role }, expiresAt);
+    const value = await encrypt({ userId: payload.userId, role: payload.role, ver: payload.ver ?? 0 }, expiresAt);
     return { name: COOKIE_NAME, value, options: cookieOptions(expiresAt) };
   } catch {
     return null;

@@ -15,11 +15,14 @@ export const getCurrentUser = cache(async () => {
 
   const user = await db.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, email: true, phone: true, role: true, active: true },
+    select: { id: true, name: true, email: true, phone: true, role: true, active: true, sessionVersion: true },
   });
-  // Si la cuenta se desactivó o borró, la sesión deja de valer aunque la cookie siga viva
-  if (!user || !user.active) return null;
-  return user;
+  // Si la cuenta se desactivó o borró, la sesión deja de valer aunque la cookie siga viva.
+  // Igual si se cambió la contraseña después de entrar (la cookie trae la versión vieja).
+  if (!user) return null;
+  const { sessionVersion, ...current } = user;
+  if (!current.active || sessionVersion !== session.ver) return null;
+  return current;
 });
 
 export async function requireUser() {

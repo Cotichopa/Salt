@@ -44,7 +44,7 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   }
 
   await clearFailedLogins(email);
-  await createSession({ userId: user.id, role: user.role });
+  await createSession({ userId: user.id, role: user.role, ver: user.sessionVersion });
   redirect("/"); // la portada manda a la pantalla de inicio elegida
 }
 
@@ -62,11 +62,15 @@ export async function changePassword(_prev: FormState, formData: FormData): Prom
   if (!(await bcrypt.compare(parsed.data.current, user.passwordHash))) {
     return { errors: { current: ["Contraseña actual incorrecta"] } };
   }
-  await db.user.update({
+  // Subir la versión cierra las sesiones abiertas en otros lados; en este dispositivo seguís
+  // adentro con una cookie nueva
+  const updated = await db.user.update({
     where: { id: me.id },
-    data: { passwordHash: await bcrypt.hash(parsed.data.next, 10) },
+    data: { passwordHash: await bcrypt.hash(parsed.data.next, 10), sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
   });
-  return { ok: true, message: "Contraseña actualizada" };
+  await createSession({ userId: me.id, role: me.role, ver: updated.sessionVersion });
+  return { ok: true, message: "Contraseña actualizada. Se cerró la sesión en los otros dispositivos." };
 }
 
 /** "Olvidé mi contraseña": manda el mail con el link. Responde siempre lo mismo, exista o no la cuenta. */

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/dal";
+import { createSession } from "@/lib/session";
 import { ensureDefaultCategories } from "@/lib/services/categories";
 import { ensureDefaults } from "@/lib/services/payment-sources";
 import { createUserSchema, resetPasswordSchema, updatePhoneSchema, type FormState } from "@/lib/validators";
@@ -45,14 +46,18 @@ export async function toggleUserActive(userId: string) {
 }
 
 export async function resetUserPassword(_prev: FormState, formData: FormData): Promise<FormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
-  await db.user.update({
+  // sessionVersion + 1: esa persona tiene que volver a entrar con la contraseña nueva en todos lados
+  const updated = await db.user.update({
     where: { id: parsed.data.userId },
-    data: { passwordHash: await bcrypt.hash(parsed.data.password, 10) },
+    data: { passwordHash: await bcrypt.hash(parsed.data.password, 10), sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
   });
-  return { ok: true, message: "Contraseña cambiada" };
+  // Si el admin se la cambió a sí mismo, sigue adentro en este dispositivo
+  if (parsed.data.userId === admin.id) await createSession({ userId: admin.id, role: admin.role, ver: updated.sessionVersion });
+  return { ok: true, message: "Contraseña cambiada. Se cerraron sus sesiones abiertas." };
 }
 
 export async function updateUserPhone(_prev: FormState, formData: FormData): Promise<FormState> {

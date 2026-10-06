@@ -219,10 +219,16 @@ Login ──► valida con bcrypt ──► cookie firmada (JWT, httpOnly, 30 d�
         ┌───────────────────────────────┴──────────────────────────┐
    src/proxy.ts                                            src/lib/dal.ts
    Filtro rápido antes de cada página                      Verificación real contra la base
-   (solo revisa la firma)                                  (¿existe?, ¿está activo?, ¿es admin?)
+   (solo revisa la firma)                                  (¿existe?, ¿está activo?, ¿es admin?,
+                                                           ¿la versión de la cookie es la actual?)
 ```
 
 Cada página y cada acción del servidor verifica permisos por su cuenta: esconder un botón no alcanza.
+
+- **Cambiar la contraseña cierra las sesiones abiertas.** La cookie lleva `ver`, la `sessionVersion` del
+  usuario al entrar; cambiar la contraseña (en Mi cuenta, con el link del mail o desde el admin) la sube
+  y las cookies viejas dejan de valer. En el dispositivo donde la cambiaste seguís adentro (se te da
+  una cookie nueva).
 
 ---
 
