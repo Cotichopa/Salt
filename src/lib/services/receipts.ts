@@ -14,8 +14,23 @@ export class ReceiptError extends Error {}
 const MAX_SIDE = 1568;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * ¿El archivo es de verdad un JPEG, PNG, WebP o HEIC? Se mira su contenido (los primeros bytes de cada
+ * formato son fijos) porque el tipo que dice el archivo lo manda quien lo sube y puede ser mentira:
+ * así un SVG con nombre .jpg nunca llega a sharp.
+ */
+function isAllowedImage(data: Buffer) {
+  const ascii = (from: number, to: number) => data.subarray(from, to).toString("latin1");
+  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return true; // JPEG
+  if (data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return true; // PNG
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return true; // WebP
+  // HEIC (fotos de iPhone): "ftyp" y una de sus marcas
+  return ascii(4, 8) === "ftyp" && ["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"].includes(ascii(8, 12));
+}
+
 /** Achica la foto, la guarda y devuelve su id y el JPEG (para mandárselo a la IA) */
 export async function saveReceipt(userId: string, image: Buffer) {
+  if (!isAllowedImage(image)) throw new ReceiptError("No pude abrir la imagen");
   let jpeg: Buffer;
   try {
     jpeg = await sharp(image)

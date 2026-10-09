@@ -11,10 +11,14 @@ import { parseReceipt, type Parsed, type ReceiptFile } from "@/lib/whatsapp/ai-p
 
 export type ReceiptKind = "image" | "pdf";
 
+// Solo estos tipos de imagen: otros (SVG, TIFF, GIF...) no son fotos de tickets y sharp los abriría
+// con librerías que tuvieron fallas de seguridad. saveReceipt además mira el contenido del archivo.
+const IMAGE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
 /** Qué tipo de ticket es un archivo, por su tipo (MIME): PDF o imagen. null si no es ninguno. */
 export function receiptKind(mimeType: string | undefined): ReceiptKind | null {
   if (mimeType === "application/pdf") return "pdf";
-  return mimeType?.startsWith("image/") ? "image" : null;
+  return mimeType && IMAGE_TYPES.has(mimeType.toLowerCase()) ? "image" : null;
 }
 
 /**

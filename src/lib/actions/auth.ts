@@ -21,6 +21,9 @@ import {
 // "use server" convierte estas funciones en Server Actions: el formulario del
 // navegador las llama, pero el código corre en el servidor (acá sí hay acceso a la base).
 
+// Hash de una contraseña al azar que nadie conoce (ver login): con el mismo costo (10) que los reales
+const DUMMY_HASH = "$2b$10$EPT1cnNpgkKiQq4WTu/r5eiY5aGXI8.ad/EQIAjQhUhMO0zcx/4ky";
+
 export async function login(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
@@ -38,7 +41,11 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   }
 
   const user = await db.user.findUnique({ where: { email } });
-  const valid = user && user.active && (await bcrypt.compare(password, user.passwordHash));
+  // Siempre se compara contra algún hash, aunque el email no exista o la cuenta esté desactivada:
+  // bcrypt tarda ~70 ms a propósito, y si solo tardara con las cuentas reales, midiendo el tiempo
+  // de respuesta se podría saber qué emails tienen cuenta
+  const matches = await bcrypt.compare(password, user?.active ? user.passwordHash : DUMMY_HASH);
+  const valid = user && user.active && matches;
   // Mismo mensaje para email o contraseña incorrectos: no le decimos a un intruso cuál acertó.
   // El intento fallido ya quedó anotado (claimLoginAttempt)
   if (!valid) return { message: "Email o contraseña incorrectos" };

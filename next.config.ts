@@ -15,9 +15,28 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "6mb" },
   },
-  // El service worker no se guarda en caché: así el celular siempre toma la última versión
   async headers() {
     return [
+      // Encabezados de seguridad en todas las páginas:
+      // - X-Frame-Options: ninguna otra página puede mostrar Salt adentro (en un iframe) para engañarte
+      //   con botones falsos encima
+      // - nosniff: el navegador no adivina el tipo de un archivo (un ticket nunca se ejecuta como script)
+      // - Referrer-Policy: a otros sitios solo les llega "salt.estilo.ar", no la dirección completa
+      // - Permissions-Policy: micrófono (audios del chat) y cámara solo para Salt; ubicación, para nadie
+      // - HSTS (solo en producción): el navegador recuerda entrar siempre por HTTPS
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
+          ...(process.env.NODE_ENV === "production"
+            ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }]
+            : []),
+        ],
+      },
+      // El service worker no se guarda en caché: así el celular siempre toma la última versión
       {
         source: "/sw.js",
         headers: [
