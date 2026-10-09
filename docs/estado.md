@@ -102,6 +102,9 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
       achica las fotos en el navegador para los dos.
 3. Los "Pendientes chicos" del final.
 4. **Versión 1.0** (decidido el 2026-10-01, ver "Rumbo a la v1").
+5. **Rediseño de la vista en computadora** (pedido del 2026-10-09: el menú y el contenido quedan muy
+   al medio, con espacios en blanco a los costados). Decidido: **menú lateral**. Todo lo necesario para
+   retomarlo, con las preguntas que faltan, en `docs/rediseno-escritorio.md`.
 
 ## Rumbo a la v1 (2026-10-01)
 
