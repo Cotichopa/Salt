@@ -102,22 +102,26 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
       achica las fotos en el navegador para los dos.
 3. Los "Pendientes chicos" del final.
 4. ~~**Versión 1.0**~~ — hecha (2026-10-09, ver "Rumbo a la v1").
+5. ~~**Rediseño de la vista en computadora**~~ — hecho (2026-10-09): **menú lateral** desde `lg:`,
+   contenido hasta `max-w-7xl`, Inicio y Mi cuenta con más columnas; celular y tablet sin cambios.
+   Detalle en `docs/rediseno-escritorio.md`.
 6. **Ideas nuevas** (elegidas el 2026-10-09; sin APIs de bancos ni ingresos: Salt sigue siendo solo de
    gastos; sin total de la casa). Orden, una etapa por commit: ~~versión 1.0.0~~ → ~~pendientes de
    seguridad~~ (hecho, ver "Rumbo a la v1", punto 4) → ~~vista anual en el Inicio~~ (hecha, ver "Hecho: vista
    anual") → ~~Chop busca por descripción~~ (hecha, ver "Hecho: Chop busca por descripción") →
    ~~etiquetas~~ (hechas, ver "Hecho: etiquetas") → atajos de teclado en la compu → notificaciones push → avisos a la familia. Al empezar
    cada etapa se confirman sus decisiones. En la VM corre **otra app**: no tocar lo del sistema sin avisar.
-5. ~~**Rediseño de la vista en computadora**~~ — hecho (2026-10-09): **menú lateral** desde `lg:`,
-   contenido hasta `max-w-7xl`, Inicio y Mi cuenta con más columnas; celular y tablet sin cambios.
-   Detalle en `docs/rediseno-escritorio.md`.
+7. **Gastos compartidos y total de la casa** — la próxima función grande (decidido el 2026-10-09; cambia la
+   decisión de que cada cuenta va separada). Todavía sin codear: el planteo y las preguntas que faltan
+   están en `docs/gastos-compartidos.md`.
 
 ## Rumbo a la v1 (2026-10-01)
 
 Felipe decidió versionar sin sumar funciones nuevas. Antes de la etiqueta `v1.0.0` se cierran dos huecos
 de seguridad y datos; otros (tope de IA por persona, que el seed no pise la contraseña del admin, tests
 mínimos) quedan para después. Contexto: la usa solo la familia; cada cuenta sigue separada (sin
-total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
+total de la casa ni gastos compartidos; **cambió el 2026-10-09**: se van a hacer, ver
+`docs/gastos-compartidos.md`), y va a correr en una **VM de Proxmox**.
 1. ~~Límite de intentos en el login~~ — hecha: 5 contraseñas mal en 15 minutos para un mismo email lo
    bloquean hasta que el más viejo de esos intentos tenga 15 minutos (`src/lib/services/login-attempts.ts`,
    tabla `login_attempts`, migración `intentos_login`). Bloqueado, ni se prueba la contraseña ni se
