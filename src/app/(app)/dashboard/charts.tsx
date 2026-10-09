@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Bar,
   BarChart,
@@ -22,7 +22,7 @@ import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type Cha
 import { cn } from "@/lib/utils";
 import { CategoryIcon } from "@/components/category-icon";
 import { formatMoney, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
-import type { Dashboard } from "@/lib/services/stats";
+import type { Dashboard, YearOverview } from "@/lib/services/stats";
 
 // Gráficos del dashboard (Recharts, a través del componente "chart" de shadcn).
 // Reglas de diseño: barras finas (máx. 24px) con punta redondeada, grilla tenue,
@@ -318,5 +318,120 @@ export function WeekdayChart({ data, currency }: { data: Dashboard["byWeekday"];
         </Bar>
       </BarChart>
     </ChartContainer>
+  );
+}
+
+// ---------- Año: gasto de cada mes, apilado por categoría ----------
+// Las 6 categorías más grandes del año con color propio (el mismo en todos los meses) y el resto
+// junto en "Otras" (gris). Leyenda siempre arriba; los montos exactos, en el recuadro al pasar el
+// mouse y en la tabla de abajo (algunos colores tienen poco contraste con el fondo claro).
+
+const YEAR_COLORS = SLICE_COLORS;
+
+type YearSeries = { key: string; name: string; color: string; values: number[] };
+
+function yearSeries(data: YearOverview): YearSeries[] {
+  const top = data.categories.slice(0, YEAR_COLORS.length);
+  const rest = data.categories.slice(YEAR_COLORS.length);
+  const series = top.map((c, i) => ({ key: `c${i}`, name: c.name, color: YEAR_COLORS[i], values: c.months }));
+  if (rest.length > 0) {
+    const values = Array.from({ length: 12 }, (_, m) => rest.reduce((sum, c) => sum + c.months[m], 0));
+    series.push({ key: "otras", name: "Otras", color: "var(--chart-5)", values });
+  }
+  return series;
+}
+
+function YearTooltip({
+  active,
+  payload,
+  currency,
+  series,
+  year,
+}: Partial<TooltipContentProps<number, string>> & { currency: CurrencyCode; series: YearSeries[]; year: number }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload as { long: string; total: number; future: boolean } & Record<string, number>;
+  // De arriba hacia abajo, como se ven en la barra; sin las que no tuvieron gastos ese mes
+  const shown = [...series].reverse().filter((s) => row[s.key] > 0);
+  return (
+    <div className="min-w-48 rounded-lg border bg-background px-3 py-2 text-xs shadow-md">
+      <div className="flex justify-between gap-4">
+        <span className="text-muted-foreground">
+          <span className="capitalize">{row.long}</span> {year}
+          {row.future && " · cuotas por venir"}
+        </span>
+        <span className="font-medium tabular-nums">{formatMoney(row.total, currency)}</span>
+      </div>
+      {shown.length > 0 && (
+        <ul className="mt-1.5 flex flex-col gap-1 border-t pt-1.5">
+          {shown.map((s) => (
+            <li key={s.key} className="flex items-center gap-2">
+              <span className="size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} />
+              <span className="flex-1 truncate">{s.name}</span>
+              <span className="tabular-nums">{formatMoney(row[s.key], currency)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** true si la pantalla es angosta (celular): ahí los meses del eje van con una sola letra */
+function useNarrow() {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia("(max-width: 639px)");
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(max-width: 639px)").matches,
+    () => false, // en el servidor no hay pantalla: se arranca con los nombres cortos
+  );
+}
+
+export function YearChart({ data, currency }: { data: YearOverview; currency: CurrencyCode }) {
+  const series = useMemo(() => yearSeries(data), [data]);
+  const narrow = useNarrow();
+  const rows = data.months.map((m, i) => ({
+    short: m.short,
+    long: m.long,
+    total: m.total,
+    future: m.future,
+    ...Object.fromEntries(series.map((s) => [s.key, s.values[i]])),
+  }));
+  const config = Object.fromEntries(series.map((s) => [s.key, { label: s.name, color: s.color }])) satisfies ChartConfig;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Leyenda: siempre, porque hay más de una categoría */}
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {series.map((s) => (
+          <li key={s.key} className="flex items-center gap-2">
+            <span className="size-3 shrink-0 rounded-sm" style={{ background: s.color }} />
+            {s.name}
+          </li>
+        ))}
+      </ul>
+      <ChartContainer config={config} className="aspect-auto h-72 w-full">
+        <BarChart data={rows} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="short" tickLine={false} axisLine={false} interval={0} tickFormatter={(m: string) => (narrow ? m[0] : m)} />
+          <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(v) => compact.format(v)} />
+          <ChartTooltip
+            cursor={{ fill: "var(--muted)" }}
+            content={<YearTooltip currency={currency} series={series} year={data.year} />}
+          />
+          {/* Borde del color del fondo: deja 2 px de separación entre las partes de cada barra */}
+          {/* Los meses que todavía no llegaron (solo cuotas ya cargadas) van más claros */}
+          {series.map((s) => (
+            <Bar key={s.key} dataKey={s.key} stackId="mes" fill={s.color} stroke="var(--card)" strokeWidth={2} maxBarSize={40}>
+              {rows.map((r) => (
+                <Cell key={r.short} fillOpacity={r.future ? 0.35 : 1} />
+              ))}
+            </Bar>
+          ))}
+        </BarChart>
+      </ChartContainer>
+    </div>
   );
 }

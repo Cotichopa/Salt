@@ -179,3 +179,108 @@ export async function getDashboard(userId: string, month: string, currency: Curr
 }
 
 export type Dashboard = Awaited<ReturnType<typeof getDashboard>>;
+
+// ---------- Vista anual (Inicio → "Año") ----------
+
+const MONTH_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const MONTH_LONG = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+/**
+ * Un año completo: cuánto se gastó cada mes en cada categoría. Si es el año en curso, se compara
+ * contra el mismo período del año anterior (del 1 de enero a la misma fecha); si es un año cerrado,
+ * contra el año anterior completo. Los meses que todavía no llegaron vienen con `future` (solo pueden
+ * tener cuotas ya cargadas, que no entran en los totales).
+ */
+export async function getYear(userId: string, year: number, currency: CurrencyCode) {
+  const today = todayISO();
+  const isCurrentYear = year === Number(today.slice(0, 4));
+  const from = new Date(Date.UTC(year, 0, 1));
+  const to = new Date(Date.UTC(year + 1, 0, 1));
+  const prevFrom = new Date(Date.UTC(year - 1, 0, 1));
+  // Mismo período del año anterior: hasta el mismo día (incluido) si el año está en curso
+  const [, m, d] = today.split("-").map(Number);
+  const prevTo = isCurrentYear ? new Date(Date.UTC(year - 1, m - 1, d + 1)) : from;
+
+  const [rows, prevRows] = await Promise.all([
+    db.expense.groupBy({ by: ["categoryId", "date"], where: { userId, date: { gte: from, lt: to } }, _sum: SUM, _count: true }),
+    db.expense.groupBy({ by: ["categoryId"], where: { userId, date: { gte: prevFrom, lt: prevTo } }, _sum: SUM }),
+  ]);
+
+  // El mes en curso todavía no terminó; los que vienen después solo pueden tener cuotas ya cargadas:
+  // se muestran aparte ("por venir") y no se suman a lo que llevás gastado en el año
+  const currentMonth = isCurrentYear ? Number(today.slice(5, 7)) : 12;
+
+  // Total de cada categoría por mes (12 casilleros)
+  const byCat = new Map<string, number[]>();
+  let count = 0;
+  for (const r of rows) {
+    const months = byCat.get(r.categoryId) ?? new Array<number>(12).fill(0);
+    months[r.date.getUTCMonth()] += pick(r, currency);
+    byCat.set(r.categoryId, months);
+    if (r.date.getUTCMonth() < currentMonth) count += r._count;
+  }
+  const upToNow = (months: number[]) => months.slice(0, currentMonth).reduce((a, b) => a + b, 0);
+
+  const ids = [...new Set([...byCat.keys(), ...prevRows.map((r) => r.categoryId)])];
+  const cats = await db.category.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, emoji: true, icon: true } });
+  const catById = new Map(cats.map((c) => [c.id, c]));
+  const prevById = new Map(prevRows.map((r) => [r.categoryId, pick(r, currency)]));
+
+  const categories = [...byCat.entries()]
+    .map(([id, months]) => {
+      const cat = catById.get(id);
+      return {
+        id,
+        name: cat?.name ?? "?",
+        icon: resolveCategoryIcon(cat?.icon, cat?.emoji) as string | null,
+        months,
+        total: upToNow(months),
+        upcoming: months.slice(currentMonth).reduce((a, b) => a + b, 0), // cuotas de los meses que vienen
+      };
+    })
+    .sort((a, b) => b.total - a.total || b.upcoming - a.upcoming);
+
+  const months = MONTH_SHORT.map((short, i) => ({
+    month: `${year}-${String(i + 1).padStart(2, "0")}`,
+    short,
+    long: MONTH_LONG[i],
+    total: categories.reduce((sum, c) => sum + c.months[i], 0),
+    future: i + 1 > currentMonth,
+  }));
+
+  const total = categories.reduce((sum, c) => sum + c.total, 0);
+  const first = months.findIndex((m) => !m.future && m.total > 0);
+  const firstMonth = first === -1 ? 0 : first;
+  const previousTotal = [...prevById.values()].reduce((a, b) => a + b, 0);
+  const priciest = months
+    .filter((m) => !m.future)
+    .reduce<(typeof months)[number] | null>((best, m) => (m.total > (best?.total ?? 0) ? m : best), null);
+
+  // La categoría que más creció en plata contra el mismo período del año anterior (en pesos, no en %:
+  // una categoría chica que pasa de $1.000 a $3.000 "crece 200%" pero no es lo que importa)
+  const grown = categories
+    .filter((c) => prevById.has(c.id))
+    .map((c) => ({ name: c.name, diff: c.total - (prevById.get(c.id) ?? 0) }))
+    .sort((a, b) => b.diff - a.diff)[0];
+
+  return {
+    year,
+    isCurrentYear,
+    total,
+    count,
+    previousTotal,
+    comparisonLabel: isCurrentYear ? `vs. el mismo período de ${year - 1}` : `vs. ${year - 1}`,
+    // Desde el primer mes con gastos: si empezaste a usar Salt en octubre, no se divide por 12
+    monthlyAverage: total / (currentMonth - firstMonth),
+    since: firstMonth > 0 ? MONTH_LONG[firstMonth] : null,
+    priciest,
+    grown: grown && grown.diff > 0 ? grown : null,
+    months,
+    categories,
+  };
+}
+
+export type YearOverview = Awaited<ReturnType<typeof getYear>>;
