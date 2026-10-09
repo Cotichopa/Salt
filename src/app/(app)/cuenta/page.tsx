@@ -41,75 +41,83 @@ export default async function AccountPage() {
   const day = new Intl.DateTimeFormat("es-AR", { timeZone: TIME_ZONE, day: "numeric", month: "numeric", year: "numeric" });
 
   return (
-    <div className="flex max-w-md flex-col gap-4 py-2">
+    // En la compu, dos columnas (perfil y preferencias · lo demás); en el celular, una debajo de la otra
+    <div className="flex max-w-md flex-col gap-4 py-2 lg:max-w-5xl">
       <h1 className="text-2xl font-semibold">Mi cuenta</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle>Perfil</CardTitle>
-          <CardDescription>{user.email}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          <NameForm name={user.name} />
-          <PhoneForm phone={user.phone} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Preferencias</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PreferencesForm initial={preferences} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Avisos de Chop</CardTitle>
-          <CardDescription>Chop te los cuenta la próxima vez que le escribas.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <NoticesForm initial={notices} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Entrar con huella</CardTitle>
-          <CardDescription>
-            Entrá con la huella o la cara del celular, sin escribir la contraseña. Si cambiás la contraseña, se borran
-            y hay que volver a agregarlos.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PasskeysSection
-            passkeys={passkeys.map((p) => ({
-              id: p.id,
-              name: p.name,
-              created: day.format(p.createdAt),
-              lastUsed: p.lastUsedAt && day.format(p.lastUsedAt),
-            }))}
-          />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Cambiar contraseña</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ChangePasswordForm />
-        </CardContent>
-      </Card>
-      {superadmins.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Quién puede ver tus gastos</CardTitle>
-            <CardDescription>
-              {superadmins.map((s) => s.name).join(" y ")}{" "}
-              {superadmins.length === 1 ? "administra Salt y puede" : "administran Salt y pueden"} ver tu cuenta: gastos,
-              tickets, tarjetas, fijos y presupuestos. Solo mirar: no se puede cambiar nada. También ve los mensajes que
-              Chop no entendió, para enseñarle frases nuevas (el resto de lo que le escribís no se guarda).
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Perfil</CardTitle>
+              <CardDescription>{user.email}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              <NameForm name={user.name} />
+              <PhoneForm phone={user.phone} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Preferencias</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PreferencesForm initial={preferences} />
+            </CardContent>
+          </Card>
+        </div>
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Avisos de Chop</CardTitle>
+              <CardDescription>Chop te los cuenta la próxima vez que le escribas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <NoticesForm initial={notices} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Entrar con huella</CardTitle>
+              <CardDescription>
+                Entrá con la huella o la cara del celular, sin escribir la contraseña. Si cambiás la contraseña, se
+                borran y hay que volver a agregarlos.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PasskeysSection
+                passkeys={passkeys.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  created: day.format(p.createdAt),
+                  lastUsed: p.lastUsedAt && day.format(p.lastUsedAt),
+                }))}
+              />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Cambiar contraseña</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChangePasswordForm />
+            </CardContent>
+          </Card>
+          {superadmins.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Quién puede ver tus gastos</CardTitle>
+                <CardDescription>
+                  {superadmins.map((s) => s.name).join(" y ")}{" "}
+                  {superadmins.length === 1 ? "administra Salt y puede" : "administran Salt y pueden"} ver tu cuenta:
+                  gastos, tickets, tarjetas, fijos y presupuestos. Solo mirar: no se puede cambiar nada. También ve los
+                  mensajes que Chop no entendió, para enseñarle frases nuevas (el resto de lo que le escribís no se
+                  guarda).
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

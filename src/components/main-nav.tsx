@@ -6,11 +6,15 @@ import { usePathname } from "next/navigation";
 import { ChartColumnIcon, CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/user-menu";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
-// Menú principal. En la compu se ve como una fila de links al lado del logo; en el celular
-// se esconde detrás de un botón "hamburguesa" (☰) que abre un panel desde la izquierda.
+// Menú principal, en tres formas según el ancho de la pantalla:
+// - compu (desde lg, ≈1024 px): barra fija a la izquierda con íconos y texto (SideNav)
+// - tablet (md): fila de links al lado del logo, en el header de arriba (DesktopNav)
+// - celular: botón "hamburguesa" (☰) que abre un panel desde la izquierda (MobileNav)
 // Son Client Components porque necesitan saber en qué página estás (usePathname)
 // y recordar si el panel está abierto (useState).
 
@@ -71,13 +75,13 @@ export function MobileNav({ role }: { role: string }) {
   );
 }
 
-/** Compu: fila de links al lado del logo (en el celular no se muestra) */
+/** Tablet: fila de links al lado del logo (en el celular no se muestra, y en la compu está SideNav) */
 export function DesktopNav({ role }: { role: string }) {
   const pathname = usePathname();
   const links = linksFor(role);
 
   return (
-    <nav className="hidden flex-1 gap-1 md:flex">
+    <nav className="hidden flex-1 gap-1 md:flex lg:hidden">
       {links.map(({ href, label }) => (
         <Link
           key={href}
@@ -92,5 +96,43 @@ export function DesktopNav({ role }: { role: string }) {
         </Link>
       ))}
     </nav>
+  );
+}
+
+/**
+ * Compu: barra fija a la izquierda, del alto de la pantalla (sticky: no se va al bajar).
+ * Logo arriba, las secciones con ícono y texto, y abajo la persona y el tema.
+ */
+export function SideNav({ role, name, email }: { role: string; name: string; email: string }) {
+  const pathname = usePathname();
+  const links = linksFor(role);
+
+  return (
+    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground lg:flex">
+      <Link href="/dashboard" className="flex h-14 items-center gap-2 px-5 font-display text-lg font-semibold tracking-tight">
+        <Logo className="size-5" />
+        Salt
+      </Link>
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+        {links.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            aria-current={isActive(pathname, href) ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              isActive(pathname, href) && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",
+            )}
+          >
+            <Icon className="size-4" />
+            {label}
+          </Link>
+        ))}
+      </nav>
+      <div className="flex items-center gap-1 border-t p-3">
+        <UserMenu name={name} email={email} side="top" className="min-w-0 flex-1 justify-start" />
+        <ThemeToggle />
+      </div>
+    </aside>
   );
 }

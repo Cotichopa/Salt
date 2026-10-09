@@ -5,7 +5,7 @@ import { getViewedAccount, requireUser } from "@/lib/dal";
 import { UserMenu } from "@/components/user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
-import { DesktopNav, MobileNav } from "@/components/main-nav";
+import { DesktopNav, MobileNav, SideNav } from "@/components/main-nav";
 import { ChopWidget } from "@/components/chop/chop-widget";
 import { FormDefaultsProvider } from "@/components/form-defaults";
 import { getPreferences } from "@/lib/services/preferences";
@@ -25,45 +25,50 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   after(() => noteWebUse(user.id));
 
   return (
-    <>
-      {viewed && (
-        <div className="bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
-          <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2 text-sm">
-            <EyeIcon className="size-4 shrink-0" />
-            <p className="flex-1">
-              Viendo la cuenta de <strong>{viewed.name}</strong> · solo lectura
-            </p>
-            <form action="/api/ver-como" method="post">
-              <Button type="submit" size="sm" variant="outline" className="bg-transparent">
-                Salir
-              </Button>
-            </form>
+    // En la compu (lg), el menú es una barra a la izquierda y el header de arriba no se muestra.
+    // El contenido crece hasta max-w-7xl (≈1280 px); en el celular y la tablet, hasta max-w-5xl como antes.
+    <div className="flex flex-1">
+      <SideNav role={user.role} name={user.name} email={user.email} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        {viewed && (
+          <div className="bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+            <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2 text-sm lg:max-w-7xl lg:px-8">
+              <EyeIcon className="size-4 shrink-0" />
+              <p className="flex-1">
+                Viendo la cuenta de <strong>{viewed.name}</strong> · solo lectura
+              </p>
+              <form action="/api/ver-como" method="post">
+                <Button type="submit" size="sm" variant="outline" className="bg-transparent">
+                  Salir
+                </Button>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-      <header className="border-b">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 md:gap-4">
-          <MobileNav role={user.role} />
-          <Link href="/dashboard" className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight">
-            <Logo className="size-5" />
-            Salt
-          </Link>
-          <DesktopNav role={user.role} />
-          {/* En el celular no hay fila de links: este espacio empuja los botones a la derecha */}
-          <div className="flex-1 md:hidden" />
-          <ThemeToggle />
-          <UserMenu name={user.name} email={user.email} />
-        </div>
-      </header>
-      {/* pb-24: espacio abajo para que el botón de Chop no tape lo último de la página */}
-      <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24">
-        <ReadOnlyProvider value={!!viewed}>
-          <FormDefaultsProvider value={{ paymentMethod: prefs.defaultPaymentMethod, dollarType: prefs.defaultDollarType }}>
-            {children}
-          </FormDefaultsProvider>
-        </ReadOnlyProvider>
-      </main>
+        )}
+        <header className="border-b lg:hidden">
+          <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 md:gap-4">
+            <MobileNav role={user.role} />
+            <Link href="/dashboard" className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight">
+              <Logo className="size-5" />
+              Salt
+            </Link>
+            <DesktopNav role={user.role} />
+            {/* En el celular no hay fila de links: este espacio empuja los botones a la derecha */}
+            <div className="flex-1 md:hidden" />
+            <ThemeToggle />
+            <UserMenu name={user.name} email={user.email} />
+          </div>
+        </header>
+        {/* pb-24: espacio abajo para que el botón de Chop no tape lo último de la página */}
+        <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 lg:max-w-7xl lg:px-8 lg:pt-6">
+          <ReadOnlyProvider value={!!viewed}>
+            <FormDefaultsProvider value={{ paymentMethod: prefs.defaultPaymentMethod, dollarType: prefs.defaultDollarType }}>
+              {children}
+            </FormDefaultsProvider>
+          </ReadOnlyProvider>
+        </main>
+      </div>
       {!viewed && <ChopWidget userId={user.id} name={user.name} />}
-    </>
+    </div>
   );
 }

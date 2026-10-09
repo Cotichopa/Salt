@@ -86,52 +86,55 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         </div>
       </div>
 
-      {/* Buscador: lleva a Gastos con los resultados de todo el historial (el mismo buscador de allá) */}
-      <form action="/gastos" role="search" className="relative">
-        <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          name="q"
-          enterKeyHint="search"
-          placeholder="Buscar gastos: super, 15.000, 24/09, septiembre..."
-          className="h-10 pl-9"
-          aria-label="Buscar gastos en todo el historial"
-        />
-      </form>
+      {/* En la compu, el buscador y los filtros van en la misma fila (el buscador a la derecha) */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+        {/* Buscador: lleva a Gastos con los resultados de todo el historial (el mismo buscador de allá) */}
+        <form action="/gastos" role="search" className="relative lg:order-last lg:ml-auto lg:w-72 xl:w-96">
+          <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            name="q"
+            enterKeyHint="search"
+            placeholder="Buscar gastos: super, 15.000, 24/09, septiembre..."
+            className="h-10 pl-9"
+            aria-label="Buscar gastos en todo el historial"
+          />
+        </form>
 
-      {/* Una sola fila de filtros que aplica a todo el dashboard */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
-          <Link href={href(shiftMonth(month, -1), currency)} className={buttonVariants({ variant: "outline", size: "icon" })} aria-label="Mes anterior">
-            <ChevronLeftIcon />
-          </Link>
-          <span className="min-w-36 text-center text-sm font-medium">{formatMonth(month)}</span>
-          {month < currentMonth ? (
-            <Link href={href(shiftMonth(month, 1), currency)} className={buttonVariants({ variant: "outline", size: "icon" })} aria-label="Mes siguiente">
-              <ChevronRightIcon />
+        {/* Una sola fila de filtros que aplica a todo el dashboard */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Link href={href(shiftMonth(month, -1), currency)} className={buttonVariants({ variant: "outline", size: "icon" })} aria-label="Mes anterior">
+              <ChevronLeftIcon />
             </Link>
-          ) : (
-            <span className={cn(buttonVariants({ variant: "outline", size: "icon" }), "pointer-events-none opacity-50")} aria-hidden>
-              <ChevronRightIcon />
-            </span>
-          )}
-        </div>
-        {/* Los mismos gastos vistos en pesos o en dólares (cada uno convertido con la cotización de su día) */}
-        <div className="flex rounded-lg border p-0.5">
-          {(["ARS", "USD"] as const).map((c) => (
-            <Link
-              key={c}
-              href={href(month, c)}
-              aria-current={c === currency ? "true" : undefined}
-              title={c === "ARS" ? "Ver todo en pesos" : "Ver todo en dólares (al MEP del día de cada gasto)"}
-              className={cn(
-                "rounded-md px-3 py-1 text-sm",
-                c === currency ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {c === "ARS" ? "En pesos" : "En dólares"}
-            </Link>
-          ))}
+            <span className="min-w-36 text-center text-sm font-medium">{formatMonth(month)}</span>
+            {month < currentMonth ? (
+              <Link href={href(shiftMonth(month, 1), currency)} className={buttonVariants({ variant: "outline", size: "icon" })} aria-label="Mes siguiente">
+                <ChevronRightIcon />
+              </Link>
+            ) : (
+              <span className={cn(buttonVariants({ variant: "outline", size: "icon" }), "pointer-events-none opacity-50")} aria-hidden>
+                <ChevronRightIcon />
+              </span>
+            )}
+          </div>
+          {/* Los mismos gastos vistos en pesos o en dólares (cada uno convertido con la cotización de su día) */}
+          <div className="flex rounded-lg border p-0.5">
+            {(["ARS", "USD"] as const).map((c) => (
+              <Link
+                key={c}
+                href={href(month, c)}
+                aria-current={c === currency ? "true" : undefined}
+                title={c === "ARS" ? "Ver todo en pesos" : "Ver todo en dólares (al MEP del día de cada gasto)"}
+                className={cn(
+                  "rounded-md px-3 py-1 text-sm",
+                  c === currency ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {c === "ARS" ? "En pesos" : "En dólares"}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -201,7 +204,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             <CardDescription>Cuánto usaste de cada uno en {formatMonth(month).toLowerCase()}.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+            <ul className="grid gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
               {budgets.map((b) => (
                 <li key={b.categoryId}>
                   <Link
@@ -246,8 +249,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           </CardContent>
         </Card>
       ) : (
+        // En pantallas anchas (xl): "En qué se fue" a la izquierda; a la derecha la suma acumulada y el día
+        // de la semana; abajo, a todo el ancho, el gasto por día (31 barras: aprovechan el ancho)
         <div className="grid items-start gap-4 lg:grid-cols-2">
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2 xl:col-span-1 xl:row-span-2">
             <CardHeader>
               <CardTitle>En qué se fue</CardTitle>
               <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
@@ -275,7 +280,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2 xl:col-span-1">
             <CardHeader>
               <CardTitle>Cómo venís contra el mes pasado</CardTitle>
               <CardDescription>Suma acumulada día a día.</CardDescription>
@@ -285,7 +290,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="xl:order-last xl:col-span-2">
             <CardHeader>
               <CardTitle>Gasto por día</CardTitle>
             </CardHeader>

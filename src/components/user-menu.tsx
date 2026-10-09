@@ -14,14 +14,25 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function UserMenu({ name, email }: { name: string; email: string }) {
+// side="top": en la barra lateral de la compu el botón está abajo, así que el menú se abre para arriba
+export function UserMenu({
+  name,
+  email,
+  side = "bottom",
+  className,
+}: {
+  name: string;
+  email: string;
+  side?: "top" | "bottom";
+  className?: string;
+}) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" className={className} />}>
         <UserIcon />
-        <span className="hidden sm:inline">{name}</span>
+        <span className="hidden truncate sm:inline">{name}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent side={side} align={side === "top" ? "start" : "end"} className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuLabel>{email}</DropdownMenuLabel>
         </DropdownMenuGroup>

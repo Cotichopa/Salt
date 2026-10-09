@@ -1,11 +1,11 @@
-# Rediseño de la vista en computadora (pendiente)
+# Rediseño de la vista en computadora (hecho el 2026-10-09)
 
 Pedido de Felipe (2026-10-09): en la compu, el menú y el contenido quedan **muy al medio** y sobran
 **espacios en blanco a los costados**. La idea es aprovechar mejor el ancho. En el celular la app
 está bien: **no hay que tocarla** (todo lo de acá es para `md:` / `lg:` en adelante).
 
-**Decidido (2026-10-09): menú lateral (opción A).** Para retomarlo: leer este archivo, responder las
-preguntas de abajo y recién ahí codear.
+**Hecho (2026-10-09): menú lateral (opción A)**, con las respuestas recomendadas (ver "Preguntas" y
+"Cómo quedó", al final). Lo de "Cómo está hecho hoy" y "Opciones" es cómo estaba antes.
 
 ## Cómo está hecho hoy
 
@@ -45,12 +45,11 @@ pero es lo que más trabajo lleva.
 ## Preguntas para decidir antes de empezar
 
 1. ~~¿Opción A, B o C?~~ → A, menú lateral.
-2. ¿El menú lateral va siempre con texto, o se puede achicar a solo íconos (y que se acuerde)?
-3. ¿Desde qué ancho aparece? (`lg:` ≈ 1024 px recomendado; en tablets, `md:`, ¿fila de arriba o barra
-   de íconos?)
-4. ¿Hasta qué ancho crece el contenido? (`max-w-6xl` ≈ 1150 px, `7xl` ≈ 1280 px, o sin límite)
-5. ¿Las pantallas con poco contenido (Mi cuenta) quedan angostas, o se acomodan en 2 columnas?
-6. ¿El Inicio aprovecha el ancho con más columnas (indicadores y gráficos lado a lado)?
+2. ~~¿Siempre con texto o achicable a íconos?~~ → siempre con ícono y texto (240 px).
+3. ~~¿Desde qué ancho?~~ → desde `lg:`; en tablets (`md:`) queda la fila de arriba como antes.
+4. ~~¿Hasta qué ancho crece el contenido?~~ → `max-w-7xl` (≈1280 px).
+5. ~~¿Mi cuenta angosta o en 2 columnas?~~ → 2 columnas.
+6. ~~¿El Inicio con más columnas?~~ → sí.
 
 ## Qué revisar al hacerlo
 
@@ -63,3 +62,19 @@ pero es lo que más trabajo lleva.
 - Los diálogos, el visor de tickets (`receipt-viewer.tsx`) y la animación de inicio (`splash.tsx`)
   no deberían cambiar.
 - Si se usa la guía de diseño (`frontend-design`), pasarle este archivo como contexto.
+
+## Cómo quedó
+
+- **`layout.tsx`**: desde `lg:` la barra lateral (`SideNav`) a la izquierda y el contenido a la derecha
+  (`max-w-7xl`, `lg:px-8`); el header de arriba se ve solo en celular y tablet (`lg:hidden`). La barra
+  de "ver como" queda arriba de la columna del contenido.
+- **`main-nav.tsx`**: `SideNav` (sticky, del alto de la pantalla, colores `sidebar` del tema): logo, las
+  secciones con ícono y texto, y abajo la persona y el tema. `UserMenu` acepta `side="top"` para abrir
+  el menú hacia arriba. `DesktopNav` (fila) ahora es solo para tablet; `MobileNav` no cambió.
+- **Inicio**: buscador y filtros en la misma fila (`lg:`); presupuestos en 3 columnas (`xl:`); con
+  `xl:`, "En qué se fue" a la izquierda, "Cómo venís" y "Por día de la semana" a la derecha, y "Gasto por
+  día" a todo el ancho abajo.
+- **Mi cuenta**: 2 columnas desde `lg:` (perfil y preferencias · avisos, huella, contraseña y quién ve
+  tus gastos), hasta `max-w-5xl`.
+- Mirado en 390, 820, 1100, 1366 y 1920 px, claro y oscuro (Inicio, Gastos, Mi cuenta). En desarrollo,
+  el botón "N" de Next tapa el nombre abajo a la izquierda: en producción no aparece.
