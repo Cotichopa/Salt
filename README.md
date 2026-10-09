@@ -436,15 +436,17 @@ versión visible en la app.
 ## Instalar en el servidor
 
 El servidor es una **VM de Proxmox con Debian 13**, solo para Salt, con PostgreSQL instalado directo
-(sin Docker) y **Caddy** para el HTTPS. `deploy/install.sh` instala y configura todo; se puede volver a
-correr sin romper nada.
+(sin Docker). El HTTPS **no** lo hace la VM: en la casa hay un **nginx** (otra máquina) que recibe el
+dominio, pone el certificado y le pasa los pedidos a la VM por la red local (`<IP de la VM>:3001`).
+`deploy/install.sh` instala y configura todo; se puede volver a correr sin romper nada.
 
 **Antes** (una vez, en Proxmox y en la casa):
 - VM con Debian 13, 2 núcleos o más, 4 GB de RAM y 20 GB de disco. **Tipo de CPU: `host`** (si no,
   Whisper no ve las instrucciones AVX2 y los audios tardan varias veces más).
 - Un usuario común con `sudo` (por ejemplo `salt`): la app corre con ese usuario, no como root.
-- El dominio (ej. `salt.estilo.com.ar`) apuntando a la IP pública de la casa, y el router mandando
-  los puertos **80 y 443** a la VM. Si la IP de la casa cambia, hace falta DNS dinámico.
+- El dominio (ej. `salt.estilo.ar`) apuntando a la IP pública de la casa, y en el nginx de la casa una
+  entrada para ese dominio con HTTPS que mande a `http://<IP de la VM>:3001`, con los encabezados
+  `Host`, `X-Forwarded-Proto` y `X-Forwarded-For` (sin el `Host`, los formularios de la app fallan).
 - Acceso de la VM al repo (es privado): una *deploy key* de solo lectura (en la VM
   `ssh-keygen -t ed25519`, y la clave `.pub` en GitHub → el repo → Settings → Deploy keys).
 
@@ -456,7 +458,7 @@ cd ~/Salt
 deploy/install.sh salt.estilo.com.ar
 ```
 Pide el nombre, el email y la contraseña del admin, y hace, en orden:
-1. Instala Node 20, PostgreSQL 17, Caddy y lo necesario para compilar Whisper (apt).
+1. Instala Node 20, PostgreSQL 17 y lo necesario para compilar Whisper (apt).
 2. Crea la base `salt` con una contraseña al azar (solo se puede entrar desde la VM).
 3. Arma el `.env` desde `.env.example`: base, `AUTH_SECRET`, token de verificación de WhatsApp,
    `APP_URL` y Whisper. Si ya hay un `.env`, no lo pisa.
@@ -464,9 +466,10 @@ Pide el nombre, el email y la contraseña del admin, y hace, en orden:
 5. `npm ci`, migraciones, el seed (solo si la base no tiene cuentas; después borra `ADMIN_PASSWORD` del
    `.env`, así un `db:seed` por error no pisa la contraseña) y `npm run build`.
 6. La app como servicio `salt` (`deploy/salt.service`): arranca sola con la VM, se reinicia si se cae y
-   escucha solo en `127.0.0.1:3001`.
-7. Los backups de cada noche (ver "Backups") y una primera copia.
-8. Caddy (`deploy/Caddyfile`): HTTPS con certificado de Let's Encrypt, que saca y renueva solo.
+   escucha en `0.0.0.0:3001` (en la red, para que llegue el nginx). Entrando directo por la IP no se
+   puede iniciar sesión (la cookie es solo para HTTPS): siempre por el dominio.
+7. Los backups de cada noche (ver "Backups"), una primera copia y el chequeo de cada mañana. Si quedó
+   Caddy de una instalación vieja, lo apaga.
 
 Al final dice lo que falta a mano: los secretos que no van por git (WhatsApp, Anthropic, Gmail) en el
 `.env`, `sudo systemctl restart salt` y el webhook en Meta (`https://<dominio>/api/whatsapp`).
@@ -475,7 +478,7 @@ Al final dice lo que falta a mano: los secretos que no van por git (WhatsApp, An
 migraciones, build y reinicio).
 
 **Para mirar:** `systemctl status salt` · `journalctl -u salt -n 50` (log de la app) ·
-`journalctl -u caddy -n 50` (certificado) · `sudo systemctl restart salt`.
+`sudo systemctl restart salt`.
 
 ---
 

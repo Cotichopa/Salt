@@ -1,5 +1,7 @@
 # La app (Next.js en modo producción). Arranca sola al prender la VM y se reinicia si se cae.
-# Escucha solo en 127.0.0.1:3001: desde internet se llega por Caddy (HTTPS), nunca directo.
+# Escucha en 0.0.0.0:3001 (todas las direcciones de la VM): el nginx de la casa, en otra máquina, hace
+# el HTTPS del dominio y le pasa los pedidos por la red. Entrando directo por IP:3001 no se puede iniciar
+# sesión (la cookie es solo para HTTPS): siempre por el dominio.
 # Plantilla: deploy/install.sh reemplaza __USER__ y __APP_DIR__ y la copia a /etc/systemd/system/.
 #   Ver si anda: systemctl status salt · Log: journalctl -u salt -n 50 · Reiniciar: sudo systemctl restart salt
 
@@ -12,7 +14,7 @@ Wants=network-online.target
 User=__USER__
 WorkingDirectory=__APP_DIR__
 Environment=NODE_ENV=production
-ExecStart=__APP_DIR__/node_modules/.bin/next start -H 127.0.0.1 -p 3001
+ExecStart=__APP_DIR__/node_modules/.bin/next start -H 0.0.0.0 -p 3001
 Restart=on-failure
 RestartSec=5
 

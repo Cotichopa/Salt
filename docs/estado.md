@@ -126,8 +126,11 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    `deploy/install.sh`.
 3. ~~Script de instalación~~ — hecho (pedido de Felipe): `deploy/install.sh <dominio>` deja la VM
    andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (trae Node 20.19 y
-   PostgreSQL 17 sin repos extra), VM solo para Salt, **Caddy** con dominio propio para el HTTPS
-   (puertos 80/443 del router a la VM), y el script instala todo con sudo. Se corre con el usuario de
+   PostgreSQL 17 sin repos extra), VM solo para Salt, y el script instala todo con sudo. El HTTPS lo
+   hace el **nginx de la casa** (otra máquina; cambió el 2026-10-09, antes era Caddy en la VM): la app
+   escucha en `0.0.0.0:3001` y el nginx le pasa `salt.estilo.ar` a `192.168.2.25:3001`. Volver a correr
+   el install pisaba el `salt.service` con `127.0.0.1` y el nginx daba 502; ahora la plantilla ya dice
+   `0.0.0.0`, y `APP_URL` sigue siempre al dominio que se le pasa. Se corre con el usuario de
    la app (no root) y se puede repetir. Arma el `.env` (contraseña de la base al azar, `AUTH_SECRET`,
    token de verificación, `APP_URL`, Whisper), corre el seed solo si no hay cuentas y después vacía
    `ADMIN_PASSWORD` (así `db:seed` en el servidor falla en vez de pisar la contraseña). Los servicios

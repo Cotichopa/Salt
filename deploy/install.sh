@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Instala Salt en una VM con Debian 13 y la deja andando: programas, base de datos, .env, Whisper,
-# la app como servicio, los backups de cada noche y Caddy (HTTPS).
+# la app como servicio y los backups de cada noche. El HTTPS no va acá: lo hace el nginx de la casa
+# (otra máquina), que recibe el dominio y le pasa los pedidos a esta VM por la red (IP:3001).
 #
 #   deploy/install.sh salt.estilo.com.ar
 #
@@ -28,18 +29,18 @@ grep -q '^VERSION_ID="13"' /etc/os-release 2>/dev/null || fail "Este instalador 
 cd "$APP_DIR"
 
 # ---------------------------------------------------------------------------------------------
-step "1/8 Programas del sistema (apt)"
+step "1/7 Programas del sistema (apt)"
 # nodejs/npm: Debian 13 trae Node 20.19, lo justo para Prisma 7 (pide 20.19 o más).
 # postgresql: Debian 13 trae la 17, la misma que en desarrollo (los backups van y vienen).
-# cmake, build-essential y git: para compilar Whisper. caddy: HTTPS.
+# cmake, build-essential y git: para compilar Whisper.
 sudo apt-get update
-sudo apt-get install -y nodejs npm postgresql postgresql-client caddy git cmake build-essential curl openssl
+sudo apt-get install -y nodejs npm postgresql postgresql-client git cmake build-essential curl openssl
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>20||(a===20&&b>=19)?0:1)' ||
   fail "Node $(node --version) es viejo: Prisma pide 20.19 o más."
 sudo systemctl enable --now postgresql
 
 # ---------------------------------------------------------------------------------------------
-step "2/8 Base de datos"
+step "2/7 Base de datos"
 # La contraseña de la base: si ya hay .env se usa la suya; si no, una al azar (va solo al .env).
 if [ -f .env ]; then
   DB_PASS="$(grep -E '^DATABASE_URL=' .env | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')"
@@ -59,7 +60,7 @@ DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME?schema=publ
 echo "Base '$DB_NAME' lista (usuario '$DB_USER', solo accesible desde esta VM)."
 
 # ---------------------------------------------------------------------------------------------
-step "3/8 Archivo .env"
+step "3/7 Archivo .env"
 # Cambia (o agrega) una variable del .env
 set_env() {
   local key="$1" value="$2"
@@ -71,7 +72,7 @@ set_env() {
 }
 FIRST_INSTALL=false
 if [ -f .env ]; then
-  echo "Ya hay un .env: no se toca (solo se completa APP_URL y Whisper si faltan)."
+  echo "Ya hay un .env: no se toca (solo APP_URL, que sigue al dominio, y Whisper si falta)."
 else
   FIRST_INSTALL=true
   # Las POSTGRES_* son de Docker (desarrollo): acá no van
@@ -95,13 +96,14 @@ else
   set_env ADMIN_EMAIL "$admin_email"
   set_env ADMIN_PASSWORD "$admin_pass"
 fi
-grep -qE '^APP_URL=.+' .env || set_env APP_URL "https://$DOMAIN"
+# APP_URL siempre sigue al dominio que se le pasa (si se cambia de dominio, se vuelve a correr esto)
+set_env APP_URL "https://$DOMAIN"
 grep -qE '^WHISPER_CLI=.+' .env || set_env WHISPER_CLI "$WHISPER_DIR/build/bin/whisper-cli"
 grep -qE '^WHISPER_MODEL=.+' .env || set_env WHISPER_MODEL "$WHISPER_DIR/models/ggml-small.bin"
 grep -qE '^WHISPER_THREADS=.+' .env || set_env WHISPER_THREADS "$(nproc)"
 
 # ---------------------------------------------------------------------------------------------
-step "4/8 Whisper (para los audios de Chop)"
+step "4/7 Whisper (para los audios de Chop)"
 # Compilado para este procesador (GGML_NATIVE). En Proxmox, la VM tiene que tener el tipo de CPU
 # "host": si no, no ve las instrucciones AVX2 y Whisper anda varias veces más lento.
 grep -qw avx2 /proc/cpuinfo ||
@@ -117,7 +119,7 @@ fi
 [ -f "$WHISPER_DIR/models/ggml-small.bin" ] || bash "$WHISPER_DIR/models/download-ggml-model.sh" small
 
 # ---------------------------------------------------------------------------------------------
-step "5/8 La app: dependencias, tablas y compilación"
+step "5/7 La app: dependencias, tablas y compilación"
 npm ci
 npx prisma migrate deploy
 # El seed (admin, categorías y medios iniciales) solo la primera vez: pisa la contraseña del admin.
@@ -136,13 +138,13 @@ install_template() {
     sudo tee "$2" > /dev/null
 }
 
-step "6/8 La app como servicio (arranca sola con la VM)"
+step "6/7 La app como servicio (arranca sola con la VM)"
 install_template deploy/salt.service /etc/systemd/system/salt.service
 sudo systemctl daemon-reload
 sudo systemctl enable salt
 sudo systemctl restart salt
 
-step "7/8 Backups de cada noche y chequeo de cada mañana"
+step "7/7 Backups de cada noche y chequeo de cada mañana"
 install_template deploy/salt-backup.service /etc/systemd/system/salt-backup.service
 sudo cp deploy/salt-backup.timer /etc/systemd/system/salt-backup.timer
 sudo systemctl daemon-reload
@@ -155,10 +157,11 @@ sudo cp deploy/salt-check.timer /etc/systemd/system/salt-check.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now salt-check.timer
 
-step "8/8 Caddy (HTTPS)"
-install_template deploy/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl enable caddy
-sudo systemctl reload-or-restart caddy
+# Antes se instalaba Caddy para el HTTPS; ahora lo hace el nginx de la casa. Si quedó de una
+# instalación vieja, se apaga (si no, ocupa los puertos 80 y 443 sin hacer nada).
+if systemctl list-unit-files caddy.service > /dev/null 2>&1; then
+  sudo systemctl disable --now caddy
+fi
 
 # ---------------------------------------------------------------------------------------------
 # Esperar a que la app conteste (tarda unos segundos en arrancar)
@@ -177,8 +180,9 @@ cat <<EOF
 Salt quedó instalada en $APP_DIR y corre como el servicio "salt".
 
 Falta, a mano:
-  1. Que $DOMAIN apunte a la IP pública de la casa y que el router mande los puertos 80 y 443
-     a esta VM. Caddy saca el certificado HTTPS solo apenas llegue (journalctl -u caddy).
+  1. En el nginx de la casa: que $DOMAIN (con su HTTPS) le pase los pedidos a
+     http://$(hostname -I | awk '{print $1}'):3001, con los encabezados Host, X-Forwarded-Proto y
+     X-Forwarded-For (sin el Host, los formularios de la app fallan).
   2. Completar en $APP_DIR/.env lo que no se puede generar (son secretos, nunca van por git):
      - WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET
      - ANTHROPIC_API_KEY, y AI_PARSER_ENABLED=true
