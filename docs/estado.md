@@ -199,6 +199,34 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
    - **Sistema**: último backup (`~/salt-backups/diario`, alerta si tiene más de 36 h), token de WhatsApp
      (se consulta a Meta como mucho una vez por hora), Whisper, IA, mails, disco libre, versión (+ commit
      de git), tamaño de la base y desde cuándo corre.
+4. **Más panel del superadmin** (2026-10-09, sin commitear). Felipe eligió 0, 2, 3, 4, 6, 8 y 10 de una
+   lista; quedaron afuera el total de la casa, backup a mano, avisos a la familia y exportar todo.
+   Decisiones por defecto (Felipe no las contestó): los avisos van por **mail** y la invitación vence a
+   las **48 h**. Migración `panel_superadmin`.
+   - **WhatsApp con el 9** (`client.ts`): si Meta contesta 131030 ("no está en la lista") al número sin
+     el 9, se reintenta con el 9. Lo trajo un cliente cargado en la lista de Meta **con** el 9 (Felipe lo
+     tiene sin): la lista de prueba no deja borrar un número por 24 h.
+   - **Chop: costo y lo que no entendió** (tabla `chop_messages`, `src/lib/whatsapp/usage.ts`): un
+     registro por mensaje (WhatsApp, chat web y tickets del formulario) con consultas a la IA, tokens y
+     costo. `trackChop` abre un AsyncLocalStorage por mensaje y `askModel` anota ahí (`noteAiUsage`). El
+     **texto se guarda solo si no lo entendió** ("No te entendí", `noteNotUnderstood`); el superadmin lo
+     marca revisado y se borra. Se sumó al aviso de privacidad de Mi cuenta.
+   - **Errores del servidor** (tabla `server_errors`, `src/instrumentation.ts` + `src/lib/server-errors.ts`):
+     se engancha a `console.error` y guarda cada error (sin los robots de "Server Reference ID", sin
+     repetir el mismo en un minuto; se borran a los 30 días). En Resumen, con "Todos revisados".
+   - **Chequeo diario por mail** (`scripts/daily-check.ts`, `npm run check`; `deploy/salt-check.timer` a
+     las 8): si el backup tiene más de 36 h, venció el token, falta Whisper, queda poco disco, alguien
+     tuvo 5 contraseñas mal o hubo errores en 24 h, mail a los superadmins. Si todo está bien, nada.
+     `install.sh` y `update.sh` (paso nuevo 5/6) instalan el timer. **Ojo: la primera vez que el
+     servidor se actualice con esto, correr `deploy/update.sh` dos veces** (bash sigue con la versión
+     vieja del script y no corre el paso nuevo).
+   - **Invitar por mail** (`sendInvitation` en `password-reset.ts`, `password_resets.invite`): en Nueva
+     cuenta, si la contraseña queda vacía le llega un link para elegirla (48 h); botón "Invitar" en cada
+     cuenta para reenviarla. La pantalla `/recuperar/<token>` da la bienvenida si es invitación.
+   - **Categorías iniciales editables** (tabla `default_categories`, con las 11 de antes cargadas por la
+     migración): Resumen → Categorías iniciales, con el mismo diálogo que las categorías (`CategoryDialog`
+     ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
+     (Hogar, Supermercado...).
 
 ## Hecho: fotos de tickets (2026-09-29)
 

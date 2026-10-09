@@ -18,6 +18,7 @@
     "db:demo": "tsx --conditions=react-server prisma/demo.ts",
     "chop:bench": "tsx --conditions=react-server scripts/chop-bench.ts",
     "superadmin": "tsx --conditions=react-server scripts/superadmin.ts",
+    "check": "tsx --conditions=react-server scripts/daily-check.ts",
     "tunnel": "ngrok http 3001 --url=clifton-monometrical-brook.ngrok-free.dev"
   },
   "dependencies": {

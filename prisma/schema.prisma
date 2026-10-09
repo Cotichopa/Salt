@@ -88,6 +88,7 @@ model User {
   receipts       Receipt[]
   merchants      Merchant[]
   passkeys       Passkey[]
+  chopMessages   ChopMessage[]
 
   @@map("users")
 }
@@ -136,6 +137,7 @@ model PasswordReset {
   tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
+  invite    Boolean   @default(false) // invitación a una cuenta nueva (vence en 48 h, el mail y la pantalla dicen "bienvenida")
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -379,4 +381,52 @@ model WaSession {
   updatedAt DateTime @updatedAt
 
   @@map("wa_sessions")
+}
+
+// Un registro por mensaje a Chop (WhatsApp o el chat de la web), para el Resumen del superadmin:
+// cuántos usaron la IA y cuánto costaron. El texto se guarda SOLO si Chop no lo entendió, para
+// mejorar el pre-filtro; el superadmin lo borra al revisarlo (y se avisa en Mi cuenta).
+model ChopMessage {
+  id           String   @id @default(cuid())
+  userId       String
+  createdAt    DateTime @default(now())
+  source       Source
+  kind         String // texto, botón, audio, foto, pdf o ticket del formulario
+  aiCalls      Int      @default(0) // consultas a la IA (0 = lo resolvió el pre-filtro o el menú)
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsd      Decimal  @default(0) @db.Decimal(10, 6)
+  understood   Boolean  @default(true)
+  text         String? // solo si no lo entendió
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("chop_messages")
+}
+
+// Errores del servidor (lo que se escribe con console.error), para verlos en el Resumen sin entrar
+// a la VM. Los guarda src/instrumentation-node.ts, sin los de los robots que prueban la app.
+// Se borran solos a los 30 días.
+model ServerError {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  message   String
+
+  @@index([createdAt])
+  @@map("server_errors")
+}
+
+// Las categorías que recibe cada cuenta nueva (las edita el superadmin en Resumen). Se copian al
+// crear la cuenta: después cada una cambia las suyas sin afectar a nadie.
+model DefaultCategory {
+  id       String   @id @default(cuid())
+  name     String   @unique
+  icon     String
+  emoji    String
+  keywords String[] @default([])
+  position Int      @default(0)
+
+  @@map("default_categories")
 }

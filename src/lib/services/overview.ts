@@ -279,3 +279,39 @@ export async function systemStatus() {
     ],
   };
 }
+
+// ---------- Chop: uso de la IA y mensajes que no entendió ----------
+
+/** Por persona, en el mes: mensajes a Chop, cuántos usaron la IA y cuánto costaron (US$) */
+export async function chopUsage(month: string) {
+  const { from, to } = monthRange(month);
+  const where = { createdAt: { gte: from, lt: to } };
+  const [all, withAi, users] = await Promise.all([
+    db.chopMessage.groupBy({ by: ["userId"], where, _count: true, _sum: { costUsd: true } }),
+    db.chopMessage.groupBy({ by: ["userId"], where: { ...where, aiCalls: { gt: 0 } }, _count: true }),
+    people(),
+  ]);
+  const rows = users
+    .map((u) => {
+      const a = all.find((r) => r.userId === u.id);
+      return {
+        id: u.id,
+        name: u.name,
+        messages: a?._count ?? 0,
+        withAi: withAi.find((r) => r.userId === u.id)?._count ?? 0,
+        cost: a?._sum.costUsd?.toNumber() ?? 0,
+      };
+    })
+    .filter((r) => r.messages > 0);
+  return { rows, total: rows.reduce((s, r) => s + r.cost, 0) };
+}
+
+/** Los mensajes que Chop no entendió y todavía no se revisaron (los más nuevos primero) */
+export function notUnderstood(limit = 30) {
+  return db.chopMessage.findMany({
+    where: { text: { not: null } },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { id: true, createdAt: true, text: true, source: true, kind: true, user: { select: { name: true } } },
+  });
+}

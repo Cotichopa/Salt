@@ -19,8 +19,11 @@ import {
 } from "@/components/category-icon";
 
 type Category = { id: string; name: string; emoji: string | null; icon: string | null; keywords: string[] };
+type SaveAction = (prev: FormState, formData: FormData) => Promise<FormState>;
 
-export function CategoryDialog({ category }: { category?: Category }) {
+// `action`: por defecto guarda en las categorías de la cuenta; el Resumen del superadmin lo usa con
+// las categorías iniciales (saveDefaultCategoryAction)
+export function CategoryDialog({ category, action = saveCategory }: { category?: Category; action?: SaveAction }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -48,6 +51,7 @@ export function CategoryDialog({ category }: { category?: Category }) {
         <CategoryForm
           key={category ? [category.name, category.icon, category.keywords.join(",")].join("|") : "nueva"}
           category={category}
+          save={action}
           onDone={() => setOpen(false)}
         />
       </DialogContent>
@@ -55,9 +59,9 @@ export function CategoryDialog({ category }: { category?: Category }) {
   );
 }
 
-function CategoryForm({ category, onDone }: { category?: Category; onDone: () => void }) {
+function CategoryForm({ category, save, onDone }: { category?: Category; save: SaveAction; onDone: () => void }) {
   const [state, action, pending] = useActionState(async (prev: FormState, formData: FormData) => {
-    const result = await saveCategory(prev, formData);
+    const result = await save(prev, formData);
     if (result?.ok) {
       toast.success(result.message);
       onDone();

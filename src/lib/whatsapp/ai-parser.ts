@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { noteAiUsage } from "@/lib/whatsapp/usage";
 import { z } from "zod";
 import { parseAmount, todayISO, TIME_ZONE, type CurrencyCode, type PaymentMethodCode } from "@/lib/format";
 import { normalize } from "@/lib/text";
@@ -151,9 +152,12 @@ export async function askModel<T extends z.ZodType>(
       ],
     });
 
-    // Costo de esta consulta, para poder seguir el gasto desde la terminal
+    // Costo de esta consulta (Haiku 4.5: US$ 1 por millón de tokens de entrada y 5 de salida): va a
+    // la terminal y al registro del mensaje (usage.ts, lo ve el superadmin en Resumen)
     const { input_tokens: inTok, output_tokens: outTok } = response.usage;
-    console.log(`[${tag}] ${inTok}+${outTok} tokens · US$ ${((inTok * 1) / 1e6 + (outTok * 5) / 1e6).toFixed(5)}`);
+    const cost = (inTok * 1) / 1e6 + (outTok * 5) / 1e6;
+    console.log(`[${tag}] ${inTok}+${outTok} tokens · US$ ${cost.toFixed(5)}`);
+    noteAiUsage(inTok, outTok, cost);
 
     const block = response.content[0];
     if (response.stop_reason !== "end_turn" || block?.type !== "text") return null;

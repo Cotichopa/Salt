@@ -1,0 +1,14 @@
+# Chequeo diario del servidor (scripts/daily-check.ts): si algo anda mal, manda un mail a los
+# superadmins. Lo dispara salt-check.timer.
+# Plantilla: deploy/install.sh (y update.sh) reemplazan __USER__ y __APP_DIR__ y la copian a /etc/systemd/system/.
+
+[Unit]
+Description=Salt: chequeo diario (avisa por mail si algo anda mal)
+After=postgresql.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=__APP_DIR__/node_modules/.bin/tsx --conditions=react-server scripts/daily-check.ts

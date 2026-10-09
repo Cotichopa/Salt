@@ -1,0 +1,12 @@
+# Dispara salt-check.service todas las mañanas a las 8 (después del backup de las 3:30, así se
+# entera si falló). Persistent=true: si la VM estaba apagada, corre apenas vuelve a prender.
+
+[Unit]
+Description=Salt: chequeo diario, todas las mañanas
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

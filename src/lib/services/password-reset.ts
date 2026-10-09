@@ -6,11 +6,13 @@ import { mailLayout, sendMail } from "@/lib/mail";
 
 // "Olvidé mi contraseña": se manda por mail un link con un token al azar. En la base se guarda
 // solo el hash del token (si alguien viera la base, no podría usar los links). El link vence en
-// 1 hora y sirve una sola vez; pedir uno nuevo anula los anteriores.
+// 1 hora y sirve una sola vez; pedir uno nuevo anula los anteriores. Las invitaciones a cuentas
+// nuevas usan el mismo camino (sendInvitation).
 
 export class PasswordResetError extends Error {}
 
 const EXPIRES_MS = 60 * 60 * 1000; // 1 hora
+const INVITE_EXPIRES_MS = 48 * 60 * 60 * 1000; // la invitación a una cuenta nueva: 48 horas
 const MAX_PER_HOUR = 3; // para que no se pueda llenar de mails la casilla de alguien
 
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -61,6 +63,43 @@ export async function requestPasswordReset(email: string) {
   );
 }
 
+/**
+ * Invitación a una cuenta (la manda el admin): el mismo link que "olvidé mi contraseña", pero vence
+ * en 48 horas y el mail y la pantalla dan la bienvenida. Anula los links anteriores sin usar.
+ */
+export async function sendInvitation(userId: string) {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true } });
+  const token = randomBytes(32).toString("base64url");
+  await db.$transaction([
+    db.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
+    db.passwordReset.create({
+      data: { userId, tokenHash: hash(token), expiresAt: new Date(Date.now() + INVITE_EXPIRES_MS), invite: true },
+    }),
+  ]);
+
+  const link = `${appUrl()}/recuperar/${token}`;
+  await sendMail(
+    user.email,
+    "Te invitaron a Salt",
+    `Hola ${user.name}:\n\nYa tenés tu cuenta en Salt, para anotar tus gastos desde la web o por WhatsApp.\n` +
+      `Para entrar, elegí tu contraseña en este link (vence en 48 horas):\n${link}\n\nSalt`,
+    mailLayout({
+      preheader: "Elegí tu contraseña y empezá a anotar tus gastos.",
+      title: "Te damos la bienvenida a Salt",
+      paragraphs: [
+        `¡Hola ${user.name}!`,
+        "Ya tenés tu cuenta en Salt, para anotar tus gastos desde la web o escribiéndole a Chop por WhatsApp.",
+        "Tocá el botón para elegir tu contraseña y entrar.",
+      ],
+      button: { label: "Elegir mi contraseña", href: link },
+      footnote: [
+        "El link vence en 48 horas y se puede usar una sola vez.",
+        `Tu usuario es ${user.email}.`,
+      ],
+    }),
+  );
+}
+
 /** El pedido del token, si todavía sirve (no se usó, no venció y la cuenta está activa) */
 async function validReset(token: string) {
   const reset = await db.passwordReset.findUnique({
@@ -70,15 +109,18 @@ async function validReset(token: string) {
       userId: true,
       expiresAt: true,
       usedAt: true,
-      user: { select: { active: true, email: true } },
+      invite: true,
+      user: { select: { active: true, email: true, name: true } },
     },
   });
   if (!reset || reset.usedAt || reset.expiresAt < new Date() || !reset.user.active) return null;
   return reset;
 }
 
-export async function isResetTokenValid(token: string) {
-  return (await validReset(token)) !== null;
+/** Para la pantalla del link: null si ya no sirve; si sirve, si es una invitación y para quién */
+export async function resetLinkInfo(token: string) {
+  const reset = await validReset(token);
+  return reset && { invite: reset.invite, name: reset.user.name };
 }
 
 /** Cambia la contraseña con el token del mail y lo marca como usado */

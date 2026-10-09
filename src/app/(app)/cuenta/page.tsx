@@ -104,7 +104,8 @@ export default async function AccountPage() {
             <CardDescription>
               {superadmins.map((s) => s.name).join(" y ")}{" "}
               {superadmins.length === 1 ? "administra Salt y puede" : "administran Salt y pueden"} ver tu cuenta: gastos,
-              tickets, tarjetas, fijos y presupuestos. Solo mirar: no se puede cambiar nada.
+              tickets, tarjetas, fijos y presupuestos. Solo mirar: no se puede cambiar nada. También ve los mensajes que
+              Chop no entendió, para enseñarle frases nuevas (el resto de lo que le escribís no se guarda).
             </CardDescription>
           </CardHeader>
         </Card>

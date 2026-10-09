@@ -43,8 +43,8 @@ export function CreateUserForm() {
         <FieldError errors={state?.errors?.phone} />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="password">Contraseña inicial</Label>
-        <Input id="password" name="password" type="text" autoComplete="off" required />
+        <Label htmlFor="password">Contraseña inicial (opcional)</Label>
+        <Input id="password" name="password" type="text" autoComplete="off" placeholder="Vacía: le mandamos una invitación" />
         <FieldError errors={state?.errors?.password} />
       </div>
       <div className="flex flex-col gap-2">

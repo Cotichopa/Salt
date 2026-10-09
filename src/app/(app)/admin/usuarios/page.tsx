@@ -30,7 +30,8 @@ export default async function UsersPage() {
           <CardHeader>
             <CardTitle>Nueva cuenta</CardTitle>
             <CardDescription>
-              Pasale el email y la contraseña inicial a la persona; después la puede cambiar desde &quot;Mi cuenta&quot;.
+              Con contraseña inicial, pasásela a la persona (después la cambia desde &quot;Mi cuenta&quot;). Sin contraseña, le
+              llega un mail para que elija la suya.
             </CardDescription>
           </CardHeader>
           <CardContent>

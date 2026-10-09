@@ -5,31 +5,21 @@ import { normalize } from "@/lib/text";
 import type { CategoryInput } from "@/lib/validators";
 
 // Categorías: cada cuenta tiene las suyas y puede crearlas, editarlas y borrarlas.
-// Al crear una cuenta se le cargan las iniciales (DEFAULT_CATEGORIES), que desde ese
-// momento son tan suyas como las que crea después: tocarlas no afecta a nadie más.
+// Al crear una cuenta se le cargan las iniciales (tabla default_categories, las edita el superadmin
+// en Resumen), que desde ese momento son tan suyas como las que crea después: tocarlas no afecta a
+// nadie más.
 
 export class CategoryError extends Error {}
-
-// icon: ícono de la web (ver src/components/category-icon.tsx) · emoji: el que usa Chop en WhatsApp
-const DEFAULT_CATEGORIES = [
-  { name: "Comida", icon: "utensils", emoji: "🍔", keywords: ["almuerzo", "cena", "desayuno", "delivery", "pizza", "rotiseria"] },
-  { name: "Supermercado", icon: "cart", emoji: "🛒", keywords: ["super", "chino", "almacen", "verduleria", "carniceria"] },
-  { name: "Salidas", icon: "beer", emoji: "🍻", keywords: ["salida", "bar", "boliche", "cine", "birra", "cumple"] },
-  { name: "Nafta", icon: "fuel", emoji: "⛽", keywords: ["combustible", "gnc", "ypf", "shell", "axion"] },
-  { name: "Transporte", icon: "taxi", emoji: "🚕", keywords: ["taxi", "uber", "cabify", "colectivo", "sube", "peaje", "estacionamiento"] },
-  { name: "Servicios", icon: "lightbulb", emoji: "💡", keywords: ["luz", "gas", "agua", "internet", "celular", "expensas"] },
-  { name: "Salud", icon: "pill", emoji: "💊", keywords: ["farmacia", "medico", "remedios", "prepaga", "dentista"] },
-  { name: "Hogar", icon: "house", emoji: "🏠", keywords: ["alquiler", "ferreteria", "limpieza", "muebles"] },
-  { name: "Ropa", icon: "shirt", emoji: "👕", keywords: ["zapatillas", "remera", "pantalon"] },
-  { name: "Suscripciones", icon: "tv", emoji: "📺", keywords: ["netflix", "spotify", "disney", "youtube", "gimnasio"] },
-  { name: "Otros", icon: "package", emoji: "📦", keywords: [] },
-];
 
 /** Carga las categorías iniciales a una cuenta que todavía no tiene ninguna */
 export async function ensureDefaultCategories(userId: string) {
   const count = await db.category.count({ where: { userId } });
   if (count > 0) return;
-  await db.category.createMany({ data: DEFAULT_CATEGORIES.map((c) => ({ ...c, userId })) });
+  const defaults = await db.defaultCategory.findMany({
+    orderBy: { position: "asc" },
+    select: { name: true, icon: true, emoji: true, keywords: true },
+  });
+  await db.category.createMany({ data: defaults.map((c) => ({ ...c, userId })) });
 }
 
 /** Categorías de un usuario */

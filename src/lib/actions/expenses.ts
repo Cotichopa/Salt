@@ -1,5 +1,6 @@
 "use server";
 
+import { trackChop } from "@/lib/whatsapp/usage";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireEditor } from "@/lib/dal";
@@ -115,7 +116,11 @@ export async function readReceiptForForm(formData: FormData): Promise<ReceiptRea
       return { ok: true, receiptId: id, kind, fill: null, message };
     }
 
-    const { receiptId, parsed, categories, sources } = await readReceipt(user.id, data, kind);
+    // Es una consulta a la IA como las de Chop: cuenta en el gasto de IA del Resumen
+    const { receiptId, parsed, categories, sources } = await trackChop(
+      { userId: user.id, source: "WEB", kind: "ticket del formulario" },
+      () => readReceipt(user.id, data, kind),
+    );
     const e = parsed?.intent === "cargar" ? parsed.expenses[0] : null;
     if (!e) {
       const why = parsed?.intent === "otro" && parsed.question ? ` (${parsed.question})` : "";

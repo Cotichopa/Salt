@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { resetUserPassword, toggleUserActive, updateUserPhone } from "@/lib/actions/users";
+import { inviteUser, resetUserPassword, toggleUserActive, updateUserPhone } from "@/lib/actions/users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldError } from "@/components/field-error";
@@ -58,6 +58,23 @@ export function UserActions({
       <Button size="sm" variant="outline" onClick={() => setMode("password")}>
         Contraseña
       </Button>
+      {/* Un mail para que la persona elija su contraseña (vence en 48 horas) */}
+      {!isSelf && active && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const result = await inviteUser(userId);
+              if (result?.ok) toast.success(result.message);
+              else toast.error(result?.message ?? "No se pudo mandar");
+            })
+          }
+        >
+          Invitar
+        </Button>
+      )}
       {!isSelf && (
         <Button
           size="sm"

@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -10,6 +11,8 @@ import { ensureDefaultCategories } from "@/lib/services/categories";
 import { ensureDefaults } from "@/lib/services/payment-sources";
 import { createUserSchema, resetPasswordSchema, updatePhoneSchema, type FormState } from "@/lib/validators";
 import { Prisma } from "@/generated/prisma/client";
+import { MailError } from "@/lib/mail";
+import { sendInvitation } from "@/lib/services/password-reset";
 
 // Acciones de administración de cuentas. Cada una verifica que quien la llama sea ADMIN:
 // esconder el botón en la pantalla no alcanza, porque una acción se puede invocar a mano.
@@ -32,8 +35,11 @@ export async function createUser(_prev: FormState, formData: FormData): Promise<
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
   const { password, ...data } = parsed.data;
+  // Sin contraseña: una al azar que nadie conoce, y la persona elige la suya con la invitación
+  const initial = password || randomBytes(32).toString("base64url");
+  let created;
   try {
-    const created = await db.user.create({ data: { ...data, passwordHash: await bcrypt.hash(password, 10) } });
+    created = await db.user.create({ data: { ...data, passwordHash: await bcrypt.hash(initial, 10) } });
     await ensureDefaultCategories(created.id);
     await ensureDefaults(created.id);
   } catch (e) {
@@ -46,7 +52,27 @@ export async function createUser(_prev: FormState, formData: FormData): Promise<
     throw e;
   }
   revalidatePath("/admin/usuarios");
-  return { ok: true, message: `Cuenta de ${data.name} creada` };
+  if (password) return { ok: true, message: `Cuenta de ${data.name} creada` };
+  try {
+    await sendInvitation(created.id);
+  } catch (e) {
+    if (!(e instanceof MailError)) throw e;
+    return { ok: true, message: `Cuenta de ${data.name} creada, pero no se pudo mandar el mail: ${e.message} Probá «Invitar» en su fila.` };
+  }
+  return { ok: true, message: `Cuenta de ${data.name} creada. Le mandamos un mail a ${data.email} para que elija su contraseña.` };
+}
+
+/** (Re)manda la invitación por mail: para elegir la contraseña con un link que vence en 48 horas */
+export async function inviteUser(userId: string): Promise<FormState> {
+  const admin = await requireAdminEditor();
+  if (!(await canManage(admin, userId))) return { message: NOT_ALLOWED };
+  try {
+    await sendInvitation(String(userId));
+  } catch (e) {
+    if (e instanceof MailError) return { message: e.message };
+    throw e;
+  }
+  return { ok: true, message: "Invitación enviada" };
 }
 
 export async function toggleUserActive(userId: string) {

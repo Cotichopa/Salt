@@ -16,15 +16,30 @@ import {
 import { requireSuperadmin } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO } from "@/lib/format";
 import { shiftMonth } from "@/lib/services/card-statements";
-import { accessOverview, compareByCategory, peopleOverview, systemStatus, type Alert, type Check } from "@/lib/services/overview";
+import {
+  accessOverview,
+  chopUsage,
+  compareByCategory,
+  notUnderstood,
+  peopleOverview,
+  systemStatus,
+  type Alert,
+  type Check,
+} from "@/lib/services/overview";
+import { listDefaultCategories } from "@/lib/services/default-categories";
+import { recentServerErrors } from "@/lib/server-errors";
+import { saveDefaultCategoryAction } from "@/lib/actions/superadmin";
+import { CategoryIcon } from "@/components/category-icon";
+import { CategoryDialog } from "@/app/(app)/categorias/category-dialog";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Editable } from "@/components/read-only";
 import { CompareChart } from "./compare-chart";
 import { CloseSessionsButton, UnlockButton } from "./access-actions";
+import { ClearErrorsButton, DeleteDefaultCategoryButton, ReviewedButton } from "./review-actions";
 
 export const metadata: Metadata = { title: "Resumen · Salt" };
 
@@ -32,6 +47,12 @@ export const metadata: Metadata = { title: "Resumen · Salt" };
 // del servidor. Para ver el detalle de alguien, «Ver cuenta» (solo lectura).
 
 const relative = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" });
+
+/** Los costos de la IA son de centavos de dólar: con 4 decimales ("US$ 0,0013") */
+const usd = (n: number) => `US$ ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
+const dateTime = (d: Date) =>
+  d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /** "hace 5 minutos", "ayer", "hace 3 semanas" (o "nunca") */
 function ago(date: Date | null | undefined) {
@@ -101,11 +122,15 @@ export default async function OverviewPage({ searchParams }: PageProps<"/admin/r
     typeof params.mes === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.mes) && params.mes <= currentMonth
       ? params.mes
       : currentMonth;
-  const [people, compare, access, system] = await Promise.all([
+  const [people, compare, access, system, chop, unclear, errors, defaults] = await Promise.all([
     peopleOverview(month),
     compareByCategory(month),
     accessOverview(),
     systemStatus(),
+    chopUsage(month),
+    notUnderstood(),
+    recentServerErrors(),
+    listDefaultCategories(),
   ]);
   const isCurrent = month === currentMonth;
   const navButton = buttonVariants({ variant: "outline", size: "icon" });
@@ -215,6 +240,76 @@ export default async function OverviewPage({ searchParams }: PageProps<"/admin/r
 
       <Card>
         <CardHeader>
+          <CardTitle>Chop</CardTitle>
+          <CardDescription>
+            Mensajes de {formatMonth(month).toLowerCase()} (WhatsApp, chat de la web y tickets del formulario) y lo que
+            costó la IA. Los que se resuelven sin IA son gratis.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          {chop.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nadie le escribió a Chop este mes.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Persona</TableHead>
+                  <TableHead className="text-right">Mensajes</TableHead>
+                  <TableHead className="text-right">Sin IA</TableHead>
+                  <TableHead className="text-right">Costo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {chop.rows.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-right tabular-nums">{r.messages}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {Math.round(((r.messages - r.withAi) / r.messages) * 100)}%
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{usd(r.cost)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow>
+                  <TableCell className="font-medium">Total</TableCell>
+                  <TableCell />
+                  <TableCell />
+                  <TableCell className="text-right font-medium tabular-nums">{usd(chop.total)}</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <h3 className="text-sm font-medium">Lo que no entendió</h3>
+            <p className="text-sm text-muted-foreground">
+              Sirven para enseñarle frases nuevas. Al marcarlos revisados se borra el texto.
+            </p>
+            {unclear.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nada pendiente.</p>
+            ) : (
+              <ul className="flex flex-col divide-y rounded-lg border">
+                {unclear.map((m) => (
+                  <li key={m.id} className="flex items-start gap-3 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm break-words">«{m.text}»</p>
+                      <p className="text-xs text-muted-foreground">
+                        {m.user.name} · {m.source === "WHATSAPP" ? "WhatsApp" : "web"} · {m.kind} · {dateTime(m.createdAt)}
+                      </p>
+                    </div>
+                    <Editable>
+                      <ReviewedButton id={m.id} />
+                    </Editable>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Accesos</CardTitle>
           <CardDescription>
             Cuándo usó cada persona la web y Chop, sus accesos con huella y si el login está bloqueado por contraseñas mal.
@@ -290,6 +385,66 @@ export default async function OverviewPage({ searchParams }: PageProps<"/admin/r
               </div>
             ))}
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Errores del servidor</CardTitle>
+          <CardDescription>
+            Los últimos 30 (se borran solos a los 30 días). No incluye los robots que prueban la app desde internet.
+          </CardDescription>
+          {errors.length > 0 && (
+            <CardAction>
+              <Editable>
+                <ClearErrorsButton />
+              </Editable>
+            </CardAction>
+          )}
+        </CardHeader>
+        <CardContent>
+          {errors.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Ninguno. 🎉</p>
+          ) : (
+            <ul className="flex flex-col divide-y">
+              {errors.map((e) => (
+                <li key={e.id} className="flex flex-col gap-0.5 py-2">
+                  <span className="text-xs text-muted-foreground">{dateTime(e.createdAt)}</span>
+                  <details>
+                    <summary className="cursor-pointer text-sm break-words">{e.message.split("\n")[0].slice(0, 200)}</summary>
+                    <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">{e.message}</pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Categorías iniciales</CardTitle>
+          <CardDescription>Las que recibe cada cuenta nueva. Cambiarlas no toca las cuentas que ya existen.</CardDescription>
+          <CardAction>
+            <Editable>
+              <CategoryDialog action={saveDefaultCategoryAction} />
+            </Editable>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col divide-y">
+          {defaults.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 py-2">
+              <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{c.name}</p>
+                {c.keywords.length > 0 && <p className="truncate text-xs text-muted-foreground">{c.keywords.join(", ")}</p>}
+              </div>
+              <Editable>
+                <CategoryDialog category={c} action={saveDefaultCategoryAction} />
+                <DeleteDefaultCategoryButton id={c.id} name={c.name} />
+              </Editable>
+            </div>
+          ))}
         </CardContent>
       </Card>
     </div>

@@ -30,7 +30,8 @@ export const createUserSchema = z.object({
   name: z.string().trim().min(2, "Ingresá el nombre"),
   email: z.string().trim().toLowerCase().pipe(z.email("Email inválido")),
   phone: phoneRule,
-  password: passwordRule,
+  // Vacía: se le manda una invitación por mail para que elija la suya
+  password: z.union([z.literal(""), passwordRule]),
   role: z.enum(["ADMIN", "MEMBER"]),
 });
 

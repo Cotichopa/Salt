@@ -142,13 +142,18 @@ sudo systemctl daemon-reload
 sudo systemctl enable salt
 sudo systemctl restart salt
 
-step "7/8 Backups de cada noche"
+step "7/8 Backups de cada noche y chequeo de cada mañana"
 install_template deploy/salt-backup.service /etc/systemd/system/salt-backup.service
 sudo cp deploy/salt-backup.timer /etc/systemd/system/salt-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now salt-backup.timer
 sudo systemctl start salt-backup.service # una copia ya, para probar
 ls -1 "$HOME/salt-backups/diario" | tail -1
+# Chequeo de cada mañana: avisa por mail a los superadmins si algo anda mal
+install_template deploy/salt-check.service /etc/systemd/system/salt-check.service
+sudo cp deploy/salt-check.timer /etc/systemd/system/salt-check.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now salt-check.timer
 
 step "8/8 Caddy (HTTPS)"
 install_template deploy/Caddyfile /etc/caddy/Caddyfile

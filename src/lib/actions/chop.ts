@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { requireEditor } from "@/lib/dal";
 import { transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
+import { trackChop } from "@/lib/whatsapp/usage";
 import { audioHints, handleInput, processReceipt } from "@/lib/whatsapp/bot";
 import { receiptKind } from "@/lib/services/receipt-reading";
 import type { Ctx } from "@/lib/whatsapp/menu";
@@ -42,7 +43,8 @@ export async function talkToChop(input: { text: string } | { replyId: string }):
   if (!parsed.success) return [{ type: "text", body: "Ese mensaje es muy largo o está vacío 🤔 Probá de nuevo." }];
 
   const { ctx, out } = await webCtx();
-  await handleInput(ctx, parsed.data);
+  const kind = "text" in parsed.data ? "texto" : "botón";
+  await trackChop({ userId: ctx.userId, source: "WEB", kind }, () => handleInput(ctx, parsed.data));
   revalidate();
   return out.messages;
 }
@@ -58,13 +60,15 @@ export async function sendAudioToChop(formData: FormData): Promise<{ transcript:
   }
 
   const { ctx, out } = await webCtx();
-  const result = await transcribeAudio(audio, await audioHints(ctx.userId));
-  if (!result.ok) return { transcript: null, messages: [{ type: "text", body: transcriptionProblem(result.reason) }] };
-  // Igual que en WhatsApp: primero lo que se entendió, después la respuesta
-  await out.text(`🎙️ Entendí: «${result.text}»`);
-  await handleInput(ctx, { text: result.text });
-  revalidate();
-  return { transcript: result.text, messages: out.messages };
+  return trackChop({ userId: ctx.userId, source: "WEB", kind: "audio" }, async () => {
+    const result = await transcribeAudio(audio, await audioHints(ctx.userId));
+    if (!result.ok) return { transcript: null, messages: [{ type: "text" as const, body: transcriptionProblem(result.reason) }] };
+    // Igual que en WhatsApp: primero lo que se entendió, después la respuesta
+    await out.text(`🎙️ Entendí: «${result.text}»`);
+    await handleInput(ctx, { text: result.text });
+    revalidate();
+    return { transcript: result.text, messages: out.messages };
+  });
 }
 
 // Un ticket (foto o PDF) desde el chat: hasta 5 MB, igual que por WhatsApp. Para que entre, el
@@ -88,7 +92,10 @@ export async function sendReceiptToChop(formData: FormData): Promise<ChopMessage
 
   const { ctx, out } = await webCtx();
   const text = typeof caption === "string" && caption.trim() ? caption.trim().slice(0, 500) : undefined;
-  await processReceipt(ctx, Buffer.from(await file.arrayBuffer()), kind, text);
+  const data = Buffer.from(await file.arrayBuffer());
+  await trackChop({ userId: ctx.userId, source: "WEB", kind: kind === "pdf" ? "pdf" : "foto" }, () =>
+    processReceipt(ctx, data, kind, text),
+  );
   revalidate();
   return out.messages;
 }

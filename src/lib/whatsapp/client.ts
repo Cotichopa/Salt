@@ -24,14 +24,25 @@ async function send(to: string, payload: Record<string, unknown>) {
     return;
   }
 
-  const res = await fetch(`https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: toRecipient(to), ...payload }),
-  });
+  const post = (recipient: string) =>
+    fetch(`https://graph.facebook.com/${API_VERSION}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to: recipient, ...payload }),
+    });
+
+  let res = await post(toRecipient(to));
+  let error = res.ok ? "" : await res.text();
+  // 131030 = "no está en la lista de números permitidos" (número de prueba). Depende de cómo se
+  // cargó el número en esa lista de Meta: sin el 9 (lo de arriba) o con el 9. Si falló sin el 9,
+  // se prueba tal cual llegó.
+  if (!res.ok && error.includes("131030") && toRecipient(to) !== to) {
+    res = await post(to);
+    error = res.ok ? "" : await res.text();
+  }
   if (!res.ok) {
     // No cortamos la app: dejamos el error en la terminal para poder revisarlo
-    console.error(`[whatsapp] error ${res.status} enviando a ${to}:`, await res.text());
+    console.error(`[whatsapp] error ${res.status} enviando a ${to}:`, error);
   }
 }
 

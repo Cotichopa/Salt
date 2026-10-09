@@ -27,6 +27,7 @@ import { handleSection, handleSectionState } from "@/lib/whatsapp/sections";
 import { askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { loadedFixedText } from "@/lib/whatsapp/sections/fijos";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
+import { noteNotUnderstood, trackChop, type MessageKind } from "@/lib/whatsapp/usage";
 
 // Chop, el bot de Salt. handleMessage recibe lo que llega por WhatsApp y handleInput es el
 // "cerebro", que también usa el chat de la web (src/lib/actions/chop.ts).
@@ -45,6 +46,21 @@ export async function handleMessage(msg: IncomingMessage) {
   // "Último mensaje a Chop" (lo ve el superadmin en Resumen → Accesos)
   await db.user.update({ where: { id: user.id }, data: { lastChopAt: new Date() } });
   const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
+  // Se registra cuánto costó atenderlo (usage.ts)
+  const kind: MessageKind = msg.audio
+    ? "audio"
+    : msg.image
+      ? "foto"
+      : msg.document
+        ? receiptKind(msg.document.mime_type) === "pdf" ? "pdf" : "foto"
+        : msg.interactive
+          ? "botón"
+          : "texto";
+  await trackChop({ userId: user.id, source: "WHATSAPP", kind }, () => answer(ctx, msg));
+}
+
+/** Lo que hace Chop según el tipo de mensaje (texto, botón, audio, foto o PDF) */
+async function answer(ctx: Ctx, msg: IncomingMessage) {
   if (msg.audio) return handleAudio(ctx, msg.audio.id);
   if (msg.image) return handleReceipt(ctx, msg.image.id, "image", msg.image.caption);
   if (msg.document) {
@@ -194,6 +210,7 @@ ${notices}` : hello;
     if (isAiEnabled()) return askAI(ctx, input.text, categories, sources);
   }
 
+  noteNotUnderstood(input.text);
   await showMainMenu(ctx, "No te entendí 🤔 Probá escribiendo el gasto (ej: _\"super 12500 debito\"_) o elegí una opción:");
 }
 
@@ -232,6 +249,7 @@ async function askAI(
     return;
   }
 
+  noteNotUnderstood(text);
   await showMainMenu(ctx, "No te entendí 🤔 Probá escribiendo el gasto (ej: _\"super 12500 debito\"_) o elegí una opción:");
 }
 
