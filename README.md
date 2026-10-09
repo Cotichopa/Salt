@@ -492,7 +492,7 @@ migraciones, build y reinicio).
 - [ ] Instalar con `deploy/install.sh` (ver "Instalar en el servidor") y comprobar que se hizo la
       primera copia de la base (`ls ~/salt-backups/diario`; los borrados de la app son definitivos).
 - [ ] No crear la cuenta demo en el servidor (o borrarla): tiene contraseña simple y datos de mentira.
-- [ ] Poner el proyecto en una versión (`package.json` dice 0.1.0) y etiquetarla en git (`git tag v1.0.0`).
+- [x] Poner el proyecto en una versión y etiquetarla en git: `v1.0.0` (2026-10-09). Las que siguen: 1.1, 1.2...
 - [ ] Revisar el límite de gasto de la API de Anthropic y que el crédito alcance.
 - [ ] El chat de la web graba audio: el navegador solo da permiso de micrófono en **HTTPS** (o en
       localhost), así que el servidor tiene que tener certificado.

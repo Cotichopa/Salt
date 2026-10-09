@@ -101,7 +101,13 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
       `readReceipt` (`src/lib/services/receipt-reading.ts`); `shrinkPhoto` (`src/lib/shrink-photo.ts`)
       achica las fotos en el navegador para los dos.
 3. Los "Pendientes chicos" del final.
-4. **Versión 1.0** (decidido el 2026-10-01, ver "Rumbo a la v1").
+4. ~~**Versión 1.0**~~ — hecha (2026-10-09, ver "Rumbo a la v1").
+6. **Ideas nuevas** (elegidas el 2026-10-09; sin APIs de bancos ni ingresos: Salt sigue siendo solo de
+   gastos; sin total de la casa). Orden, una etapa por commit: ~~versión 1.0.0~~ → pendientes de
+   seguridad (actualizar `next` y `sharp`, solo JPEG/PNG/WebP/HEIC en tickets, encabezados de
+   seguridad, login que tarda lo mismo) → vista anual en el Inicio → Chop busca por descripción →
+   etiquetas → atajos de teclado en la compu → notificaciones push → avisos a la familia. Al empezar
+   cada etapa se confirman sus decisiones. En la VM corre **otra app**: no tocar lo del sistema sin avisar.
 5. ~~**Rediseño de la vista en computadora**~~ — hecho (2026-10-09): **menú lateral** desde `lg:`,
    contenido hasta `max-w-7xl`, Inicio y Mi cuenta con más columnas; celular y tablet sin cambios.
    Detalle en `docs/rediseno-escritorio.md`.
@@ -150,7 +156,8 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    nosniff, HSTS); el login tarda distinto si el email no existe; `next` 16.3.5 tiene un aviso en
    `next/og` (Salt no lo usa; 16.3.8 lo arregla) y `pdfjs-dist` otro que no aplica (no usa el visor
    con scripting).
-5. Después, cuando esté andando en la VM: `package.json` a 1.0.0 y `git tag v1.0.0`.
+5. ~~Versión 1.0.0~~ — hecha (2026-10-09): `package.json` en 1.0.0 y etiqueta `v1.0.0` en git, con Salt ya
+   andando en la VM. Lo que sigue sale como 1.1, 1.2... (plan en "Ideas nuevas").
 
 ## En curso: huella y panel de superadmin (2026-10-09)
 
