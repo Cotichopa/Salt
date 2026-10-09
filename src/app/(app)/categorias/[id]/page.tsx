@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeftIcon } from "lucide-react";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { cn } from "@/lib/utils";
 import { formatMoney, todayISO, type CurrencyCode } from "@/lib/format";
 import { getCategory, listCategoriesWithUsage } from "@/lib/services/categories";
@@ -22,6 +22,7 @@ import { DeleteCategoryButton } from "../delete-category-button";
 import { HistoryChart } from "./history-chart";
 import { BudgetCard } from "./budget-card";
 import { MerchantsCard } from "./merchants-card";
+import { Editable } from "@/components/read-only";
 
 // Pantalla de una categoría (/categorias/<id>): cuánto va esta semana, este mes y este año,
 // el presupuesto mensual, los comercios de sus tickets, un gráfico con el historial y los gastos
@@ -35,13 +36,13 @@ const PERIODS = {
 } satisfies Record<CategoryPeriod, Record<string, string>>;
 
 export async function generateMetadata({ params }: PageProps<"/categorias/[id]">): Promise<Metadata> {
-  const user = await requireUser();
+  const user = await requireAccount();
   const category = await getCategory(user.id, (await params).id);
   return { title: `${category?.name ?? "Categoría"} · Salt` };
 }
 
 export default async function CategoryPage({ params, searchParams }: PageProps<"/categorias/[id]">) {
-  const user = await requireUser();
+  const user = await requireAccount();
   const { id } = await params;
   const query = await searchParams;
   const period: CategoryPeriod = query.periodo === "semana" || query.periodo === "anio" ? query.periodo : "mes";
@@ -78,13 +79,15 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
         <CategoryIcon icon={category.icon} emoji={category.emoji} size="lg" />
         <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold">{category.name}</h1>
         <div className="flex items-center gap-1">
-          <CategoryDialog category={category} />
-          <DeleteCategoryButton
-            category={category}
-            expenseCount={category.expenseCount}
-            others={categories.filter((o) => o.id !== id)}
-            redirectTo="/categorias"
-          />
+          <Editable>
+            <CategoryDialog category={category} />
+            <DeleteCategoryButton
+              category={category}
+              expenseCount={category.expenseCount}
+              others={categories.filter((o) => o.id !== id)}
+              redirectTo="/categorias"
+            />
+          </Editable>
         </div>
       </div>
 

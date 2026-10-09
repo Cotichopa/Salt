@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { todayISO } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
@@ -12,17 +12,19 @@ import { ExpenseList } from "./expense-list";
 import { totalInPesos } from "@/lib/expense-totals";
 import { TotalsLine } from "./expenses-view";
 import { findExpenses, PAGE_SIZE, readExpenseParams } from "./query";
+import { Editable } from "@/components/read-only";
 
 export const metadata: Metadata = { title: "Gastos · Salt" };
 
 export default async function ExpensesPage({ searchParams }: PageProps<"/gastos">) {
-  const user = await requireUser();
+  const user = await requireAccount();
   const params = await searchParams;
   const today = todayISO();
   const { month, currentMonth, query, page: askedPage } = readExpenseParams(params, today);
 
   // Primero se cargan los gastos fijos que ya llegaron a su día, así aparecen en la lista
-  const loaded = await loadDueRecurring(user.id, today);
+  // En "ver como" no se carga nada: solo se mira (los cargará la persona al abrir la app)
+  const loaded = user.readOnly ? [] : await loadDueRecurring(user.id, today);
   const [categories, sources, expenses] = await Promise.all([
     listCategories(user.id),
     listPaymentSources(user.id),
@@ -50,7 +52,9 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
       <RecurringNotice items={loaded} />
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Gastos</h1>
-        <ExpenseDialog categories={categoryOptions} sources={sources} today={today} />
+        <Editable>
+          <ExpenseDialog categories={categoryOptions} sources={sources} today={today} />
+        </Editable>
       </div>
 
       <ExpenseFilters categories={categoryOptions} sources={sources} month={month} maxMonth={currentMonth} />

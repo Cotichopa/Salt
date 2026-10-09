@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRightIcon } from "lucide-react";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { formatMoney } from "@/lib/format";
 import { listCategoriesWithUsage } from "@/lib/services/categories";
 import { budgetLevel } from "@/lib/services/budgets";
@@ -11,6 +11,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { BudgetBar } from "@/components/budget-bar";
 import { CategoryDialog } from "./category-dialog";
 import { DeleteCategoryButton } from "./delete-category-button";
+import { Editable } from "@/components/read-only";
 
 export const metadata: Metadata = { title: "Categorías · Salt" };
 
@@ -64,7 +65,7 @@ function CategoryLink({ c }: { c: Row }) {
 }
 
 export default async function CategoriesPage() {
-  const user = await requireUser();
+  const user = await requireAccount();
   const categories = await listCategoriesWithUsage(user.id);
 
   return (
@@ -76,7 +77,9 @@ export default async function CategoriesPage() {
           <CardTitle>Mis categorías</CardTitle>
           <CardDescription>Solo las ves y usás vos: podés editarlas y borrarlas sin afectar a nadie más.</CardDescription>
           <CardAction>
-            <CategoryDialog />
+            <Editable>
+              <CategoryDialog />
+            </Editable>
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col divide-y">
@@ -86,12 +89,14 @@ export default async function CategoriesPage() {
           {categories.map((c) => (
             <div key={c.id} className="flex items-center gap-1 py-1">
               <CategoryLink c={c} />
-              <CategoryDialog category={c} />
-              <DeleteCategoryButton
-                category={c}
-                expenseCount={c.expenseCount}
-                others={categories.filter((o) => o.id !== c.id)}
-              />
+              <Editable>
+                <CategoryDialog category={c} />
+                <DeleteCategoryButton
+                  category={c}
+                  expenseCount={c.expenseCount}
+                  others={categories.filter((o) => o.id !== c.id)}
+                />
+              </Editable>
             </div>
           ))}
         </CardContent>

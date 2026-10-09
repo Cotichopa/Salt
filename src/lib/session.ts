@@ -16,7 +16,8 @@ const DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
 // 30 días sin abrirla. Así, instalada en el celular, no pide el login todos los meses.
 const RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 
-function getKey() {
+// También firma el desafío de las passkeys (src/lib/services/passkeys.ts)
+export function getKey() {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("Falta AUTH_SECRET en el .env");
   return new TextEncoder().encode(secret);
@@ -82,4 +83,5 @@ export async function readSession() {
 export async function deleteSession() {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
+  cookieStore.delete("view-as"); // si el superadmin estaba mirando otra cuenta (dal.ts, VIEW_AS_COOKIE)
 }

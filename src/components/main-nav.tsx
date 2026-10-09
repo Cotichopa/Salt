@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
+import { ChartColumnIcon, CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -22,15 +22,19 @@ const LINKS = [
   { href: "/medios", label: "Tarjetas", icon: CreditCardIcon },
 ];
 const ADMIN_LINKS = [{ href: "/admin/usuarios", label: "Cuentas", icon: UsersIcon }];
+const SUPERADMIN_LINKS = [{ href: "/admin/resumen", label: "Resumen", icon: ChartColumnIcon }];
+
+const linksFor = (role: string) =>
+  role === "SUPERADMIN" ? [...LINKS, ...ADMIN_LINKS, ...SUPERADMIN_LINKS] : role === "ADMIN" ? [...LINKS, ...ADMIN_LINKS] : LINKS;
 
 /** true si estás en esa sección o en una de sus subpáginas (/categorias/123) */
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
 /** Celular: botón ☰ que abre un panel lateral con todas las secciones */
-export function MobileNav({ isAdmin }: { isAdmin: boolean }) {
+export function MobileNav({ role }: { role: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
+  const links = linksFor(role);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -68,9 +72,9 @@ export function MobileNav({ isAdmin }: { isAdmin: boolean }) {
 }
 
 /** Compu: fila de links al lado del logo (en el celular no se muestra) */
-export function DesktopNav({ isAdmin }: { isAdmin: boolean }) {
+export function DesktopNav({ role }: { role: string }) {
   const pathname = usePathname();
-  const links = isAdmin ? [...LINKS, ...ADMIN_LINKS] : LINKS;
+  const links = linksFor(role);
 
   return (
     <nav className="hidden flex-1 gap-1 md:flex">

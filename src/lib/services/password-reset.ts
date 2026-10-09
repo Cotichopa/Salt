@@ -86,10 +86,15 @@ export async function resetPassword(token: string, password: string) {
   const reset = await validReset(token);
   if (!reset) throw new PasswordResetError("El link venció o ya se usó. Pedí uno nuevo.");
   await db.$transaction([
-    // sessionVersion + 1: se cierran las sesiones abiertas (por si alguien más estaba adentro)
+    // sessionVersion + 1: se cierran las sesiones abiertas (por si alguien más estaba adentro), y se
+    // borran los accesos con huella: hay que volver a agregarlos
     db.user.update({
       where: { id: reset.userId },
-      data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } },
+      data: {
+        passwordHash: await bcrypt.hash(password, 10),
+        sessionVersion: { increment: 1 },
+        passkeys: { deleteMany: {} },
+      },
     }),
     db.passwordReset.updateMany({ where: { userId: reset.userId, usedAt: null }, data: { usedAt: new Date() } }),
     // Si el login estaba bloqueado por intentos fallidos, con la contraseña nueva ya puede entrar

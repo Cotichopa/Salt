@@ -17,6 +17,7 @@
     "db:restore": "scripts/restore-db.sh",
     "db:demo": "tsx --conditions=react-server prisma/demo.ts",
     "chop:bench": "tsx --conditions=react-server scripts/chop-bench.ts",
+    "superadmin": "tsx --conditions=react-server scripts/superadmin.ts",
     "tunnel": "ngrok http 3001 --url=clifton-monometrical-brook.ngrok-free.dev"
   },
   "dependencies": {
@@ -24,6 +25,8 @@
     "@base-ui/react": "^1.8.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",

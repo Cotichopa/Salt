@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatMonth, todayISO } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
@@ -23,6 +23,7 @@ import { PaymentSourceDialog } from "../payment-source-dialog";
 import { CategoryIcon } from "@/components/category-icon";
 import { MarkPaidDialog, UnmarkPaidButton } from "./mark-paid-dialog";
 import { StatementDatesDialog } from "./statement-dates-dialog";
+import { Editable } from "@/components/read-only";
 
 // Pantalla de una tarjeta (/medios/<id>): el resumen de crédito de cada mes. Por defecto el
 // que hay que pagar (o el abierto, si no hay ninguno a pagar); con las flechas
@@ -38,14 +39,14 @@ const STATUS: Record<StatementStatus, { label: string; className: string }> = {
 };
 
 export async function generateMetadata({ params }: PageProps<"/medios/[id]">): Promise<Metadata> {
-  const user = await requireUser();
+  const user = await requireAccount();
   const { id } = await params;
   const sources = await listPaymentSources(user.id);
   return { title: `${sources.find((s) => s.id === id)?.name ?? "Tarjeta"} · Salt` };
 }
 
 export default async function CardPage({ params, searchParams }: PageProps<"/medios/[id]">) {
-  const user = await requireUser();
+  const user = await requireAccount();
   const { id } = await params;
   const query = await searchParams;
 
@@ -63,7 +64,9 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
   const header = (
     <div className="flex items-center gap-3">
       <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold">{source.name}</h1>
-      <PaymentSourceDialog source={source} />
+      <Editable>
+        <PaymentSourceDialog source={source} />
+      </Editable>
     </div>
   );
 
@@ -133,13 +136,15 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
             {statement.payment && ` · pagado el ${shortDate(statement.payment.paidOn)}`}
           </CardDescription>
           <CardAction>
-            <StatementDatesDialog
-              cardId={id}
-              month={month}
-              closing={statement.closing}
-              due={statement.due}
-              corrected={statement.corrected}
-            />
+            <Editable>
+              <StatementDatesDialog
+                cardId={id}
+                month={month}
+                closing={statement.closing}
+                due={statement.due}
+                corrected={statement.corrected}
+              />
+            </Editable>
           </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
@@ -184,23 +189,25 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
             </div>
           )}
           {/* Pagar: una vez que cerró. Pagado: se puede deshacer por si fue un error */}
-          {statement.status !== "abierto" && (
-            <div className="flex justify-end gap-2 pt-1">
-              {statement.payment ? (
-                <UnmarkPaidButton cardId={id} month={month} />
-              ) : (
-                <MarkPaidDialog
-                  cardId={id}
-                  month={month}
-                  closing={statement.closing}
-                  ars={statement.ars}
-                  usd={statement.usd}
-                  rate={statement.rate?.sell ?? null}
-                  today={today}
-                />
-              )}
-            </div>
-          )}
+          <Editable>
+            {statement.status !== "abierto" && (
+              <div className="flex justify-end gap-2 pt-1">
+                {statement.payment ? (
+                  <UnmarkPaidButton cardId={id} month={month} />
+                ) : (
+                  <MarkPaidDialog
+                    cardId={id}
+                    month={month}
+                    closing={statement.closing}
+                    ars={statement.ars}
+                    usd={statement.usd}
+                    rate={statement.rate?.sell ?? null}
+                    today={today}
+                  />
+                )}
+              </div>
+            )}
+          </Editable>
         </CardContent>
       </Card>
 

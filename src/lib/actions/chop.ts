@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { audioHints, handleInput, processReceipt } from "@/lib/whatsapp/bot";
 import { receiptKind } from "@/lib/services/receipt-reading";
@@ -21,7 +21,7 @@ const inputSchema = z.union([
 ]);
 
 async function webCtx() {
-  const user = await requireUser();
+  const user = await requireEditor();
   const out = collectingOutbox();
   const ctx: Ctx = { userId: user.id, name: user.name, phone: `web:${user.id}`, out, source: "WEB" };
   return { ctx, out };
@@ -95,6 +95,6 @@ export async function sendReceiptToChop(formData: FormData): Promise<ChopMessage
 
 /** "Nueva conversación": Chop se olvida del paso del menú en el que estaba */
 export async function resetChop() {
-  const user = await requireUser();
+  const user = await requireEditor();
   await clearSession(`web:${user.id}`);
 }

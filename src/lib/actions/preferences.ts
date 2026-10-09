@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { ProfileError, updateName, updateOwnPhone, updatePreferences } from "@/lib/services/preferences";
 import { ownPhoneSchema, preferencesSchema, profileSchema, type FormState } from "@/lib/validators";
 
 export async function savePreferences(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = preferencesSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
   await updatePreferences(user.id, parsed.data);
@@ -17,7 +17,7 @@ export async function savePreferences(_prev: FormState, formData: FormData): Pro
 }
 
 export async function saveName(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = profileSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
   await updateName(user.id, parsed.data.name);
@@ -26,7 +26,7 @@ export async function saveName(_prev: FormState, formData: FormData): Promise<Fo
 }
 
 export async function saveOwnPhone(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = ownPhoneSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
   try {

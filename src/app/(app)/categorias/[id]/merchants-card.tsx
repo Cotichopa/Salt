@@ -1,6 +1,7 @@
 import { StoreIcon } from "lucide-react";
 import { formatCuit } from "@/lib/format";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Editable } from "@/components/read-only";
 import { MerchantDialog } from "./merchant-dialog";
 
 // Tarjeta "Comercios" de la pantalla de una categoría: los comercios (por el CUIT de sus tickets)
@@ -33,7 +34,9 @@ export function MerchantsCard({
                 <p className="truncate text-sm font-medium">{m.name ?? "Sin nombre"}</p>
                 <p className="text-xs text-muted-foreground tabular-nums">CUIT {formatCuit(m.cuit)}</p>
               </div>
-              <MerchantDialog merchant={m} categoryId={categoryId} categories={categories} />
+              <Editable>
+                <MerchantDialog merchant={m} categoryId={categoryId} categories={categories} />
+              </Editable>
             </li>
           ))}
         </ul>

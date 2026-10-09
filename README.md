@@ -39,6 +39,7 @@ npm run tunnel     # (opcional) túnel público para que Meta llegue al webhook
 | `npm run db:studio` | Visor de las tablas en el navegador |
 | `npm run db:backup` | Copia de seguridad de la base (ver "Backups") |
 | `npm run db:restore -- <archivo>` | Vuelve a cargar una copia. ⚠️ Reemplaza todo lo que hay en la base |
+| `npm run superadmin -- <email>` | Le da a esa cuenta el rol SUPERADMIN: puede ver las cuentas de los demás (Cuentas → «Ver cuenta», solo mirar). Con `--quitar` vuelve a ADMIN |
 | `npm run lint` | Revisa el código |
 | `npm run tunnel` | Expone el puerto 3001 en internet (ngrok) |
 

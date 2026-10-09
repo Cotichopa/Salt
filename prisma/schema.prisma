@@ -15,6 +15,7 @@ datasource db {
 enum Role {
   ADMIN // puede crear y administrar cuentas
   MEMBER
+  SUPERADMIN // todo lo del admin, y además puede ver las cuentas de los demás (solo mirar). Se da con `npm run superadmin`
 }
 
 enum Currency {
@@ -60,6 +61,10 @@ model User {
   active               Boolean       @default(true)
   // Va en la cookie de sesión: cambiar la contraseña lo sube y las sesiones abiertas dejan de valer
   sessionVersion       Int           @default(0)
+  // Última vez que usó la web (se anota como mucho una vez por hora) y que le escribió a Chop por
+  // WhatsApp. Las ve el superadmin en Resumen → Accesos
+  lastWebAt            DateTime?
+  lastChopAt           DateTime?
   // Avisos de Chop (se apagan desde "Cuenta")
   notifyCardDue        Boolean       @default(true) // vencimiento de tarjeta: 3 días antes y el día anterior
   notifyWeekly         Boolean       @default(true) // resumen de la semana pasada
@@ -82,6 +87,7 @@ model User {
   passwordResets PasswordReset[]
   receipts       Receipt[]
   merchants      Merchant[]
+  passkeys       Passkey[]
 
   @@map("users")
 }
@@ -148,6 +154,26 @@ model LoginAttempt {
 
   @@index([email, createdAt])
   @@map("login_attempts")
+}
+
+// Accesos con huella o cara (passkeys, WebAuthn): uno por dispositivo. El celular guarda la clave
+// privada y nunca la manda; acá queda la pública, para verificar la firma al entrar (passkeys.ts).
+// Cambiar la contraseña los borra todos: hay que volver a agregarlos.
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  credentialId String    @unique // lo elige el dispositivo (base64url); con él se encuentra la passkey al entrar
+  publicKey    Bytes
+  counter      Int       @default(0) // cuántas veces se usó, según el dispositivo (muchos mandan siempre 0)
+  transports   String[] // por dónde se habla con el dispositivo: "internal", "hybrid"...
+  name         String // "Android · Chrome", para reconocerlo en la lista
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkeys")
 }
 
 // Avisos de Chop que ya se entregaron, para no repetirlos. Chop los manda cuando la persona le

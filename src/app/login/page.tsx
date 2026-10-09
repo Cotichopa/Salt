@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthShell } from "@/components/auth-shell";
 import { LoginForm } from "./login-form";
+import { PasskeyLogin } from "./passkey-login";
 
 export const metadata: Metadata = { title: "Ingresar · Salt" };
 
@@ -18,7 +19,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           ✅ Listo, cambiaste tu contraseña. Ya podés entrar con la nueva.
         </p>
       )}
-      <LoginForm />
+      <div className="flex flex-col gap-5">
+        <LoginForm />
+        <PasskeyLogin />
+      </div>
     </AuthShell>
   );
 }

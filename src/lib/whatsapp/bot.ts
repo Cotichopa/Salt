@@ -42,6 +42,8 @@ export async function handleMessage(msg: IncomingMessage) {
     await sendText(msg.from, "Hola 👋 Soy Chop, el asistente de gastos de Salt. Este número no está registrado, así que no puedo ayudarte todavía. Pedile al administrador que lo cargue en tu cuenta.");
     return;
   }
+  // "Último mensaje a Chop" (lo ve el superadmin en Resumen → Accesos)
+  await db.user.update({ where: { id: user.id }, data: { lastChopAt: new Date() } });
   const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
   if (msg.audio) return handleAudio(ctx, msg.audio.id);
   if (msg.image) return handleReceipt(ctx, msg.image.id, "image", msg.image.caption);

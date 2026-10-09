@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { formatMoney, formatMonth, paymentMethodLabels, todayISO } from "@/lib/format";
 import { listCategories } from "@/lib/services/categories";
 import { listPaymentSources } from "@/lib/services/payment-sources";
@@ -10,6 +10,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { RecurringNotice } from "@/components/recurring-notice";
 import { RecurringDialog } from "./recurring-dialog";
 import { DeleteRecurringButton, PauseRecurringButton } from "./recurring-actions";
+import { Editable } from "@/components/read-only";
 
 export const metadata: Metadata = { title: "Gastos fijos · Salt" };
 
@@ -24,10 +25,11 @@ function detailLine(r: RecurringDTO) {
 }
 
 export default async function RecurringPage() {
-  const user = await requireUser();
+  const user = await requireAccount();
   const today = todayISO();
   // Si alguno ya llegó a su día, se carga antes de mostrar la lista
-  const loaded = await loadDueRecurring(user.id, today);
+  // En "ver como" no se carga nada: solo se mira (los cargará la persona al abrir la app)
+  const loaded = user.readOnly ? [] : await loadDueRecurring(user.id, today);
   const [recurring, categories, sources] = await Promise.all([
     listRecurring(user.id, today),
     listCategories(user.id),
@@ -45,7 +47,9 @@ export default async function RecurringPage() {
       <RecurringNotice items={loaded} />
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Gastos fijos</h1>
-        <RecurringDialog categories={categoryOptions} sources={sources} today={today} />
+        <Editable>
+          <RecurringDialog categories={categoryOptions} sources={sources} today={today} />
+        </Editable>
       </div>
       <p className="text-sm text-muted-foreground">
         Se cargan solos todos los meses, el día que elijas, cuando abrís Inicio o Gastos.
@@ -95,9 +99,11 @@ export default async function RecurringPage() {
                 )}
               </div>
               <div className="flex">
-                <RecurringDialog categories={categoryOptions} sources={sources} recurring={r} today={today} />
-                <PauseRecurringButton id={r.id} name={r.description} active={r.active} pausedMonths={r.pausedMonths} />
-                <DeleteRecurringButton id={r.id} name={r.description} />
+                <Editable>
+                  <RecurringDialog categories={categoryOptions} sources={sources} recurring={r} today={today} />
+                  <PauseRecurringButton id={r.id} name={r.description} active={r.active} pausedMonths={r.pausedMonths} />
+                  <DeleteRecurringButton id={r.id} name={r.description} />
+                </Editable>
               </div>
             </div>
           ))}

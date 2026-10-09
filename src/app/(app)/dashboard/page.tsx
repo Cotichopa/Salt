@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
 import { getDashboard, type Dashboard } from "@/lib/services/stats";
 import { listBudgets, type BudgetStatus } from "@/lib/services/budgets";
@@ -53,7 +53,7 @@ function chopGreeting(
 }
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
-  const user = await requireUser();
+  const user = await requireAccount();
   const params = await searchParams;
   const today = todayISO();
   const currentMonth = today.slice(0, 7);
@@ -67,7 +67,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     chosen === "USD" || chosen === "ARS" ? chosen : (await getPreferences(user.id)).defaultCurrency;
 
   // Primero se cargan los gastos fijos que ya llegaron a su día, así entran en los totales
-  const loaded = await loadDueRecurring(user.id, today);
+  // En "ver como" no se carga nada: solo se mira (los cargará la persona al abrir la app)
+  const loaded = user.readOnly ? [] : await loadDueRecurring(user.id, today);
   const [data, budgets] = await Promise.all([getDashboard(user.id, month, currency), listBudgets(user.id, month)]);
   const href = (m: string, c: CurrencyCode) => `/dashboard?mes=${m}&moneda=${c}`;
 

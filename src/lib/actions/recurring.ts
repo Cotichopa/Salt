@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import {
   createRecurring,
   deleteRecurring,
@@ -23,7 +23,7 @@ function revalidate() {
 }
 
 export async function saveRecurring(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = recurringSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -41,7 +41,7 @@ export async function saveRecurring(_prev: FormState, formData: FormData): Promi
 
 /** Pausar o reanudar. Al reanudar, `loadPaused` carga los meses que estuvo pausado. */
 export async function toggleRecurring(id: string, active: boolean, loadPaused = false): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   let loaded = 0;
   try {
     await setRecurringActive(user.id, id, active === true, loadPaused === true);
@@ -56,7 +56,7 @@ export async function toggleRecurring(id: string, active: boolean, loadPaused = 
 }
 
 export async function removeRecurring(id: string): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   try {
     await deleteRecurring(user.id, id);
   } catch (e) {

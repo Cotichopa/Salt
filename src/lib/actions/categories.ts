@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { CategoryError, createCategory, deleteCategory, updateCategory } from "@/lib/services/categories";
 import { categorySchema, type FormState } from "@/lib/validators";
 
@@ -13,7 +13,7 @@ function revalidate() {
 }
 
 export async function saveCategory(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = categorySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -33,7 +33,7 @@ export async function removeCategory(
   id: string,
   opts: { moveTo?: string; deleteExpenses?: boolean } = {},
 ): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   // Una acción se puede invocar a mano con cualquier cosa: nos quedamos solo con lo esperado
   const deleteExpenses = opts?.deleteExpenses === true;
   const moveTo = typeof opts?.moveTo === "string" ? opts.moveTo : undefined;

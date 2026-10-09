@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { createExpense, deleteExpense, ExpenseError, updateExpense } from "@/lib/services/expenses";
 import { budgetAlertFor, budgetAlertText } from "@/lib/services/budgets";
 import { cardWithoutClosingDay } from "@/lib/services/payment-sources";
@@ -17,7 +17,7 @@ import { isAiEnabled, matchByName } from "@/lib/whatsapp/ai-parser";
 // Acciones de la web: verifican la sesión, validan y delegan en el servicio de gastos.
 
 export async function saveExpense(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = expenseSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -53,13 +53,13 @@ export async function saveExpense(_prev: FormState, formData: FormData): Promise
 
 /** Cotización de un dólar en una fecha, para precargarla en el formulario (null si no hay) */
 export async function getRateAction(type: string, date: string) {
-  await requireUser();
+  await requireEditor();
   if (!(type in dollarTypeLabels) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   return tryGetRate(type as DollarTypeCode, date);
 }
 
 export async function removeExpense(id: string, scope: "one" | "purchase" = "one"): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   let deleted = 1;
   try {
     deleted = await deleteExpense(user.id, id, scope);
@@ -100,7 +100,7 @@ const MAX_RECEIPT_BYTES = 5_000_000;
  * guardarlo; si no se guarda, se borra solo al día siguiente.
  */
 export async function readReceiptForForm(formData: FormData): Promise<ReceiptRead> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, message: "No pude recibir el archivo. Probá de nuevo." };
   const kind = receiptKind(file.type);

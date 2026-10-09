@@ -3,8 +3,9 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { createSession, deleteSession } from "@/lib/session";
 import { MailError } from "@/lib/mail";
 import { PasswordResetError, requestPasswordReset, resetPassword } from "@/lib/services/password-reset";
@@ -53,7 +54,7 @@ export async function logout() {
 }
 
 export async function changePassword(_prev: FormState, formData: FormData): Promise<FormState> {
-  const me = await requireUser();
+  const me = await requireEditor();
   const parsed = changePasswordSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -62,14 +63,26 @@ export async function changePassword(_prev: FormState, formData: FormData): Prom
     return { errors: { current: ["Contraseña actual incorrecta"] } };
   }
   // Subir la versión cierra las sesiones abiertas en otros lados; en este dispositivo seguís
-  // adentro con una cookie nueva
+  // adentro con una cookie nueva. Los accesos con huella se borran (decisión de Felipe: si alguien
+  // sabía la contraseña vieja, pudo haber agregado el suyo)
+  const passkeys = await db.passkey.count({ where: { userId: me.id } });
   const updated = await db.user.update({
     where: { id: me.id },
-    data: { passwordHash: await bcrypt.hash(parsed.data.next, 10), sessionVersion: { increment: 1 } },
+    data: {
+      passwordHash: await bcrypt.hash(parsed.data.next, 10),
+      sessionVersion: { increment: 1 },
+      passkeys: { deleteMany: {} },
+    },
     select: { sessionVersion: true },
   });
   await createSession({ userId: me.id, role: me.role, ver: updated.sessionVersion });
-  return { ok: true, message: "Contraseña actualizada. Se cerró la sesión en los otros dispositivos." };
+  revalidatePath("/cuenta"); // la lista de accesos con huella quedó vacía
+  return {
+    ok: true,
+    message:
+      "Contraseña actualizada. Se cerró la sesión en los otros dispositivos" +
+      (passkeys > 0 ? " y se borraron los accesos con huella: volvé a agregarlos." : "."),
+  };
 }
 
 /** "Olvidé mi contraseña": manda el mail con el link. Responde siempre lo mismo, exista o no la cuenta. */

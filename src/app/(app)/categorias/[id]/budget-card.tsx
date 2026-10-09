@@ -3,6 +3,7 @@ import { formatMoney } from "@/lib/format";
 import type { BudgetStatus } from "@/lib/services/budgets";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BudgetBar } from "@/components/budget-bar";
+import { Editable } from "@/components/read-only";
 import { BudgetDialog } from "./budget-dialog";
 
 // Tarjeta "Presupuesto mensual" de la pantalla de una categoría
@@ -30,7 +31,9 @@ export function BudgetCard({
           <CardTitle>Presupuesto mensual</CardTitle>
           <CardDescription>Poné un tope por mes y te aviso cuando llegues al 80 % y cuando te pases.</CardDescription>
           <CardAction>
-            <BudgetDialog categoryId={categoryId} categoryName={categoryName} />
+            <Editable>
+              <BudgetDialog categoryId={categoryId} categoryName={categoryName} />
+            </Editable>
           </CardAction>
         </CardHeader>
       </Card>
@@ -52,7 +55,9 @@ export function BudgetCard({
           <span className="tabular-nums">{formatMoney(budget.amount, "ARS")}</span> este mes
         </CardDescription>
         <CardAction>
-          <BudgetDialog categoryId={categoryId} categoryName={categoryName} amount={budget.amount} />
+          <Editable>
+            <BudgetDialog categoryId={categoryId} categoryName={categoryName} amount={budget.amount} />
+          </Editable>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">

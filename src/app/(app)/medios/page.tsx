@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRightIcon } from "lucide-react";
-import { requireUser } from "@/lib/dal";
+import { requireAccount } from "@/lib/dal";
 import { formatMoney } from "@/lib/format";
 import { listWithUsage } from "@/lib/services/payment-sources";
 import { getStatement, statementToShow, type Statement } from "@/lib/services/card-statements";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PaymentSourceDialog } from "./payment-source-dialog";
 import { DeleteSourceButton } from "./delete-source-button";
+import { Editable } from "@/components/read-only";
 
 export const metadata: Metadata = { title: "Tarjetas · Salt" };
 
@@ -43,7 +44,7 @@ function CardLink({ s, statement }: { s: Source; statement: Statement | null }) 
 }
 
 export default async function PaymentSourcesPage() {
-  const user = await requireUser();
+  const user = await requireAccount();
   const sources = await listWithUsage(user.id);
 
   // De cada tarjeta con el cierre configurado: el resumen a pagar o, si no hay, el abierto
@@ -76,7 +77,9 @@ export default async function PaymentSourcesPage() {
               <CardDescription>{group.hint}</CardDescription>
               {group.kind === "CARD" && (
                 <CardAction>
-                  <PaymentSourceDialog />
+                  <Editable>
+                    <PaymentSourceDialog />
+                  </Editable>
                 </CardAction>
               )}
             </CardHeader>
@@ -96,8 +99,10 @@ export default async function PaymentSourcesPage() {
                       </span>
                     </div>
                   )}
-                  <PaymentSourceDialog source={s} />
-                  <DeleteSourceButton id={s.id} name={s.name} expenseCount={s.expenseCount} />
+                  <Editable>
+                    <PaymentSourceDialog source={s} />
+                    <DeleteSourceButton id={s.id} name={s.name} expenseCount={s.expenseCount} />
+                  </Editable>
                 </div>
               ))}
             </CardContent>

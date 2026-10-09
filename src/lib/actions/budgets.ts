@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import { BudgetError, removeBudget, setBudget } from "@/lib/services/budgets";
 import { budgetSchema, type FormState } from "@/lib/validators";
 
@@ -14,7 +14,7 @@ function revalidate() {
 }
 
 export async function saveBudget(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = budgetSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -29,7 +29,7 @@ export async function saveBudget(_prev: FormState, formData: FormData): Promise<
 }
 
 export async function deleteBudget(categoryId: string): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   await removeBudget(user.id, categoryId);
   revalidate();
   return { ok: true, message: "Presupuesto eliminado" };

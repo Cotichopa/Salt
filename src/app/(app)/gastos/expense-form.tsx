@@ -26,6 +26,7 @@ import { FieldError } from "@/components/field-error";
 import { CategoryIcon } from "@/components/category-icon";
 import { useFormDefaults } from "@/components/form-defaults";
 import { ReceiptViewer } from "@/components/receipt-viewer";
+import { useReadOnly } from "@/components/read-only";
 
 export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
@@ -45,6 +46,7 @@ type Props = {
 export function ExpenseForm({ categories, sources, expense, today, onDone }: Props) {
   // Lo que se propone al cargar uno nuevo (preferencias de "Cuenta")
   const defaults = useFormDefaults();
+  const readOnly = useReadOnly();
   const [state, action, pending] = useActionState(async (prev: FormState, formData: FormData) => {
     const result = await saveExpense(prev, formData);
     if (result?.ok) {
@@ -142,220 +144,225 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
   const parsedRate = parseAmount(rate);
 
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-2">
-      {expense && <input type="hidden" name="id" value={expense.id} />}
+    <form action={action}>
+      {/* En "ver como" se ve el gasto con todos sus datos, pero los campos no se pueden tocar */}
+      <fieldset disabled={readOnly} className="grid min-w-0 gap-4 sm:grid-cols-2">
+        {expense && <input type="hidden" name="id" value={expense.id} />}
 
-      {/* Si el gasto ya tiene ticket, se ve arriba del formulario (expense-list.tsx) */}
-      {!expense?.receiptId && <AttachReceipt fill={!expense} onFill={applyFill} />}
+        {/* Si el gasto ya tiene ticket, se ve arriba del formulario (expense-list.tsx) */}
+        {!expense?.receiptId && !readOnly && <AttachReceipt fill={!expense} onFill={applyFill} />}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="amount">Monto {installmentCount > 1 && "total de la compra"}</Label>
-        <Input
-          id="amount"
-          name="amount"
-          inputMode="decimal"
-          placeholder="15.000"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          autoFocus
-          required
-        />
-        <FieldError errors={errors?.amount} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Moneda</Label>
-        <Select name="currency" items={currencies} value={currency} onValueChange={(v) => changeCurrency(v as CurrencyCode)}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {currencies.map((c) => (
-              <SelectItem key={c.value} value={c.value}>
-                {c.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Dólares: a qué dólar y a cuánto (así el gasto también se guarda en pesos).
-          Con crédito no se elige: el banco cobra al oficial. */}
-      {currency === "USD" && (
-        <>
-          {method === "CREDIT" ? (
-            <div className="flex flex-col gap-2">
-              <Label>Dólar</Label>
-              <input type="hidden" name="dollarType" value="OFICIAL" />
-              <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
-                Con crédito es el <span className="font-medium text-foreground">dólar oficial</span>: el banco
-                te lo cobra al oficial del día en que pagás el resumen.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <Label>¿A qué dólar lo pagaste?</Label>
-              <Select
-                name="dollarType"
-                items={dollarTypes}
-                value={dollarType}
-                onValueChange={(v) => changeDollarType(v as DollarTypeCode)}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {dollarTypes.map((d) => (
-                    <SelectItem key={d.value} value={d.value}>
-                      {d.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FieldError errors={errors?.dollarType} />
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="rate">Cotización</Label>
-            <Input
-              id="rate"
-              name="rate"
-              inputMode="decimal"
-              placeholder={rateLoading ? "Buscando..." : "1.557"}
-              value={rate}
-              onChange={(e) => {
-                setRate(e.target.value);
-                setRateTouched(true);
-              }}
-            />
-            {parsedAmount && parsedRate ? (
-              <p className="text-sm text-muted-foreground">
-                {formatMoney(parsedAmount, "USD")} × {formatMoney(parsedRate, "ARS")} ={" "}
-                <span className="font-medium text-foreground">{formatMoney(Math.round(parsedAmount * parsedRate * 100) / 100, "ARS")}</span>
-              </p>
-            ) : (
-              !rateLoading && <p className="text-sm text-muted-foreground">Vacía = la del día, si se consigue.</p>
-            )}
-            <FieldError errors={errors?.rate} />
-          </div>
-        </>
-      )}
-
-      <div className="flex flex-col gap-2">
-        <Label>Categoría</Label>
-        <Select name="categoryId" items={categoryItems} value={categoryId} onValueChange={(v) => setCategoryId(v as string)}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Elegí una categoría" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                <span className="flex items-center gap-2">
-                  <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
-                  {c.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <FieldError errors={errors?.categoryId} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Medio de pago</Label>
-        <Select
-          name="paymentMethod"
-          items={paymentMethods}
-          value={method}
-          onValueChange={(v) => changeMethod(v as PaymentMethodCode)}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {paymentMethods.map((p) => (
-              <SelectItem key={p.value} value={p.value}>
-                {p.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Tarjeta o billetera, según el medio de pago. El efectivo no lleva. */}
-      {kind && (
         <div className="flex flex-col gap-2">
-          <Label>{kind === "CARD" ? "Tarjeta" : "Billetera"} (opcional)</Label>
-          <Select name="paymentSourceId" items={sourceOptions} value={sourceId} onValueChange={(v) => setSourceId(v as string)}>
+          <Label htmlFor="amount">Monto {installmentCount > 1 && "total de la compra"}</Label>
+          <Input
+            id="amount"
+            name="amount"
+            inputMode="decimal"
+            placeholder="15.000"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            autoFocus
+            required
+          />
+          <FieldError errors={errors?.amount} />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>Moneda</Label>
+          <Select name="currency" items={currencies} value={currency} onValueChange={(v) => changeCurrency(v as CurrencyCode)}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder={kind === "CARD" ? "¿Con cuál?" : "¿Con cuál?"} />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {sourceOptions.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
+              {currencies.map((c) => (
+                <SelectItem key={c.value} value={c.value}>
+                  {c.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <FieldError errors={errors?.paymentSourceId} />
         </div>
-      )}
 
-      {/* Cuotas: solo para crédito y solo al cargar (al editar se cambia el movimiento suelto) */}
-      {method === "CREDIT" && !expense && (
+        {/* Dólares: a qué dólar y a cuánto (así el gasto también se guarda en pesos).
+            Con crédito no se elige: el banco cobra al oficial. */}
+        {currency === "USD" && (
+          <>
+            {method === "CREDIT" ? (
+              <div className="flex flex-col gap-2">
+                <Label>Dólar</Label>
+                <input type="hidden" name="dollarType" value="OFICIAL" />
+                <p className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                  Con crédito es el <span className="font-medium text-foreground">dólar oficial</span>: el banco
+                  te lo cobra al oficial del día en que pagás el resumen.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label>¿A qué dólar lo pagaste?</Label>
+                <Select
+                  name="dollarType"
+                  items={dollarTypes}
+                  value={dollarType}
+                  onValueChange={(v) => changeDollarType(v as DollarTypeCode)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dollarTypes.map((d) => (
+                      <SelectItem key={d.value} value={d.value}>
+                        {d.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldError errors={errors?.dollarType} />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rate">Cotización</Label>
+              <Input
+                id="rate"
+                name="rate"
+                inputMode="decimal"
+                placeholder={rateLoading ? "Buscando..." : "1.557"}
+                value={rate}
+                onChange={(e) => {
+                  setRate(e.target.value);
+                  setRateTouched(true);
+                }}
+              />
+              {parsedAmount && parsedRate ? (
+                <p className="text-sm text-muted-foreground">
+                  {formatMoney(parsedAmount, "USD")} × {formatMoney(parsedRate, "ARS")} ={" "}
+                  <span className="font-medium text-foreground">{formatMoney(Math.round(parsedAmount * parsedRate * 100) / 100, "ARS")}</span>
+                </p>
+              ) : (
+                !rateLoading && <p className="text-sm text-muted-foreground">Vacía = la del día, si se consigue.</p>
+              )}
+              <FieldError errors={errors?.rate} />
+            </div>
+          </>
+        )}
+
         <div className="flex flex-col gap-2">
-          <Label htmlFor="installments">Cuotas</Label>
-          <Input
-            id="installments"
-            name="installments"
-            type="number"
-            min={1}
-            max={36}
-            value={installments}
-            onChange={(e) => setInstallments(e.target.value)}
-          />
-          {perInstallment && (
-            <p className="text-sm text-muted-foreground">
-              {installmentCount} cuotas de {formatMoney(Math.round(perInstallment * 100) / 100, currency)}, una por mes
-            </p>
-          )}
-          <FieldError errors={errors?.installments} />
+          <Label>Categoría</Label>
+          <Select name="categoryId" items={categoryItems} value={categoryId} onValueChange={(v) => setCategoryId(v as string)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Elegí una categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  <span className="flex items-center gap-2">
+                    <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                    {c.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FieldError errors={errors?.categoryId} />
         </div>
-      )}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="date">Fecha {installmentCount > 1 && "de la compra"}</Label>
-        <Input
-          id="date"
-          name="date"
-          type="date"
-          max={today}
-          value={date}
-          onChange={(e) => changeDate(e.target.value)}
-          required
-        />
-        <FieldError errors={errors?.date} />
-      </div>
+        <div className="flex flex-col gap-2">
+          <Label>Medio de pago</Label>
+          <Select
+            name="paymentMethod"
+            items={paymentMethods}
+            value={method}
+            onValueChange={(v) => changeMethod(v as PaymentMethodCode)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {paymentMethods.map((p) => (
+                <SelectItem key={p.value} value={p.value}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="description">Descripción (opcional)</Label>
-        <Input
-          id="description"
-          name="description"
-          placeholder="Pizza con amigos"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <FieldError errors={errors?.description} />
-      </div>
+        {/* Tarjeta o billetera, según el medio de pago. El efectivo no lleva. */}
+        {kind && (
+          <div className="flex flex-col gap-2">
+            <Label>{kind === "CARD" ? "Tarjeta" : "Billetera"} (opcional)</Label>
+            <Select name="paymentSourceId" items={sourceOptions} value={sourceId} onValueChange={(v) => setSourceId(v as string)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={kind === "CARD" ? "¿Con cuál?" : "¿Con cuál?"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sourceOptions.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldError errors={errors?.paymentSourceId} />
+          </div>
+        )}
 
-      {state?.message && !state.ok && <p className="text-sm text-destructive sm:col-span-2">{state.message}</p>}
+        {/* Cuotas: solo para crédito y solo al cargar (al editar se cambia el movimiento suelto) */}
+        {method === "CREDIT" && !expense && (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="installments">Cuotas</Label>
+            <Input
+              id="installments"
+              name="installments"
+              type="number"
+              min={1}
+              max={36}
+              value={installments}
+              onChange={(e) => setInstallments(e.target.value)}
+            />
+            {perInstallment && (
+              <p className="text-sm text-muted-foreground">
+                {installmentCount} cuotas de {formatMoney(Math.round(perInstallment * 100) / 100, currency)}, una por mes
+              </p>
+            )}
+            <FieldError errors={errors?.installments} />
+          </div>
+        )}
 
-      <Button type="submit" disabled={pending} className="sm:col-span-2" size="lg">
-        {pending ? "Guardando..." : expense ? "Guardar cambios" : "Cargar gasto"}
-      </Button>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="date">Fecha {installmentCount > 1 && "de la compra"}</Label>
+          <Input
+            id="date"
+            name="date"
+            type="date"
+            max={today}
+            value={date}
+            onChange={(e) => changeDate(e.target.value)}
+            required
+          />
+          <FieldError errors={errors?.date} />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="description">Descripción (opcional)</Label>
+          <Input
+            id="description"
+            name="description"
+            placeholder="Pizza con amigos"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <FieldError errors={errors?.description} />
+        </div>
+
+        {state?.message && !state.ok && <p className="text-sm text-destructive sm:col-span-2">{state.message}</p>}
+
+        {!readOnly && (
+          <Button type="submit" disabled={pending} className="sm:col-span-2" size="lg">
+            {pending ? "Guardando..." : expense ? "Guardar cambios" : "Cargar gasto"}
+          </Button>
+        )}
+      </fieldset>
     </form>
   );
 }

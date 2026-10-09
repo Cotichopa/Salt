@@ -16,7 +16,7 @@ const WINDOW_MS = 15 * 60 * 1000; // 15 minutos
 const KEEP_MS = 24 * 60 * 60 * 1000; // los intentos de más de un día ya no sirven: se borran
 
 /** Minutos que faltan para poder volver a probar, o 0 si el email no está bloqueado */
-async function loginBlockedMinutes(email: string) {
+export async function loginBlockedMinutes(email: string) {
   const fails = await db.loginAttempt.findMany({
     where: { email, createdAt: { gt: new Date(Date.now() - WINDOW_MS) } },
     orderBy: { createdAt: "desc" },

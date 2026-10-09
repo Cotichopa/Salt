@@ -11,6 +11,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { ExpenseForm, type CategoryOption, type SourceOption } from "./expense-form";
 import { DeleteExpenseButton } from "./delete-expense-button";
+import { useReadOnly } from "@/components/read-only";
 
 // Lista de gastos: en celular agrupada por día, en pantalla grande una tabla.
 // Tocar un gasto (en cualquiera de las dos) abre la ventana para editarlo o eliminarlo.
@@ -25,6 +26,7 @@ type Props = {
 
 export function ExpenseList({ expenses, categories, sources, today, emptyMessage }: Props) {
   const [editing, setEditing] = useState<ExpenseDTO | null>(null);
+  const readOnly = useReadOnly();
 
   // Agrupamos por día, con el subtotal de cada uno en pesos (los dólares, convertidos)
   const days = useMemo(() => {
@@ -151,7 +153,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Editar gasto</DialogTitle>
+            <DialogTitle>{readOnly ? "Gasto" : "Editar gasto"}</DialogTitle>
           </DialogHeader>
           {editing && (
             <>
@@ -163,14 +165,16 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                 today={today}
                 onDone={() => setEditing(null)}
               />
-              <div className="flex justify-end border-t pt-4">
-                <DeleteExpenseButton
-                  id={editing.id}
-                  installments={editing.installments}
-                  summary={`${editing.category.name} por ${formatMoney(editing.amount, editing.currency)} del ${formatDay(isoToDate(editing.date))}`}
-                  onDeleted={() => setEditing(null)}
-                />
-              </div>
+              {!readOnly && (
+                <div className="flex justify-end border-t pt-4">
+                  <DeleteExpenseButton
+                    id={editing.id}
+                    installments={editing.installments}
+                    summary={`${editing.category.name} por ${formatMoney(editing.amount, editing.currency)} del ${formatDay(isoToDate(editing.date))}`}
+                    onDeleted={() => setEditing(null)}
+                  />
+                </div>
+              )}
             </>
           )}
         </DialogContent>

@@ -119,6 +119,7 @@ function InlineForm({
         </Button>
       </div>
       <FieldError errors={state?.errors?.[field]} />
+      {state?.message && !state.ok && <p className="text-sm text-destructive">{state.message}</p>}
     </form>
   );
 }

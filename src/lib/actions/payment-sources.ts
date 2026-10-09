@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import {
   createPaymentSource,
   deletePaymentSource,
@@ -18,7 +18,7 @@ function revalidate() {
 }
 
 export async function savePaymentSource(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = paymentSourceSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -35,7 +35,7 @@ export async function savePaymentSource(_prev: FormState, formData: FormData): P
 }
 
 export async function removePaymentSource(id: string): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   try {
     await deletePaymentSource(user.id, id);
   } catch (e) {

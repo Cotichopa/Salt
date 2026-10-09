@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/dal";
+import { requireEditor } from "@/lib/dal";
 import {
   markStatementPaid,
   resetStatementDates,
@@ -15,7 +15,7 @@ import { statementDatesSchema, statementPaymentSchema, type FormState } from "@/
 // Corregir (o volver al día fijo) las fechas de un resumen puntual de una tarjeta
 
 export async function saveStatementDates(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = statementDatesSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -31,7 +31,7 @@ export async function saveStatementDates(_prev: FormState, formData: FormData): 
 }
 
 export async function resetStatementDatesAction(cardId: string, month: string): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   try {
     await resetStatementDates(user.id, cardId, month);
   } catch (e) {
@@ -43,7 +43,7 @@ export async function resetStatementDatesAction(cardId: string, month: string): 
 }
 
 export async function markPaid(_prev: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   const parsed = statementPaymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
@@ -59,7 +59,7 @@ export async function markPaid(_prev: FormState, formData: FormData): Promise<Fo
 }
 
 export async function unmarkPaid(cardId: string, month: string): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireEditor();
   try {
     await unmarkStatementPaid(user.id, cardId, month);
   } catch (e) {

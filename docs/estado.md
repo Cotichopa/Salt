@@ -146,6 +146,60 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    con scripting).
 5. Después, cuando esté andando en la VM: `package.json` a 1.0.0 y `git tag v1.0.0`.
 
+## En curso: huella y panel de superadmin (2026-10-09)
+
+Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en este orden:
+
+1. **Entrar con huella (passkeys)** — hecha, sin commitear todavía. Decisiones de Felipe: reemplaza la
+   contraseña (no es un segundo paso); se agrega desde **Mi cuenta → Entrar con huella** pidiendo la
+   contraseña; varios dispositivos por persona, con lista para quitarlos; en el login, botón "Entrar
+   con huella" **sin escribir el email** (el celular ofrece las cuentas guardadas); **cambiar la
+   contraseña las borra todas** (Mi cuenta, link del mail y admin).
+   Cómo está hecho: `@simplewebauthn/server` y `/browser`; tabla `passkeys` (migración `passkeys`);
+   lógica en `src/lib/services/passkeys.ts`, acciones en `src/lib/actions/passkeys.ts`, botón en
+   `src/app/login/passkey-login.tsx` y tarjeta en `cuenta/passkeys-section.tsx`. El desafío viaja en
+   una cookie firmada de 5 minutos que sirve una vez. En producción las passkeys quedan atadas al
+   dominio de `APP_URL`; en desarrollo, al dominio con que se entra (localhost anda sin HTTPS).
+   Probado con un autenticador simulado (registrar, entrar, repetir la respuesta, otro origen, cuenta
+   desactivada, cambio de contraseña) y por Felipe con la huella de su celular.
+2. **Panel de superadmin ("ver como")** — hecho, sin commitear todavía. Decisiones de Felipe: rol nuevo
+   `SUPERADMIN` (solo Felipe; tiene todo lo del admin), que se da con `npm run superadmin -- <email>`
+   (a propósito sin botón en la web); en **Cuentas → «Ver cuenta»** se recorre la app como esa persona
+   (gastos con su detalle y ticket, tarjetas, fijos, categorías, presupuestos) en **solo lectura**,
+   con una barra "Viendo la cuenta de X · Salir"; en Mi cuenta de los demás, una tarjeta "Quién puede
+   ver tus gastos"; sin registro de quién miró.
+   Cómo está hecho: la cookie `view-as` (la ponen y sacan los formularios POST a `/api/ver-como`; dura
+   12 horas y se borra al cerrar sesión) dice a quién se mira, y `dal.ts` chequea cada vez que quien la
+   tiene sea SUPERADMIN. Las páginas piden `requireAccount()` (la cuenta que se ve, con `readOnly`) y
+   **todas las acciones** `requireEditor()`/`requireAdminEditor()`, que en "ver como" cortan con
+   `ReadOnlyError`: esa es la traba de verdad. En pantalla, `<Editable>` (`components/read-only.tsx`)
+   esconde los botones de cambiar, el formulario de un gasto se ve con los campos bloqueados, no está
+   Chop y no se cargan los gastos fijos al abrir las páginas.
+   De paso se cerró un hueco: un ADMIN ya no puede cambiarle la contraseña, el WhatsApp ni desactivar
+   al SUPERADMIN (`canManage` en `actions/users.ts`); si no, podría entrar como él y ver todo.
+   Probado: recorrido por HTTP (barra, sin botones ni Chop, CSV y salir), una cookie `view-as` en una
+   cuenta que no es superadmin no hace nada, borrar un gasto en "ver como" se rechaza y un admin no
+   puede tocar al superadmin. **En el servidor**, después de actualizar: `npm run superadmin -- <tu email>`.
+3. **Resumen del superadmin** (`/admin/resumen`, menú "Resumen", solo SUPERADMIN) — hecho, sin commitear.
+   Felipe eligió (de una lista de ideas): panel por persona, comparar personas, estado del sistema,
+   accesos y cerrar sesiones. Quedaron afuera por ahora: total de la casa, gasto de IA por persona y
+   ver los mensajes con Chop (implica guardarlos). Datos en `src/lib/services/overview.ts`:
+   - **Personas**: lo gastado en el mes (en pesos) contra los mismos días del mes anterior, el último
+     gasto (web o WhatsApp), alertas de hoy (presupuestos pasados o al 80 %, tarjeta vencida sin marcar o
+     que vence en 5 días) y «Ver cuenta». Con flechas para cambiar de mes.
+   - **Comparar por categoría**: barras agrupadas (una por persona, color fijo en el orden de las
+     cuentas; categorías juntadas por nombre, 8 más grandes + "Otras"), monto al pasar el mouse y
+     "Ver datos". Paleta validada con la guía dataviz (contraste bajo de los colores 3 y 4 en claro: por eso
+     leyenda y tabla).
+   - **Accesos**: último uso de la web y de Chop (columnas nuevas `users.lastWebAt`/`lastChopAt`,
+     migración `ultimo_uso`; la web se anota con `after()` desde el layout, como mucho una vez por
+     hora), huellas, contraseñas mal / bloqueo con **Desbloquear**, y **Cerrar sesiones** (sube
+     `sessionVersion` y quita las huellas, por si perdió el celular; la contraseña no cambia). Acciones en
+     `actions/superadmin.ts` (`requireSuperadminEditor`).
+   - **Sistema**: último backup (`~/salt-backups/diario`, alerta si tiene más de 36 h), token de WhatsApp
+     (se consulta a Meta como mucho una vez por hora), Whisper, IA, mails, disco libre, versión (+ commit
+     de git), tamaño de la base y desde cuándo corre.
+
 ## Hecho: fotos de tickets (2026-09-29)
 
 Se le manda a Chop por WhatsApp la foto de un ticket (con texto opcional, que manda sobre la foto:
