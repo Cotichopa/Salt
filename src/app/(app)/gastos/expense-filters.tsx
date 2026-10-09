@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SearchIcon, XIcon } from "lucide-react";
 import { currencyLabels, formatMonth, paymentMethodLabels } from "@/lib/format";
@@ -8,6 +8,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { CategoryOption, SourceOption } from "./expense-form";
+import { FOCUS_SEARCH_KEY } from "@/components/keyboard-shortcuts";
 
 // Los filtros viven en la URL (?mes=2026-09&categoria=...&q=super&pagina=2). Así, si recargás
 // la página o compartís el link, se mantienen. Cambiar un filtro = cambiar la URL, y el
@@ -47,6 +48,15 @@ export function ExpenseFilters({
   // Buscador: esperamos a que dejes de escribir un momento antes de buscar (no una búsqueda por letra)
   const [text, setText] = useState(params.get("q") ?? "");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Atajo B desde una pantalla sin buscador: llega acá con el buscador listo para escribir
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (sessionStorage.getItem(FOCUS_SEARCH_KEY)) {
+      sessionStorage.removeItem(FOCUS_SEARCH_KEY);
+      input.current?.focus();
+    }
+  }, []);
   function search(value: string) {
     setText(value);
     clearTimeout(timer.current);
@@ -90,6 +100,8 @@ export function ExpenseFilters({
         <div className="relative flex-1">
           <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            ref={input}
+            data-shortcut-search // el atajo B lo enfoca (components/keyboard-shortcuts.tsx)
             value={text}
             onChange={(e) => search(e.target.value)}
             placeholder="Buscar: super, 15.000, 24/09, septiembre, #viaje..."

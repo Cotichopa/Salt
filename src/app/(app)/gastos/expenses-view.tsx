@@ -33,6 +33,7 @@ export function ExpensesView({ expenses, categories, sources, today }: Props) {
             placeholder="Buscar: descripción, monto, fecha (24/09)..."
             className="h-10 pl-9"
             aria-label="Buscar gastos"
+            data-shortcut-search // el atajo B lo enfoca (components/keyboard-shortcuts.tsx)
           />
         </div>
         <Button variant="outline" onClick={() => downloadCsv(filtered)} disabled={filtered.length === 0}>

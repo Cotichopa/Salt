@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/user-menu";
+import { ShortcutsHint } from "@/components/keyboard-shortcuts";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
@@ -132,6 +133,9 @@ export function SideNav({ role, name, email }: { role: string; name: string; ema
           </Link>
         ))}
       </nav>
+      <div className="px-3 pb-2">
+        <ShortcutsHint />
+      </div>
       <div className="flex items-center gap-1 border-t p-3">
         <UserMenu name={name} email={email} side="top" className="min-w-0 flex-1 justify-start" />
         <ThemeToggle />

@@ -7,6 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { DesktopNav, MobileNav, SideNav } from "@/components/main-nav";
 import { ChopWidget } from "@/components/chop/chop-widget";
+import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { FormDefaultsProvider } from "@/components/form-defaults";
 import { getPreferences } from "@/lib/services/preferences";
 import { noteWebUse } from "@/lib/services/overview";
@@ -74,6 +75,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </main>
       </div>
       {!viewed && <ChopWidget userId={user.id} name={user.name} />}
+      <KeyboardShortcuts role={user.role} readOnly={!!viewed} />
     </div>
   );
 }

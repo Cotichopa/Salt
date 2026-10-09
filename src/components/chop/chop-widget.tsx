@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { OPEN_CHOP_EVENT } from "@/components/keyboard-shortcuts";
 import { ChopAvatar } from "./chop-avatar";
 import { ChopChat } from "./chop-chat";
 
@@ -13,6 +14,13 @@ import { ChopChat } from "./chop-chat";
 
 export function ChopWidget({ userId, name }: { userId: string; name: string }) {
   const [open, setOpen] = useState(false);
+
+  // Atajo de teclado C (components/keyboard-shortcuts.tsx)
+  useEffect(() => {
+    const openChat = () => setOpen(true);
+    window.addEventListener(OPEN_CHOP_EVENT, openChat);
+    return () => window.removeEventListener(OPEN_CHOP_EVENT, openChat);
+  }, []);
 
   useEffect(() => {
     if (!open) return;

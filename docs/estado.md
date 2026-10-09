@@ -109,7 +109,8 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
    gastos; sin total de la casa). Orden, una etapa por commit: ~~versión 1.0.0~~ → ~~pendientes de
    seguridad~~ (hecho, ver "Rumbo a la v1", punto 4) → ~~vista anual en el Inicio~~ (hecha, ver "Hecho: vista
    anual") → ~~Chop busca por descripción~~ (hecha, ver "Hecho: Chop busca por descripción") →
-   ~~etiquetas~~ (hechas, ver "Hecho: etiquetas") → atajos de teclado en la compu → notificaciones push → avisos a la familia. Al empezar
+   ~~etiquetas~~ (hechas, ver "Hecho: etiquetas") → ~~atajos de teclado en la compu~~ (hechos, ver "Hecho:
+   atajos de teclado") → notificaciones push → avisos a la familia. Al empezar
    cada etapa se confirman sus decisiones. En la VM corre **otra app**: no tocar lo del sistema sin avisar.
 7. **Gastos compartidos y total de la casa** — la próxima función grande (decidido el 2026-10-09; cambia la
    decisión de que cada cuenta va separada). Todavía sin codear: el planteo y las preguntas que faltan
@@ -247,6 +248,21 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      migración): Resumen → Categorías iniciales, con el mismo diálogo que las categorías (`CategoryDialog`
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
+
+## Hecho: atajos de teclado (2026-10-09)
+
+Para la compu (`src/components/keyboard-shortcuts.tsx`, montado en el layout). **N** gasto nuevo,
+**B** buscar (Felipe prefirió B en vez de "/", que en el teclado en español es Shift+7), **C** abrir Chop,
+**G** y una letra para ir a una sección (**I**nicio, **G**astos, **F**ijos, **C**ategorías, **E**tiquetas,
+**T**arjetas; admin **U** Cuentas, superadmin **R** Resumen) y **?** la lista. "Atajos: ?" abajo en el menú
+lateral abre la lista. No hacen nada escribiendo en un campo, con una ventana abierta o con Ctrl/Cmd/Alt;
+en "ver como" no hay N ni C.
+- Cómo se conectan: eventos de `window` que escuchan el formulario de gasto nuevo (`expense-dialog.tsx`;
+  desde otra pantalla se llega con `?nuevo=1`, que se borra de la dirección al abrir) y el chat de Chop.
+  B enfoca el buscador de la pantalla (`data-shortcut-search`: Inicio, Gastos, categoría, tarjeta y
+  etiqueta); si no hay, va a Gastos y lo enfoca al llegar (`sessionStorage`).
+- Probado apretando las teclas en Chrome sin ventana: ?, G T, N desde Tarjetas, B desde Fijos (y escribir),
+  C, y que escribiendo en un campo no se disparen.
 
 ## Hecho: etiquetas (2026-10-09)
 
@@ -612,6 +628,9 @@ todo; base ya se equivocaba palabras).
   `npm run db:up` falla. Arreglo: `sudo usermod -aG docker laptop` y volver a iniciar sesión.
 - `npm run db:seed` **pisa la contraseña del admin** con la del `.env`. Felipe decidió no tocarlo por
   ahora (no hay datos importantes), pero no hay que correrlo en el servidor con datos reales.
+- Desde `next` 16.3.8, en desarrollo aparece el aviso "Encountered a script tag while rendering React
+  component" por el `<script>` de `src/components/splash.tsx` (la animación de inicio). En producción no
+  molesta (el script va en el HTML y corre antes de pintar); se podría pasar a `next/script` o al `<head>`.
 - No hay tests automáticos: las pruebas de esta sesión se hicieron con scripts temporales. Para Chop
   está `npm run chop:bench` (ver arriba).
 - En la compu con Docker, la demo tiene la Visa **sin** días de cierre/vencimiento (en la otra compu

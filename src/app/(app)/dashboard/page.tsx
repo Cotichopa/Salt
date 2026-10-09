@@ -121,6 +121,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             placeholder="Buscar gastos: super, 15.000, 24/09, septiembre..."
             className="h-10 pl-9"
             aria-label="Buscar gastos en todo el historial"
+            data-shortcut-search // el atajo B lo enfoca (components/keyboard-shortcuts.tsx)
           />
         </form>
 
