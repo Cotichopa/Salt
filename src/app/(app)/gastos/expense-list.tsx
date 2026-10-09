@@ -132,7 +132,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                     </span>
                   </TableCell>
                   <TableCell className="max-w-64 truncate text-muted-foreground">
-                    {[e.description, e.installments > 1 ? `Cuota ${e.installmentNumber}/${e.installments}` : null]
+                    {[e.description, e.installments > 1 ? `Cuota ${e.installmentNumber}/${e.installments}` : null, tagLine(e)]
                       .filter(Boolean)
                       .join(" · ")}
                   </TableCell>
@@ -190,9 +190,15 @@ function detailLine(e: ExpenseDTO) {
     paymentMethodLabels[e.paymentMethod],
     e.paymentSource?.name,
     e.installments > 1 ? `Cuota ${e.installmentNumber}/${e.installments}` : null,
+    tagLine(e),
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** "#bariloche #viaje", o null si no tiene etiquetas */
+function tagLine(e: ExpenseDTO) {
+  return e.tags.length > 0 ? e.tags.map((t) => `#${t.name}`).join(" ") : null;
 }
 
 /** "Hoy", "Ayer" o "lun 22/09" */

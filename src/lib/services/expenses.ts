@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { ensureTags, setExpenseTags } from "@/lib/services/tags";
 import {
   dateToISO,
   dollarTypeFor,
@@ -14,7 +15,7 @@ import { getRate, RateUnavailableError, tryGetRate } from "@/lib/services/exchan
 import { rememberMerchant } from "@/lib/services/merchants";
 
 // Los campos nuevos son opcionales para quien llama (el bot todavía no los manda)
-type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate" | "receiptId"> & {
+type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "dollarType" | "rate" | "receiptId" | "tags"> & {
   installments?: number;
   paymentSourceId?: string;
   dollarType?: DollarTypeCode;
@@ -22,6 +23,7 @@ type ExpenseData = Omit<ExpenseInput, "installments" | "paymentSourceId" | "doll
   recurringId?: string; // lo cargó un gasto fijo (ver recurring.ts)
   rateOptional?: boolean; // en dólares: si no hay cotización, se guarda sin pesos (se convierte después)
   receiptId?: string; // foto del ticket (la mandó a Chop): en cuotas, todas la comparten
+  tags?: string[]; // nombres de etiquetas (se crean las que no existen); al editar, sin esto no se tocan
 };
 import { assertCategoryUsable, CategoryError } from "@/lib/services/categories";
 import { assertUsable, PaymentSourceError } from "@/lib/services/payment-sources";
@@ -41,6 +43,7 @@ export type ExpenseFilters = {
   currency?: CurrencyCode;
   paymentMethod?: PaymentMethodCode;
   paymentSourceId?: string;
+  tagId?: string; // etiqueta
 };
 
 // Los componentes de pantalla no pueden recibir el tipo Decimal de Prisma,
@@ -65,6 +68,7 @@ export type ExpenseDTO = {
   recurringId: string | null; // lo cargó solo un gasto fijo
   receiptId: string | null; // tiene ticket (se ve en /api/tickets/<id>)
   receiptKind: "image" | "pdf" | null; // el ticket es una foto o una factura en PDF
+  tags: { id: string; name: string }[]; // etiquetas, por nombre
 };
 
 const expenseSelect = {
@@ -87,6 +91,7 @@ const expenseSelect = {
   receipt: { select: { mimeType: true } },
   category: { select: { id: true, name: true, emoji: true, icon: true } },
   paymentSource: { select: { id: true, name: true } },
+  tags: { select: { id: true, name: true }, orderBy: { name: "asc" } },
 } satisfies Prisma.ExpenseSelect;
 
 function toDTO({ receipt, ...e }: Prisma.ExpenseGetPayload<{ select: typeof expenseSelect }>): ExpenseDTO {
@@ -117,6 +122,7 @@ export async function listExpenses(userId: string, filters: ExpenseFilters = {},
   if (filters.currency) where.currency = filters.currency;
   if (filters.paymentMethod) where.paymentMethod = filters.paymentMethod;
   if (filters.paymentSourceId) where.paymentSourceId = filters.paymentSourceId;
+  if (filters.tagId) where.tags = { some: { id: filters.tagId } };
 
   const rows = await db.expense.findMany({
     where,
@@ -210,13 +216,14 @@ function addMonths(iso: string, months: number) {
  * uno por mes: así cada mes muestra lo que realmente se paga ese mes.
  * El monto que llega es el TOTAL de la compra.
  */
-export async function createExpense(userId: string, { rateOptional, ...input }: ExpenseData, source: Source = "WEB") {
+export async function createExpense(userId: string, { rateOptional, tags, ...input }: ExpenseData, source: Source = "WEB") {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
   await assertReceiptAllowed(userId, input.receiptId);
 
   const installments = Math.max(1, Math.min(input.installments ?? 1, 36));
   const conversion = await conversionFor({ ...input, rateOptional });
+  const tagIds = tags?.length ? await ensureTags(userId, tags) : [];
   // Con foto de ticket: el comercio (su CUIT) queda anotado en esta categoría para el próximo ticket
   const remember = () => input.receiptId && rememberMerchant(userId, input.receiptId, input.categoryId, input.description);
   if (installments === 1) {
@@ -228,6 +235,7 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
         date: isoToDate(input.date),
         userId,
         source,
+        ...(tagIds.length ? { tags: { connect: tagIds.map((id) => ({ id })) } } : {}),
       },
       select: expenseSelect,
     });
@@ -257,6 +265,13 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
   });
   await db.expense.createMany({ data: rows });
   await remember();
+  // createMany no puede poner etiquetas: van después, a todas las cuotas
+  if (tagIds.length) {
+    const ids = await db.expense.findMany({ where: { purchaseId, userId }, select: { id: true } });
+    await db.$transaction(
+      ids.map((e) => db.expense.update({ where: { id: e.id }, data: { tags: { connect: tagIds.map((id) => ({ id })) } }, select: { id: true } })),
+    );
+  }
 
   const first = await db.expense.findFirstOrThrow({
     where: { purchaseId, installmentNumber: 1 },
@@ -265,13 +280,13 @@ export async function createExpense(userId: string, { rateOptional, ...input }: 
   return toDTO(first);
 }
 
-export async function updateExpense(userId: string, id: string, input: ExpenseData) {
+export async function updateExpense(userId: string, id: string, { tags, ...input }: ExpenseData) {
   await assertCategoryAllowed(userId, input.categoryId);
   await assertSourceAllowed(userId, input);
   await assertReceiptAllowed(userId, input.receiptId);
   const current = await db.expense.findFirst({
     where: { id, userId },
-    select: { amount: true, currency: true, date: true, dollarType: true, rate: true, categoryId: true, receiptId: true },
+    select: { amount: true, currency: true, date: true, dollarType: true, rate: true, categoryId: true, receiptId: true, purchaseId: true },
   });
   if (!current) throw new ExpenseError("Gasto no encontrado");
 
@@ -305,6 +320,13 @@ export async function updateExpense(userId: string, id: string, input: ExpenseDa
     },
   });
   if (count === 0) throw new ExpenseError("Gasto no encontrado");
+  // Las etiquetas son de la compra: en cuotas, se cambian en todas (sin el campo, no se tocan)
+  if (tags !== undefined) {
+    const ids = current.purchaseId
+      ? (await db.expense.findMany({ where: { purchaseId: current.purchaseId, userId }, select: { id: true } })).map((e) => e.id)
+      : [id];
+    await setExpenseTags(userId, ids, tags);
+  }
   // Si vino de un ticket y se le cambió la categoría (o se le acaba de adjuntar uno), el comercio
   // queda anotado en esta categoría
   const receiptId = input.receiptId ?? current.receiptId;

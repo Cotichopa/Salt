@@ -35,6 +35,7 @@ function revalidate() {
   revalidatePath("/fijos");
   revalidatePath("/medios", "layout");
   revalidatePath("/categorias", "layout");
+  revalidatePath("/etiquetas", "layout");
 }
 
 /** Mensaje escrito o botón tocado → respuestas de Chop */

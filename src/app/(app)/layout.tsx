@@ -10,6 +10,7 @@ import { ChopWidget } from "@/components/chop/chop-widget";
 import { FormDefaultsProvider } from "@/components/form-defaults";
 import { getPreferences } from "@/lib/services/preferences";
 import { noteWebUse } from "@/lib/services/overview";
+import { listTagNames } from "@/lib/services/tags";
 import { ReadOnlyProvider } from "@/components/read-only";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const prefs = await getPreferences(user.id);
   // El superadmin mirando la cuenta de otra persona: barra arriba, sin botones de cambiar y sin Chop
   const viewed = await getViewedAccount();
+  // Las etiquetas que sugiere el formulario de gasto: las de la cuenta que se está viendo
+  const tagNames = await listTagNames(viewed?.id ?? user.id);
   // "Último uso de la web" (lo ve el superadmin): se anota después de mandar la página, sin demorarla
   after(() => noteWebUse(user.id));
 
@@ -62,7 +65,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         {/* pb-24: espacio abajo para que el botón de Chop no tape lo último de la página */}
         <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 lg:max-w-7xl lg:px-8 lg:pt-6">
           <ReadOnlyProvider value={!!viewed}>
-            <FormDefaultsProvider value={{ paymentMethod: prefs.defaultPaymentMethod, dollarType: prefs.defaultDollarType }}>
+            <FormDefaultsProvider
+              value={{ paymentMethod: prefs.defaultPaymentMethod, dollarType: prefs.defaultDollarType, tags: tagNames }}
+            >
               {children}
             </FormDefaultsProvider>
           </ReadOnlyProvider>

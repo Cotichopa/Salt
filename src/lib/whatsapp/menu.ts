@@ -10,6 +10,8 @@ import {
   type PaymentMethodCode,
 } from "@/lib/format";
 import { normalize } from "@/lib/text";
+import { searchExpenses } from "@/lib/expense-search";
+import { hashtags } from "@/lib/tags";
 import { listCategories } from "@/lib/services/categories";
 import {
   createExpense,
@@ -442,9 +444,36 @@ async function receiveQueryMethod(ctx: Ctx, id: string | undefined, text: string
   return true;
 }
 
-async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
+/**
+ * Resumen de los gastos que cumplen los filtros. Con `text` ("coto"), solo los que lo nombran: se busca
+ * igual que en el buscador de la web (descripción, categoría, tarjeta; sin tildes y con errores de tipeo).
+ */
+async function sendSummary(
+  ctx: Ctx,
+  title: string,
+  filters: ExpenseFilters,
+  text?: string | null,
+  fallback?: { title: string; note: string },
+) {
   await clearSession(ctx.phone);
-  const [expenses, budgets] = await Promise.all([listExpenses(ctx.userId, filters), budgetLines(ctx.userId, filters)]);
+  const [all, budgets] = await Promise.all([
+    listExpenses(ctx.userId, filters),
+    // Los presupuestos son de la categoría entera: buscando un comercio no vienen al caso
+    text ? Promise.resolve([]) : budgetLines(ctx.userId, filters),
+  ]);
+  let expenses = text ? searchExpenses(all, text) : all;
+  let note = "";
+  if (expenses.length === 0 && fallback && all.length > 0) {
+    expenses = all;
+    title = fallback.title;
+    note = fallback.note;
+  }
+  if (expenses.length === 0 && text) {
+    // Sugerir el buscador de la web, que mira todo el historial
+    const web = process.env.APP_URL ? `\nBuscalo en todo el historial: ${process.env.APP_URL}/gastos?q=${encodeURIComponent(text)}` : "";
+    await ctx.out.text(`No encontré gastos ${title} 🔎${web}${BACK}`);
+    return;
+  }
   if (expenses.length === 0) {
     await ctx.out.text(`No tenés gastos ${title} 🙌${budgets.join("\n")}${BACK}`);
     return;
@@ -482,6 +511,7 @@ async function sendSummary(ctx: Ctx, title: string, filters: ExpenseFilters) {
 
   await ctx.out.text([
       `📊 *Gastos ${title}*`,
+      ...(note ? [note] : []),
       `Total: *${totalText}* (${expenses.length} ${expenses.length === 1 ? "gasto" : "gastos"})`,
       // Si hay una sola categoría, el desglose repetiría el total
       ...(catLines.length > 1 ? ["", "*Por categoría*", ...catLines] : []),
@@ -596,6 +626,7 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
       sourceId: usable?.id ?? null,
       sourceName: usable?.name ?? null,
       installments: method === "CREDIT" ? p.installments : 1,
+      ...(p.tags?.length ? { tags: p.tags } : {}),
     });
   }
   if (pending.length === 0) return false;
@@ -903,6 +934,7 @@ async function savePending(ctx: Ctx, pending: PendingExpense[], receiptId?: stri
           date: p.date,
           ...(p.dollarType ? { dollarType: p.dollarType } : {}),
           ...(receiptId ? { receiptId } : {}),
+          ...(p.tags?.length ? { tags: p.tags } : {}),
         },
         ctx.source,
       );
@@ -989,6 +1021,7 @@ function describePending(p: PendingExpense) {
     lines.push(`🧾 ${p.installments} cuotas de ${formatMoney(p.amount / (p.installments ?? 1), p.currency)}`);
   }
   if (p.description) lines.push(`📝 ${p.description}`);
+  if (p.tags?.length) lines.push(`🏷️ ${p.tags.map((t) => `#${t}`).join(" ")}`);
   return lines.join("\n");
 }
 
@@ -1024,7 +1057,10 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
           : corrected?.intent === "editar" && proposed.length === 1 && Object.keys(corrected.changes).length > 0
             ? [{ ...proposed[0], ...corrected.changes }]
             : null;
-      if (fixed && (await proposeExpenses(ctx, fixed, "Corregido 👇", d.receiptId))) return true;
+      // Las etiquetas no pasan por la IA: siguen las que tenía, más las nuevas de la corrección
+      const tags = [...new Set([...pending.flatMap((p) => p.tags ?? []), ...hashtags(rawText)])];
+      const withTags = fixed?.map((f) => ({ ...f, ...(tags.length ? { tags } : {}) }));
+      if (withTags && (await proposeExpenses(ctx, withTags, "Corregido 👇", d.receiptId))) return true;
     }
     await ctx.out.buttons(`No entendí la corrección 🤔 ¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`, [
       { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
@@ -1045,7 +1081,13 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
 /** "cuánto gasté en comida este mes" → arma los filtros y manda el resumen */
 export async function handleQuery(
   ctx: Ctx,
-  q: { period: QueryPeriod; categoryName: string | null; sourceName: string | null; paymentMethod: PaymentMethodCode | null },
+  q: {
+    period: QueryPeriod;
+    categoryName: string | null;
+    sourceName: string | null;
+    paymentMethod: PaymentMethodCode | null;
+    text: string | null;
+  },
 ) {
   const today = todayISO();
   const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
@@ -1065,17 +1107,34 @@ export async function handleQuery(
     })(),
     mes: { title: "de este mes", filters: { month: today.slice(0, 7) } },
     mes_pasado: { title: "del mes pasado", filters: { month: shiftMonth(today.slice(0, 7), -1) } },
+    anio: { title: "de este año", filters: { from: `${today.slice(0, 4)}-01-01`, to: today } },
     todo: { title: "en total", filters: {} },
   };
 
   const { title, filters } = periods[q.period];
-  const extra = [category ? `en ${label(category)}` : "", source ? `con ${source.name}` : ""].filter(Boolean).join(" ");
-  await sendSummary(ctx, `${title}${extra ? " " + extra : ""}`, {
+  const extra = [
+    q.text ? `en «${q.text}»` : "",
+    category && !q.text ? `en ${label(category)}` : "",
+    source ? `con ${source.name}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const where = {
     ...filters,
     ...(category ? { categoryId: category.id } : {}),
     ...(source ? { paymentSourceId: source.id } : {}),
     ...(q.paymentMethod ? { paymentMethod: q.paymentMethod } : {}),
-  });
+  };
+  // Con categoría y texto ("netflix" → Suscripciones): si ningún gasto dice "netflix" (se cargó sin
+  // descripción), se muestra la categoría entera, aclarándolo
+  const fallback =
+    q.text && category
+      ? {
+          title: `${title} ${[`en ${label(category)}`, source ? `con ${source.name}` : ""].filter(Boolean).join(" ")}`,
+          note: `No encontré gastos que digan «${q.text}»: te muestro toda la categoría.`,
+        }
+      : undefined;
+  await sendSummary(ctx, `${title}${extra ? " " + extra : ""}`, where, q.text, fallback);
   return true;
 }
 

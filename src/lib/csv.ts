@@ -5,7 +5,7 @@ import type { ExpenseDTO } from "@/lib/services/expenses";
 // y el de cada categoría (en el navegador).
 export function expensesToCsv(expenses: ExpenseDTO[]) {
   const rows = [
-    ["Fecha", "Categoría", "Descripción", "Monto", "Moneda", "Medio de pago", "Tarjeta o billetera", "Cuota", "Origen"],
+    ["Fecha", "Categoría", "Descripción", "Monto", "Moneda", "Medio de pago", "Tarjeta o billetera", "Cuota", "Etiquetas", "Origen"],
     ...expenses.map((e) => [
       e.date,
       e.category.name,
@@ -16,6 +16,7 @@ export function expensesToCsv(expenses: ExpenseDTO[]) {
       paymentMethodLabels[e.paymentMethod],
       e.paymentSource?.name ?? "",
       e.installments > 1 ? `${e.installmentNumber}/${e.installments}` : "",
+      e.tags.map((t) => `#${t.name}`).join(" "),
       e.source === "WHATSAPP" ? "WhatsApp" : "Web",
     ]),
   ];

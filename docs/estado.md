@@ -103,10 +103,10 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 3. Los "Pendientes chicos" del final.
 4. ~~**Versión 1.0**~~ — hecha (2026-10-09, ver "Rumbo a la v1").
 6. **Ideas nuevas** (elegidas el 2026-10-09; sin APIs de bancos ni ingresos: Salt sigue siendo solo de
-   gastos; sin total de la casa). Orden, una etapa por commit: ~~versión 1.0.0~~ → pendientes de
-   seguridad (actualizar `next` y `sharp`, solo JPEG/PNG/WebP/HEIC en tickets, encabezados de
-   seguridad, login que tarda lo mismo) → vista anual en el Inicio → Chop busca por descripción →
-   etiquetas → atajos de teclado en la compu → notificaciones push → avisos a la familia. Al empezar
+   gastos; sin total de la casa). Orden, una etapa por commit: ~~versión 1.0.0~~ → ~~pendientes de
+   seguridad~~ (hecho, ver "Rumbo a la v1", punto 4) → ~~vista anual en el Inicio~~ (hecha, ver "Hecho: vista
+   anual") → ~~Chop busca por descripción~~ (hecha, ver "Hecho: Chop busca por descripción") →
+   ~~etiquetas~~ (hechas, ver "Hecho: etiquetas") → atajos de teclado en la compu → notificaciones push → avisos a la familia. Al empezar
    cada etapa se confirman sus decisiones. En la VM corre **otra app**: no tocar lo del sistema sin avisar.
 5. ~~**Rediseño de la vista en computadora**~~ — hecho (2026-10-09): **menú lateral** desde `lg:`,
    contenido hasta `max-w-7xl`, Inicio y Mi cuenta con más columnas; celular y tablet sin cambios.
@@ -150,12 +150,15 @@ total de la casa ni gastos compartidos), y va a correr en una **VM de Proxmox**.
    Se arreglaron dos cosas: **cambiar la contraseña cierra las sesiones abiertas** (`users.sessionVersion`,
    migración `sesiones`; va en la cookie y `dal.ts` la compara) y el **límite de intentos del login ya no se
    saltea con pedidos simultáneos** (`claimLoginAttempt` anota el intento antes de probar la contraseña;
-   probado: 30 a la vez → ninguno pasa; de a uno → 5 y bloqueo de 15 min). Quedaron sin tocar
-   (decisión de Felipe, es una app familiar): `sharp` 0.35.4 abre SVG y tiene una falla en librsvg (se
-   arregla con 0.35.5 y aceptando solo JPEG/PNG/WebP/HEIC); faltan headers de seguridad (X-Frame-Options,
-   nosniff, HSTS); el login tarda distinto si el email no existe; `next` 16.3.5 tiene un aviso en
-   `next/og` (Salt no lo usa; 16.3.8 lo arregla) y `pdfjs-dist` otro que no aplica (no usa el visor
-   con scripting).
+   probado: 30 a la vez → ninguno pasa; de a uno → 5 y bloqueo de 15 min). Lo que había quedado se
+   arregló el 2026-10-09: `next` 16.3.8 y `sharp` 0.35.5; los tickets solo aceptan JPEG, PNG,
+   WebP, HEIC y PDF, por el tipo y por el contenido (`isAllowedImage` en `receipts.ts` mira los primeros
+   bytes: un SVG con nombre .jpg no llega a sharp); encabezados de seguridad en `next.config.ts`
+   (X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy y HSTS solo en producción); y el
+   login compara contra un hash de mentira si el email no existe (`DUMMY_HASH` en `actions/auth.ts`:
+   ~76 ms en los dos casos). Ojo: el `sharp` que viene armado no decodifica HEIC (solo AVIF); WhatsApp
+   y Safari del iPhone las pasan a JPEG antes (Chrome no: ahí una HEIC da "no pude abrir la imagen",
+   como antes). Sigue el aviso de `pdfjs-dist`, que no aplica (no usa el visor con scripting).
 5. ~~Versión 1.0.0~~ — hecha (2026-10-09): `package.json` en 1.0.0 y etiqueta `v1.0.0` en git, con Salt ya
    andando en la VM. Lo que sigue sale como 1.1, 1.2... (plan en "Ideas nuevas").
 
@@ -240,6 +243,60 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      migración): Resumen → Categorías iniciales, con el mismo diálogo que las categorías (`CategoryDialog`
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
+
+## Hecho: etiquetas (2026-10-09)
+
+Marcan gastos de varias categorías ("#Bariloche", "#CumpleJuli") para ver cuánto costó todo junto.
+Decisiones de Felipe: sección propia **Etiquetas** en el menú; en cuotas, la etiqueta va a **todas** las
+cuotas; por Chop con `#`; un gasto puede tener **varias**.
+- Base: tabla `tags` (por cuenta; `key` = el nombre sin tildes y en minúsculas, único) y la relación con
+  `expenses` (`_ExpenseTags`, migración `etiquetas`). Borrar una etiqueta no borra gastos.
+- Se escriben como hashtags: una palabra (letras, números, `_` o `-`), hasta 30, máximo 10 por gasto
+  (`src/lib/tags.ts`, sin base: lo usan el navegador y el servidor). Servicio: `src/lib/services/tags.ts`.
+- Web: campo **Etiquetas** en el formulario de gasto (`components/tag-input.tsx`: chips, se agregan con
+  espacio, Enter o coma; sugiere las de la cuenta, que llegan por `FormDefaultsProvider`; lo que quedó
+  escrito sin confirmar también se guarda). Se ven en la lista de gastos; el buscador entiende
+  `#bariloche` (etiqueta exacta; sin `#` también la encuentra como texto): ese es el "filtro" de Gastos.
+  El CSV suma la columna Etiquetas. Pantallas `/etiquetas` (total en pesos, cantidad, el último gasto
+  que ya pasó) y `/etiquetas/<id>` (total, fechas, por categoría y los gastos; renombrar y borrar).
+- Chop: `#etiqueta` en el mensaje, en la foto de un ticket o en una corrección va a todos los gastos
+  propuestos (`withTags` en `bot.ts`; ni el pre-filtro ni la IA las interpretan) y se ven en la
+  confirmación (🏷️). "¿cuánto gasté en #bariloche?" usa la búsqueda por descripción.
+- De paso: en tablet, la fila del menú se desliza de costado si no entran todos los links (cuenta de
+  admin), así el botón de la cuenta siempre se ve.
+
+## Hecho: Chop busca por descripción (2026-10-09)
+
+"¿Cuánto gasté en Coto?", "¿cuánto llevo en Starbucks este año?": lo que no es categoría, tarjeta ni medio
+se busca en los gastos con el mismo buscador de la web (`searchExpenses`: descripción, categoría, tarjeta;
+sin tildes y con errores de tipeo, "havana" encuentra "Havanna"). Decisiones de Felipe: sin período, **este
+mes**; contesta total, cantidad, por categoría y los últimos 5; si no encuentra nada, lo dice y pasa el link
+al buscador de la web (`APP_URL/gastos?q=...`).
+- Sin IA (`parseQuickQuery` en `quick-parser.ts`): las palabras que no reconoce pasan a ser el texto, si
+  van juntas y son hasta 3 ("mercado libre"). No se toman como texto las que hablan de otra cosa
+  (`NOT_TEXT`: fijos, cuotas, "pasado", dólares...) ni números: esas las decide la IA.
+- Con IA: la consulta suma `"texto"` (+~30 tokens al prompt principal).
+- Período nuevo **"este año"** (`anio`, del 1 de enero a hoy), con y sin IA.
+- **Palabras clave**: si la categoría se nombró por una palabra clave y no por su nombre ("starbucks" →
+  Café), se busca esa palabra dentro de la categoría; si ningún gasto la dice (cargado "netflix 5000" sin
+  descripción), muestra la categoría entera y lo aclara. Buscando un comercio no se muestran presupuestos.
+- Banco: 42 casos (5 nuevos), 41/42; el que falló ("sacá el presupuesto de salidas") fue una respuesta
+  suelta mal formada de la IA: repetido 6 veces, 6 bien. ~US$ 0,001 por mensaje, igual que antes.
+
+## Hecho: vista anual (2026-10-09)
+
+En el Inicio, el selector **Mes | Año** (`/dashboard?vista=anio&anio=2026`). Decisiones de Felipe: en el
+mismo Inicio (no pantalla aparte), barras apiladas por mes con las 6 categorías más grandes del año + "Otras"
+y debajo la tabla categoría × mes, e indicadores: total del año (contra el mismo período del año anterior,
+como el mensual), promedio por mes, mes más caro y la categoría que más creció (en plata, no en %).
+Datos en `getYear` (`src/lib/services/stats.ts`); pantalla en `dashboard/year-view.tsx` y `YearChart` en
+`dashboard/charts.tsx` (la vista mensual pasó a `MonthView`, en la misma página). Decisiones por defecto:
+- Las **cuotas de meses que todavía no llegaron** se ven más claras en el gráfico y en gris en la tabla,
+  pero no se suman al total del año, al promedio ni al mes más caro.
+- El **promedio** cuenta desde el primer mes con gastos ("Desde octubre"), no siempre 12.
+- Colores: la paleta validada de los gráficos (`--chart-*`), fija por categoría en todo el año; leyenda
+  siempre y tabla con todos los números (3 colores tienen poco contraste en claro). En el celular, el eje
+  usa una letra por mes; la tabla se desliza de costado y en compus de 1366 entra entera.
 
 ## Hecho: fotos de tickets (2026-09-29)
 

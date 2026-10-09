@@ -2,6 +2,7 @@ import { z } from "zod";
 import { dollarTypeLabels, parseAmount, paymentMethodLabels, todayISO, type DollarTypeCode } from "@/lib/format";
 import { ACCENT_COLORS, HOME_PAGES } from "@/lib/preferences";
 import { parseKeywords } from "@/lib/text";
+import { parseTagList } from "@/lib/tags";
 import { CATEGORY_ICON_INFO, CATEGORY_ICON_KEYS } from "@/lib/category-icon-data";
 
 // Reglas de validación compartidas. Se usan en el servidor antes de tocar la base,
@@ -132,6 +133,13 @@ export const expenseSchema = z.object({
       }
       return n;
     }),
+  // Etiquetas, escritas como en el campo del formulario: "#bariloche viaje" (sin el campo, no se tocan)
+  tags: z
+    .string()
+    .max(400)
+    .optional()
+    .transform((v) => (v === undefined ? undefined : parseTagList(v)))
+    .refine((v) => !v || v.length <= 10, "Máximo 10 etiquetas"),
   // Ticket adjunto (foto o PDF, ya guardado: readReceiptForForm). "" = sin ticket.
   receiptId: z
     .string()

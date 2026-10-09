@@ -23,6 +23,7 @@ export type PendingExpense = {
   sourceName?: string | null;
   installments?: number;
   dollarType?: DollarTypeCode; // en USD sin crédito: a qué dólar se pagó (se pregunta antes de guardar)
+  tags?: string[]; // etiquetas ("#bariloche" en el mensaje)
 };
 
 /** Una opción de una confirmación: botón "act:<id>" y palabras que valen escritas */

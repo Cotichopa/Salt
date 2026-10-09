@@ -27,6 +27,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { useFormDefaults } from "@/components/form-defaults";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { useReadOnly } from "@/components/read-only";
+import { TagInput } from "@/components/tag-input";
 
 export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
@@ -353,6 +354,22 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
             onChange={(e) => setDescription(e.target.value)}
           />
           <FieldError errors={errors?.description} />
+        </div>
+
+        <div className="flex flex-col gap-2 sm:col-span-2">
+          <Label htmlFor="tags">Etiquetas (opcional)</Label>
+          <TagInput
+            id="tags"
+            name="tags"
+            initial={expense?.tags.map((t) => t.name) ?? []}
+            suggestions={defaults.tags}
+            disabled={readOnly}
+          />
+          <p className="text-xs text-muted-foreground">
+            Para juntar gastos de varias categorías: un viaje, un cumpleaños, una obra.
+            {(expense?.installments ?? 1) > 1 && " Van a todas las cuotas de la compra."}
+          </p>
+          <FieldError errors={errors?.tags} />
         </div>
 
         {state?.message && !state.ok && <p className="text-sm text-destructive sm:col-span-2">{state.message}</p>}

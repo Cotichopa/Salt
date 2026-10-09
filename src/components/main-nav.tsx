@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartColumnIcon, CreditCardIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
+import { ChartColumnIcon, CreditCardIcon, HashIcon, HouseIcon, MenuIcon, ReceiptIcon, RepeatIcon, TagIcon, UsersIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -23,6 +23,7 @@ const LINKS = [
   { href: "/gastos", label: "Gastos", icon: ReceiptIcon },
   { href: "/fijos", label: "Fijos", icon: RepeatIcon },
   { href: "/categorias", label: "Categorías", icon: TagIcon },
+  { href: "/etiquetas", label: "Etiquetas", icon: HashIcon },
   { href: "/medios", label: "Tarjetas", icon: CreditCardIcon },
 ];
 const ADMIN_LINKS = [{ href: "/admin/usuarios", label: "Cuentas", icon: UsersIcon }];
@@ -81,14 +82,16 @@ export function DesktopNav({ role }: { role: string }) {
   const links = linksFor(role);
 
   return (
-    <nav className="hidden flex-1 gap-1 md:flex lg:hidden">
+    // Si no entran todos (cuenta de admin en una tablet angosta), la fila se desliza de costado y los
+    // botones de la derecha (tema y cuenta) siempre se ven
+    <nav className="hidden min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] md:flex lg:hidden">
       {links.map(({ href, label }) => (
         <Link
           key={href}
           href={href}
           aria-current={isActive(pathname, href) ? "page" : undefined}
           className={cn(
-            "rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
+            "shrink-0 rounded-md px-3 py-1.5 text-sm whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground",
             isActive(pathname, href) && "bg-muted font-medium text-foreground",
           )}
         >

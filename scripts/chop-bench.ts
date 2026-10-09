@@ -53,6 +53,12 @@ const CASES: [string, Expected, ParsedExpense[]?][] = [
   ["cuánto llevo en la visa", "consultar"],
   ["cómo vengo con el presupuesto de salidas", "consultar"],
   ["gastos del mes pasado", "consultar"],
+  // Consultar por comercio o descripción (lo que no es categoría ni tarjeta)
+  ["cuánto gasté en coto", "consultar"],
+  ["cuánto llevo en starbucks este año", "consultar"],
+  ["cuánto gasté en la anónima el mes pasado", "consultar"],
+  ["cuánto gasté en coto y en el día este mes", "consultar"],
+  ["cuánta plata se me fue en mercado libre este año?", "consultar"],
   // Borrar y editar
   ["borrá el último", "eliminar"],
   ["eliminá el gasto de la nafta", "eliminar"],

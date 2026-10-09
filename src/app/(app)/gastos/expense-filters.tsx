@@ -92,7 +92,7 @@ export function ExpenseFilters({
           <Input
             value={text}
             onChange={(e) => search(e.target.value)}
-            placeholder="Buscar: super, 15.000, 24/09, septiembre..."
+            placeholder="Buscar: super, 15.000, 24/09, septiembre, #viaje..."
             className="h-10 pr-9 pl-9"
             aria-label="Buscar gastos en todo el historial"
           />

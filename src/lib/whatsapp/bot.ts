@@ -5,7 +5,8 @@ import { downloadMedia, sendText } from "@/lib/whatsapp/client";
 import { isTranscriptionEnabled, transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
-import { isAiEnabled, parseMessage } from "@/lib/whatsapp/ai-parser";
+import { isAiEnabled, parseMessage, type Parsed } from "@/lib/whatsapp/ai-parser";
+import { hashtags, withoutHashtags } from "@/lib/tags";
 import { ReceiptError } from "@/lib/services/receipts";
 import { readReceipt, receiptKind, type ReceiptKind } from "@/lib/services/receipt-reading";
 import { listPaymentSources } from "@/lib/services/payment-sources";
@@ -123,7 +124,9 @@ export async function processReceipt(ctx: Ctx, file: Buffer, kind: ReceiptKind, 
         : "No pude abrir esa imagen 😕 Probá sacarle otra foto al ticket.",
     );
   }
-  const { parsed, receiptId } = reading;
+  const { receiptId } = reading;
+  // "#bariloche" en el texto del ticket: las etiquetas van al gasto
+  const parsed = withTags(reading.parsed, caption ?? "");
   if (!parsed) {
     return showMainMenu(
       ctx,
@@ -192,7 +195,7 @@ ${notices}` : hello;
 
     // Mensajes simples ("nafta 15000", "cuánto gasté este mes"): se entienden con reglas, sin gastar tokens.
     // Si es la respuesta a una pregunta de Chop y se entiende sola, es un mensaje nuevo.
-    const quick = parseWithoutAI(input.text, categories, sources);
+    const quick = withTags(parseWithoutAI(input.text, categories, sources), input.text);
     if (followup && !quick) {
       const combined = `${followup.text}\n(Chop preguntó: "${followup.question}". Respuesta: ${input.text})`;
       if (followup.section) {
@@ -214,6 +217,30 @@ ${notices}` : hello;
   await showMainMenu(ctx, "No te entendí 🤔 Probá escribiendo el gasto (ej: _\"super 12500 debito\"_) o elegí una opción:");
 }
 
+/**
+ * Las etiquetas del mensaje ("café 3000 #bariloche") no las interpreta ni el pre-filtro ni la IA: se
+ * sacan del texto acá. Al cargar, van a todos los gastos (y se limpian de la descripción, si la IA las
+ * copió ahí); al consultar sin otro texto, "¿cuánto gasté en #bariloche?" busca esa etiqueta.
+ */
+function withTags(parsed: Parsed | null, text: string): Parsed | null {
+  const tags = hashtags(text);
+  if (!parsed || tags.length === 0) return parsed;
+  if (parsed.intent === "cargar") {
+    return {
+      ...parsed,
+      expenses: parsed.expenses.map((e) => ({
+        ...e,
+        tags,
+        description: e.description ? withoutHashtags(e.description) || null : null,
+      })),
+    };
+  }
+  if (parsed.intent === "consultar" && (!parsed.text || !parsed.text.startsWith("#"))) {
+    return { ...parsed, text: tags.map((t) => `#${t}`).join(" ") };
+  }
+  return parsed;
+}
+
 /** Le pregunta a la IA qué quiso decir la persona y actúa en consecuencia */
 async function askAI(
   ctx: Ctx,
@@ -221,10 +248,13 @@ async function askAI(
   categories: Awaited<ReturnType<typeof listCategories>>,
   sources: Awaited<ReturnType<typeof listPaymentSources>>,
 ) {
-  const parsed = await parseMessage(text, {
-    categories: categories.map((c) => c.name),
-    sources: sources.map((s) => s.name),
-  });
+  const parsed = withTags(
+    await parseMessage(text, {
+      categories: categories.map((c) => c.name),
+      sources: sources.map((s) => s.name),
+    }),
+    text,
+  );
 
   if (parsed === null) {
     // La IA no respondió (caída, sin crédito, sin internet) o respondió algo inválido: que se entienda

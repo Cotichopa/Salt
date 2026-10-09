@@ -220,6 +220,11 @@ export function parseQuick(text: string, categories: Category[], sources: Source
       i += amount.used;
       continue;
     }
+    // Etiqueta ("#bariloche"): la toma bot.ts del mensaje; acá no cuenta
+    if (words[i].startsWith("#")) {
+      i++;
+      continue;
+    }
     if (DESCRIPTION.has(words[i])) {
       if (description !== null) return null; // dos descripciones: mejor que decida la IA
       let end = i + 1;
@@ -306,6 +311,9 @@ const PERIODS: [string, QueryPeriod][] = [
   ["este mes", "mes"],
   ["el mes", "mes"],
   ["mes", "mes"],
+  ["este ano", "anio"],
+  ["el ano", "anio"],
+  ["ano", "anio"],
   ["en total", "todo"],
   ["total", "todo"],
   ["hoy", "hoy"],
@@ -313,7 +321,16 @@ const PERIODS: [string, QueryPeriod][] = [
 ];
 
 // Relleno propio de las consultas ("cómo vengo CON EL PRESUPUESTO de salidas")
-const QUERY_FILLER = new Set(["presupuesto", "gastado", "y", "a", "al", "hasta", "ahora", "va", "este", "esta"]);
+const QUERY_FILLER = new Set(["presupuesto", "gastado", "y", "a", "al", "hasta", "ahora", "va", "este", "esta", "plata", "guita"]);
+
+// Palabras desconocidas que NO se buscan en la descripción: hablan de otra cosa ("gastos fijos", "el año
+// pasado", "en cuotas") y es mejor que decida la IA
+const NOT_TEXT = new Set([
+  "fijo", "fijos", "presupuestos", "tarjeta", "tarjetas", "resumen", "categoria", "categorias",
+  "cuota", "cuotas", "pasado", "pasada", "anterior", "dolares", "pesos", "que", "cuanto", "como",
+]);
+// Lo que se busca en la descripción tiene que ser corto ("coto", "mercado libre", "la anonima")
+const MAX_TEXT_WORDS = 3;
 
 /** "cuánto gasté en comida este mes" → consulta de Comida del mes. null si no es una consulta clara. */
 export function parseQuickQuery(text: string, categories: Category[], sources: Source[]): Parsed | null {
@@ -324,8 +341,16 @@ export function parseQuickQuery(text: string, categories: Category[], sources: S
   const start = QUERY_STARTS.find((q) => joined === q || joined.startsWith(`${q} `));
   if (!start) return null;
 
+  const { raw } = splitWords(text);
   const dict = buildDictionary(categories, sources);
   const found = { periods: new Set<QueryPeriod>(), categories: new Set<string>(), sources: [] as Source[], methods: new Set<PaymentMethodCode>() };
+  // Palabras que no son período, categoría, tarjeta ni medio: lo que busca en la descripción ("coto").
+  // Tienen que ir juntas: "en coto y en día" (dos cosas) lo decide la IA
+  const textWords: string[] = [];
+  let textEnd = -1;
+  // Si la categoría se nombró por una palabra clave ("starbucks" → Café), esa palabra también se busca:
+  // pregunta por Starbucks, no por todo Café (handleQuery muestra la categoría entera si no hay ninguno)
+  let keyword: string | null = null;
 
   for (let i = start.split(" ").length; i < words.length; ) {
     // Período (puede ser de varias palabras)
@@ -340,11 +365,23 @@ export function parseQuickQuery(text: string, categories: Category[], sources: S
       continue;
     }
     const hit = lookup(dict, words, i);
-    // Palabra desconocida, un monto o una moneda ("en dólares"): mejor que decida la IA
-    if (!hit || !["category", "source", "method", "skip"].includes(hit.meaning.type)) return null;
+    if (!hit) {
+      const word = words[i];
+      // Un número ("en 2025") tampoco es un comercio; una etiqueta ("#viaje2026") sí se busca
+      if (NOT_TEXT.has(word) || (/\d/.test(word) && !word.startsWith("#"))) return null;
+      if (textWords.length > 0 && textEnd !== i) return null;
+      textWords.push(raw[i]);
+      if (textWords.length > MAX_TEXT_WORDS) return null;
+      textEnd = ++i;
+      continue;
+    }
+    // Un monto o una moneda ("en dólares"): mejor que decida la IA
+    if (!["category", "source", "method", "skip"].includes(hit.meaning.type)) return null;
     const { meaning, used } = hit;
-    if (meaning.type === "category") found.categories.add(meaning.name);
-    else if (meaning.type === "source") found.sources.push(meaning.source);
+    if (meaning.type === "category") {
+      found.categories.add(meaning.name);
+      if (words.slice(i, i + used).join(" ") !== normalize(meaning.name)) keyword = raw.slice(i, i + used).join(" ");
+    } else if (meaning.type === "source") found.sources.push(meaning.source);
     else if (meaning.type === "method") found.methods.add(meaning.method);
     i += used;
   }
@@ -359,5 +396,6 @@ export function parseQuickQuery(text: string, categories: Category[], sources: S
     categoryName: [...found.categories][0] ?? null,
     sourceName: found.sources[0]?.name ?? null,
     paymentMethod: [...found.methods][0] ?? null,
+    text: textWords.length > 0 ? textWords.join(" ") : keyword,
   };
 }

@@ -1,5 +1,6 @@
 import { currencyLabels, parseAmount, paymentMethodLabels } from "@/lib/format";
 import { normalize } from "@/lib/text";
+import { tagKey } from "@/lib/tags";
 
 // Buscador de gastos. Se usa en el servidor (pantalla de Gastos) y en el navegador
 // (lista de cada categoría), así los dos buscan igual. Cada palabra que escribís tiene
@@ -8,6 +9,8 @@ import { normalize } from "@/lib/text";
 //     y aceptando un error de tipeo ("carefour" encuentra "Carrefour")
 //   · monto → "15000", "15.000" o "$15.000,50" encuentra ese monto exacto
 //   · fecha → "24/09" o "24/09/2025" (ese día), "septiembre" o "septiembre 2025" (ese mes)
+//   · etiqueta → "#bariloche" encuentra los gastos con esa etiqueta (exacta); sin "#", "bariloche"
+//     también la encuentra, como cualquier otro texto
 
 type Searchable = {
   amount: number;
@@ -17,6 +20,7 @@ type Searchable = {
   date: string; // "YYYY-MM-DD"
   category: { name: string };
   paymentSource: { name: string } | null;
+  tags?: { name: string }[];
 };
 
 const MONTHS = [
@@ -62,6 +66,13 @@ export function parseSearch(query: string): Condition[] {
   for (let i = 0; i < terms.length; i++) {
     const term = terms[i];
 
+    // Etiqueta: "#bariloche" (la etiqueta entera, sin errores de tipeo)
+    if (term.startsWith("#") && term.length > 1) {
+      const key = tagKey(term);
+      conditions.push((e) => (e.tags ?? []).some((t) => tagKey(t.name) === key));
+      continue;
+    }
+
     // Fecha: "24/09" o "24/09/2025"
     const date = term.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/);
     if (date) {
@@ -103,6 +114,7 @@ function wordsOf(e: Searchable) {
     e.paymentSource?.name,
     currencyLabels[e.currency],
     e.currency,
+    ...(e.tags ?? []).map((t) => t.name),
   ]
     .filter(Boolean)
     .join(" ");

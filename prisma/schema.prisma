@@ -87,6 +87,7 @@ model User {
   passwordResets PasswordReset[]
   receipts       Receipt[]
   merchants      Merchant[]
+  tags           Tag[]
   passkeys       Passkey[]
   chopMessages   ChopMessage[]
 
@@ -114,6 +115,24 @@ model Receipt {
 // Comercios conocidos por su CUIT: a qué categoría van sus tickets. Se aprende al guardar un gasto
 // con foto de ticket (o al cambiarle la categoría después), y el próximo ticket de ese comercio
 // viene con esa categoría puesta. Cada cuenta tiene los suyos (las categorías son por cuenta).
+// Etiquetas: marcan gastos de varias categorías ("Bariloche", "Cumple de Juli") para ver cuánto costó
+// todo junto. Son por cuenta, como las categorías. Se escriben como hashtags: una palabra, sin espacios.
+// Un gasto puede tener varias; en una compra en cuotas, todas las cuotas llevan las mismas.
+model Tag {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String // como se escribió la primera vez, sin "#": "Bariloche"
+  key       String // para comparar: sin tildes y en minúsculas ("bariloche"); no se repite en la cuenta
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Borrar una etiqueta no borra sus gastos: solo se les saca
+  expenses Expense[] @relation("ExpenseTags")
+
+  @@unique([userId, key])
+  @@map("tags")
+}
+
 model Merchant {
   id         String   @id @default(cuid())
   userId     String
@@ -287,6 +306,7 @@ model Expense {
   // Si se borra el gasto fijo, los gastos que ya cargó quedan (como cargados a mano)
   recurring     RecurringExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   receipt       Receipt?          @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  tags          Tag[]             @relation("ExpenseTags")
 
   @@unique([recurringId, date]) // un fijo no puede cargar dos gastos el mismo día
   @@index([userId, date])

@@ -35,10 +35,11 @@ const aiSchema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("cargar"), gastos: z.array(expenseShape) }),
   z.object({
     accion: z.literal("consultar"),
-    periodo: z.enum(["hoy", "ayer", "semana", "mes", "mes_pasado", "todo"]).optional(),
+    periodo: z.enum(["hoy", "ayer", "semana", "mes", "mes_pasado", "anio", "todo"]).optional(),
     cat: z.string().optional(),
     tarjeta: z.string().optional(),
     medio: method.optional(),
+    texto: z.string().optional(),
   }),
   z.object({ accion: z.literal("eliminar"), ...target }),
   z.object({ accion: z.literal("editar"), ...target, cambios: expenseShape.partial().optional() }),
@@ -64,9 +65,10 @@ export type ParsedExpense = {
   installments: number;
   date: string;
   description: string | null;
+  tags?: string[]; // etiquetas escritas con "#" en el mensaje ("café 3000 #bariloche"): las pone bot.ts
 };
 
-export type QueryPeriod = "hoy" | "ayer" | "semana" | "mes" | "mes_pasado" | "todo";
+export type QueryPeriod = "hoy" | "ayer" | "semana" | "mes" | "mes_pasado" | "anio" | "todo";
 export type Target = { last: boolean; text: string; amount: number };
 
 export type Parsed =
@@ -77,6 +79,8 @@ export type Parsed =
       categoryName: string | null;
       sourceName: string | null;
       paymentMethod: PaymentMethodCode | null;
+      // Lo que busca en la descripción cuando no es categoría ni tarjeta ("cuánto gasté en Coto")
+      text: string | null;
     }
   | { intent: "eliminar"; target: Target }
   | { intent: "editar"; target: Target; changes: Partial<ParsedExpense> }
@@ -90,7 +94,7 @@ export function isAiEnabled() {
 
 const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Interpretás un mensaje de WhatsApp en español rioplatense y respondés SOLO un objeto JSON, sin texto alrededor, con una de estas formas (omití las claves que no apliquen):
 {"accion":"cargar","gastos":[{"monto":120000,"usd":true,"cat":"Ropa","medio":"CREDIT","tarjeta":"Visa","cuotas":6,"fecha":"2026-01-31","desc":"zapatillas"}]}
-{"accion":"consultar","periodo":"hoy|ayer|semana|mes|mes_pasado|todo","cat":"Comida","tarjeta":"Visa","medio":"CASH"}
+{"accion":"consultar","periodo":"hoy|ayer|semana|mes|mes_pasado|anio|todo","cat":"Comida","tarjeta":"Visa","medio":"CASH","texto":"coto"}
 {"accion":"eliminar","ultimo":true}
 {"accion":"editar","texto":"pizza","monto":18000,"cambios":{"monto":20000,"medio":"CASH"}}
 {"accion":"otro","pregunta":"¿Querés cargar un gasto de $15.000? ¿En qué categoría?"}
@@ -98,7 +102,7 @@ const SYSTEM = `Sos Chop, el asistente de gastos de la app Salt (Argentina). Int
 
 ACCIONES
 - cargar: uno o más gastos ("nafta 15000", "ayer 3 lucas en el chino", "chop cargame 5000 de nafta").
-- consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes".
+- consultar: pregunta por gastos o presupuestos ("cuánto gasté en comida", "qué gasté ayer", "cuánto llevo en la visa", "cómo vengo"). Sin período o si pregunta por presupuesto: "mes". texto: un comercio o cosa que no es categoría, tarjeta ni medio ("cuánto gasté en coto" → texto "coto").
 - eliminar / editar: un gasto ya cargado ("borrá el último", "eliminá la nafta", "el último eran 20000", "pasá la pizza a efectivo"). ultimo=true SOLO si dice "el último"; si no, texto = palabras que lo identifican y monto = el que tenía, si lo dice. En cambios, solo lo que cambia (mismas claves que un gasto).
 - seccion: otra parte de la app. cual: "fijo" (gastos fijos mensuales: "netflix aumentó a 12000", "agregá un fijo de alquiler"), "tarjeta" (resumen, pago, vencimientos o días de una tarjeta, agregar tarjeta o billetera: "cuánto me viene en la visa", "pagué la visa"), "presupuesto" (poner o sacar el de una categoría: "poneme 200 mil en comida"), "categoria" (crear, renombrar o borrar una). "Cuánto gasté con la visa" y "cómo vengo con el presupuesto" son consultar.
 - otro: saludos, gracias o mensajes confusos. Si parece un gasto incompleto, poné una pregunta corta; si no tiene que ver con gastos, omitila.
@@ -289,6 +293,7 @@ function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {
         categoryName: p.cat || null,
         sourceName: p.tarjeta || null,
         paymentMethod: p.medio ?? null,
+        text: p.texto?.trim() || null,
       };
     case "eliminar":
     case "editar": {
