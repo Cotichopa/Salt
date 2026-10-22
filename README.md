@@ -458,7 +458,9 @@ cd ~/Salt
 deploy/install.sh salt.estilo.com.ar
 ```
 Pide el nombre, el email y la contraseña del admin, y hace, en orden:
-1. Instala Node 22 (del repositorio de NodeSource), PostgreSQL 17 y lo necesario para compilar Whisper (apt).
+1. Instala PostgreSQL 17 y lo necesario para compilar Whisper (apt), y Node 24 con **nvm** (en `~/.nvm`
+   del usuario de la app; los servicios lo cargan con `deploy/with-node.sh`, porque systemd no lee
+   `~/.bashrc`).
 2. Crea la base `salt` con una contraseña al azar (solo se puede entrar desde la VM).
 3. Arma el `.env` desde `.env.example`: base, `AUTH_SECRET`, token de verificación de WhatsApp,
    `APP_URL` y Whisper. Si ya hay un `.env`, no lo pisa.
@@ -476,6 +478,9 @@ Al final dice lo que falta a mano: los secretos que no van por git (WhatsApp, An
 
 **Actualizar** después de cambios: `deploy/update.sh` (copia de la base, `git pull`, `npm ci`,
 migraciones, build y reinicio).
+
+**Cambiar de versión de Node** (con el usuario de la app): `nvm install 24 && nvm alias default 24` y
+después `deploy/update.sh` (reinstala las dependencias con el Node nuevo). No hay que tocar systemd.
 
 **Para mirar:** `systemctl status salt` · `journalctl -u salt -n 50` (log de la app) ·
 `sudo systemctl restart salt`.

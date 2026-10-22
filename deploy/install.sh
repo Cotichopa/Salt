@@ -19,6 +19,8 @@ APP_USER="$(id -un)"
 WHISPER_DIR="$HOME/whisper/whisper.cpp"
 DB_NAME=salt
 DB_USER=salt
+NODE_VERSION=24
+NVM_VERSION=0.40.8
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
@@ -29,21 +31,23 @@ grep -q '^VERSION_ID="13"' /etc/os-release 2>/dev/null || fail "Este instalador 
 cd "$APP_DIR"
 
 # ---------------------------------------------------------------------------------------------
-step "1/7 Programas del sistema (apt)"
-# nodejs: Node 22 del repositorio de NodeSource. El de Debian 13 (20.19) ya no recibe parches de
-# seguridad (2026-10-21). El nodejs de NodeSource trae su npm: el paquete npm de Debian choca con él.
+step "1/7 Programas del sistema (apt) y Node (nvm)"
 # postgresql: Debian 13 trae la 17, la misma que en desarrollo (los backups van y vienen).
 # cmake, build-essential y git: para compilar Whisper.
 sudo apt-get update
-sudo apt-get install -y curl
-if ! apt-cache policy nodejs | grep -q 'deb.nodesource.com/node_22.x'; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
-  sudo bash /tmp/nodesource_setup.sh
+sudo apt-get install -y postgresql postgresql-client git cmake build-essential curl openssl
+# Node: con nvm, en ~/.nvm del usuario de la app (no el de Debian), así se actualiza con
+# `nvm install` sin tocar el sistema. Los servicios lo usan a través de deploy/with-node.sh.
+if [ ! -s "$HOME/.nvm/nvm.sh" ]; then
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v$NVM_VERSION/install.sh" | bash
 fi
-if dpkg -s npm >/dev/null 2>&1; then sudo apt-get remove -y npm; fi
-sudo apt-get install -y nodejs postgresql postgresql-client git cmake build-essential openssl
-node -e 'process.exit(Number(process.versions.node.split(".")[0])>=22?0:1)' ||
-  fail "Node $(node --version) es viejo: Salt usa Node 22 (NodeSource)."
+export NVM_DIR="$HOME/.nvm"
+set +eu # nvm.sh no soporta -e ni -u
+. "$NVM_DIR/nvm.sh"
+nvm install "$NODE_VERSION" && nvm alias default "$NODE_VERSION"
+set -eu
+node -e "process.exit(Number(process.versions.node.split('.')[0])>=$NODE_VERSION?0:1)" ||
+  fail "No se pudo instalar Node $NODE_VERSION con nvm."
 sudo systemctl enable --now postgresql
 
 # ---------------------------------------------------------------------------------------------

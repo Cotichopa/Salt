@@ -11,4 +11,4 @@ Wants=network-online.target
 Type=oneshot
 User=__USER__
 WorkingDirectory=__APP_DIR__
-ExecStart=__APP_DIR__/node_modules/.bin/tsx --conditions=react-server scripts/daily-check.ts
+ExecStart=__APP_DIR__/deploy/with-node.sh node_modules/.bin/tsx --conditions=react-server scripts/daily-check.ts

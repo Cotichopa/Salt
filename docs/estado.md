@@ -82,13 +82,18 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 
 ## Pendiente
 
-0. ~~Actualizar Node en el servidor~~ — hecho (2026-10-22): la VM pasó de Node 20.19 (Debian) a
-   **22.23.4** (NodeSource), con `npm ci` y build; Salt anda. `deploy/install.sh` ya instala Node 22 de
-   NodeSource (sin el `npm` de Debian, que choca). También: `npm audit fix` (Prisma 7.10.1) y `next`
-   16.4.2 (fallas críticas de la 16.3.8), ya en el servidor con `deploy/update.sh` (probado por Felipe:
-   web, huella y Chop). Ojo: la compu con Docker sigue con Node 20.20. Queda pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir
-   un PDF malicioso), probando los PDF por Chop y en el visor. El aviso de `braces` se deja: viene de
-   eslint y `shadcn` (solo desarrollo) y arreglarlo rompe `shadcn`.
+0. **Node 24 con nvm en el servidor** (parches de seguridad de Node del 2026-10-21). Ya hecho y en la
+   VM (probado por Felipe: web, huella y Chop): Node 22.23.4 de NodeSource, `npm audit fix` (Prisma
+   7.10.1) y `next` 16.4.2 (fallas críticas de la 16.3.8). Después Felipe decidió **Node 24 con nvm**
+   (para actualizarlo él con `nvm install`, como su papá): `install.sh` instala nvm y Node 24, y los
+   servicios y `update.sh` cargan Node con `deploy/with-node.sh` (systemd no lee `~/.bashrc`). Probado
+   acá con 24.22.1 (build, pantallas, fotos, PDF, ffmpeg). En `package.json`, `allowScripts` (npm 11, el
+   de Node 24) tiene versiones fijas: al subir Prisma o ffmpeg-static, `npm install-scripts approve`.
+   - **Falta en la VM:** instalar nvm y Node 24, actualizar y sacar el `nodejs` de NodeSource.
+   - Queda pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir un PDF malicioso), probando los PDF
+     por Chop y en el visor. El aviso de `braces` se deja: viene de eslint y `shadcn` (solo desarrollo)
+     y arreglarlo rompe `shadcn`.
+   - La compu con Docker sigue con Node 20.20 (nvm) y ya no tiene `~/whisper`.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
@@ -143,8 +148,8 @@ total de la casa ni gastos compartidos; **cambió el 2026-10-09**: se van a hace
    Probado acá: restaurada en una base aparte, mismas filas en las 16 tablas. El timer lo instala
    `deploy/install.sh`.
 3. ~~Script de instalación~~ — hecho (pedido de Felipe): `deploy/install.sh <dominio>` deja la VM
-   andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (trae Node 20.19 —desde el 2026-10-22 se usa Node 22 de NodeSource— y
-   PostgreSQL 17 sin repos extra), VM solo para Salt, y el script instala todo con sudo. El HTTPS lo
+   andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (PostgreSQL 17 sin repos extra;
+   Node, desde el 2026-10-22, con nvm), VM solo para Salt, y el script instala todo con sudo. El HTTPS lo
    hace el **nginx de la casa** (otra máquina; cambió el 2026-10-09, antes era Caddy en la VM): la app
    escucha en `0.0.0.0:3001` y el nginx le pasa `salt.estilo.ar` a `192.168.2.25:3001`. Volver a correr
    el install pisaba el `salt.service` con `127.0.0.1` y el nginx daba 502; ahora la plantilla ya dice

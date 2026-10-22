@@ -3,6 +3,8 @@
 # migraciones, compilación y reinicio. Se corre desde la carpeta del proyecto:
 #   deploy/update.sh
 # (Lo mismo que la "rutina después de cada git pull" de docs/estado.md, más el backup y el build.)
+# Node es el de nvm (versión "default"); deploy/with-node.sh lo carga. Para cambiar de versión:
+#   nvm install 24 && nvm alias default 24 && deploy/update.sh
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,21 +17,21 @@ scripts/backup-db.sh
 step "2/6 Código nuevo"
 git pull --ff-only
 
-step "3/6 Dependencias y migraciones"
-npm ci
-npx prisma migrate deploy
+step "3/6 Dependencias y migraciones (Node $(deploy/with-node.sh node --version))"
+deploy/with-node.sh npm ci
+deploy/with-node.sh npx prisma migrate deploy
 
 step "4/6 Compilación"
-npm run build
+deploy/with-node.sh npm run build
 
-step "5/6 Timers de systemd (los nuevos que haya traído el pull)"
-# Mismas plantillas que deploy/install.sh. Ojo: si este paso es nuevo, la primera vez no corre (bash
-# sigue con la versión vieja de este archivo): correr update.sh una segunda vez.
-for unit in salt-check; do
+step "5/6 Servicios y timers de systemd (por si el pull trajo cambios)"
+# Mismas plantillas que deploy/install.sh. Ojo: si el pull cambia este archivo, bash sigue con la
+# versión vieja: hacer `git pull` antes de correrlo (o correrlo dos veces).
+for unit in salt salt-check; do
   sed -e "s|__USER__|$(whoami)|g" -e "s|__APP_DIR__|$(pwd)|g" "deploy/$unit.service" |
     sudo tee "/etc/systemd/system/$unit.service" > /dev/null
-  sudo cp "deploy/$unit.timer" "/etc/systemd/system/$unit.timer"
 done
+sudo cp deploy/salt-check.timer /etc/systemd/system/salt-check.timer
 sudo systemctl daemon-reload
 sudo systemctl enable --now salt-check.timer
 
