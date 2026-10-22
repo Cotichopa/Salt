@@ -82,6 +82,8 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 
 ## Pendiente
 
+0. **Urgente: actualizar Node en el servidor** (parches de seguridad del 2026-10-21; el servidor tiene
+   Node 20, que ya no los recibe). Pasos en `docs/actualizar-node.md`, para cuando haya acceso a la VM.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
