@@ -84,8 +84,10 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 
 0. ~~Actualizar Node en el servidor~~ — hecho (2026-10-22): la VM pasó de Node 20.19 (Debian) a
    **22.23.4** (NodeSource), con `npm ci` y build; Salt anda. `deploy/install.sh` ya instala Node 22 de
-   NodeSource (sin el `npm` de Debian, que choca). Queda: `npm audit fix` y pasar `pdfjs-dist` a la 6
-   (aviso de JavaScript al abrir un PDF malicioso), probando los PDF por Chop y en el visor.
+   NodeSource (sin el `npm` de Debian, que choca). También: `npm audit fix` (Prisma 7.10.1) y `next`
+   16.4.2 (fallas críticas de la 16.3.8). Queda pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir
+   un PDF malicioso), probando los PDF por Chop y en el visor. El aviso de `braces` se deja: viene de
+   eslint y `shadcn` (solo desarrollo) y arreglarlo rompe `shadcn`.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
