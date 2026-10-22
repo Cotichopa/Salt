@@ -48,3 +48,6 @@ Passphrase
 
 # mediciones de Chop (npm run chop:bench)
 /scripts/.bench/
+
+# configuración de npm de cada compu (va en ~/.npmrc, no en el proyecto)
+.npmrc
