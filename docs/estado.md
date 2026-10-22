@@ -82,18 +82,23 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 
 ## Pendiente
 
-0. **Node 24 con nvm en el servidor** (parches de seguridad de Node del 2026-10-21). Ya hecho y en la
-   VM (probado por Felipe: web, huella y Chop): Node 22.23.4 de NodeSource, `npm audit fix` (Prisma
-   7.10.1) y `next` 16.4.2 (fallas críticas de la 16.3.8). Después Felipe decidió **Node 24 con nvm**
-   (para actualizarlo él con `nvm install`, como su papá): `install.sh` instala nvm y Node 24, y los
-   servicios y `update.sh` cargan Node con `deploy/with-node.sh` (systemd no lee `~/.bashrc`). Probado
-   acá con 24.22.1 (build, pantallas, fotos, PDF, ffmpeg). En `package.json`, `allowScripts` (npm 11, el
-   de Node 24) tiene versiones fijas: al subir Prisma o ffmpeg-static, `npm install-scripts approve`.
-   - **Falta en la VM:** instalar nvm y Node 24, actualizar y sacar el `nodejs` de NodeSource.
-   - Queda pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir un PDF malicioso), probando los PDF
-     por Chop y en el visor. El aviso de `braces` se deja: viene de eslint y `shadcn` (solo desarrollo)
-     y arreglarlo rompe `shadcn`.
-   - La compu con Docker sigue con Node 20.20 (nvm) y ya no tiene `~/whisper`.
+0. ~~Node 24 con nvm en el servidor~~ — hecho (2026-10-22, por los parches de seguridad de Node del
+   2026-10-21). La VM corre **Node 24.22.1 con nvm** (decisión de Felipe: lo actualiza él con
+   `nvm install`, como su papá), más `npm audit fix` (Prisma 7.10.1) y `next` 16.4.2 (fallas críticas
+   de la 16.3.8). Probado por Felipe: web, huella y Chop.
+   - Los servicios y `update.sh` cargan Node con `deploy/with-node.sh` (systemd no lee `~/.bashrc`);
+     `install.sh` instala nvm 0.40.8 y Node 24. Actualizar Node: `nvm install 24 && nvm alias default
+     24 && deploy/update.sh` (README).
+   - Se sacó el `nodejs` de NodeSource y su repositorio. **No instalar `nodejs` con apt en la VM**
+     (volvería `/usr/bin/node`; Salt no lo usaría, pero confunde). Quedaron paquetes `node-*` y algunas
+     librerías que `apt autoremove` borraría: no correrlo sin el papá de Felipe (la otra app de la VM).
+   - En `package.json`, `allowScripts` (npm 11, el de Node 24) tiene versiones fijas: al subir Prisma o
+     ffmpeg-static, `npm install-scripts approve`.
+   - **Queda:** pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir un PDF malicioso), probando los
+     PDF por Chop y en el visor. El aviso de `braces` se deja: viene de eslint y `shadcn` (solo
+     desarrollo) y arreglarlo rompe `shadcn`.
+   - La compu con Docker sigue con Node 20.20 (nvm; la 24.22.1 está instalada pero no es la de
+     siempre) y ya no tiene `~/whisper`.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
