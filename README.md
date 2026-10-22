@@ -458,7 +458,7 @@ cd ~/Salt
 deploy/install.sh salt.estilo.com.ar
 ```
 Pide el nombre, el email y la contraseña del admin, y hace, en orden:
-1. Instala Node 20, PostgreSQL 17 y lo necesario para compilar Whisper (apt).
+1. Instala Node 22 (del repositorio de NodeSource), PostgreSQL 17 y lo necesario para compilar Whisper (apt).
 2. Crea la base `salt` con una contraseña al azar (solo se puede entrar desde la VM).
 3. Arma el `.env` desde `.env.example`: base, `AUTH_SECRET`, token de verificación de WhatsApp,
    `APP_URL` y Whisper. Si ya hay un `.env`, no lo pisa.

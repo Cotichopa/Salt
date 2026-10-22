@@ -82,8 +82,10 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
 
 ## Pendiente
 
-0. **Urgente: actualizar Node en el servidor** (parches de seguridad del 2026-10-21; el servidor tiene
-   Node 20, que ya no los recibe). Pasos en `docs/actualizar-node.md`, para cuando haya acceso a la VM.
+0. ~~Actualizar Node en el servidor~~ — hecho (2026-10-22): la VM pasó de Node 20.19 (Debian) a
+   **22.23.4** (NodeSource), con `npm ci` y build; Salt anda. `deploy/install.sh` ya instala Node 22 de
+   NodeSource (sin el `npm` de Debian, que choca). Queda: `npm audit fix` y pasar `pdfjs-dist` a la 6
+   (aviso de JavaScript al abrir un PDF malicioso), probando los PDF por Chop y en el visor.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
@@ -138,7 +140,7 @@ total de la casa ni gastos compartidos; **cambió el 2026-10-09**: se van a hace
    Probado acá: restaurada en una base aparte, mismas filas en las 16 tablas. El timer lo instala
    `deploy/install.sh`.
 3. ~~Script de instalación~~ — hecho (pedido de Felipe): `deploy/install.sh <dominio>` deja la VM
-   andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (trae Node 20.19 y
+   andando (README, "Instalar en el servidor"). Decisiones: **Debian 13** (trae Node 20.19 —desde el 2026-10-22 se usa Node 22 de NodeSource— y
    PostgreSQL 17 sin repos extra), VM solo para Salt, y el script instala todo con sudo. El HTTPS lo
    hace el **nginx de la casa** (otra máquina; cambió el 2026-10-09, antes era Caddy en la VM): la app
    escucha en `0.0.0.0:3001` y el nginx le pasa `salt.estilo.ar` a `192.168.2.25:3001`. Volver a correr

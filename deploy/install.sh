@@ -30,13 +30,20 @@ cd "$APP_DIR"
 
 # ---------------------------------------------------------------------------------------------
 step "1/7 Programas del sistema (apt)"
-# nodejs/npm: Debian 13 trae Node 20.19, lo justo para Prisma 7 (pide 20.19 o más).
+# nodejs: Node 22 del repositorio de NodeSource. El de Debian 13 (20.19) ya no recibe parches de
+# seguridad (2026-10-21). El nodejs de NodeSource trae su npm: el paquete npm de Debian choca con él.
 # postgresql: Debian 13 trae la 17, la misma que en desarrollo (los backups van y vienen).
 # cmake, build-essential y git: para compilar Whisper.
 sudo apt-get update
-sudo apt-get install -y nodejs npm postgresql postgresql-client git cmake build-essential curl openssl
-node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>20||(a===20&&b>=19)?0:1)' ||
-  fail "Node $(node --version) es viejo: Prisma pide 20.19 o más."
+sudo apt-get install -y curl
+if ! apt-cache policy nodejs | grep -q 'deb.nodesource.com/node_22.x'; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+  sudo bash /tmp/nodesource_setup.sh
+fi
+if dpkg -s npm >/dev/null 2>&1; then sudo apt-get remove -y npm; fi
+sudo apt-get install -y nodejs postgresql postgresql-client git cmake build-essential openssl
+node -e 'process.exit(Number(process.versions.node.split(".")[0])>=22?0:1)' ||
+  fail "Node $(node --version) es viejo: Salt usa Node 22 (NodeSource)."
 sudo systemctl enable --now postgresql
 
 # ---------------------------------------------------------------------------------------------
