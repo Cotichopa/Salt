@@ -97,8 +97,9 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
    - **Queda:** pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir un PDF malicioso), probando los
      PDF por Chop y en el visor. El aviso de `braces` se deja: viene de eslint y `shadcn` (solo
      desarrollo) y arreglarlo rompe `shadcn`.
-   - La compu con Docker sigue con Node 20.20 (nvm; la 24.22.1 está instalada pero no es la de
-     siempre) y ya no tiene `~/whisper`.
+   - La compu con Docker también pasó a Node 24.22.1 (nvm, `default`), con Claude Code y n8n
+     reinstalados ahí. La 20 queda instalada (el puente de Claude con Chrome apunta a ella). Ya no
+     tiene `~/whisper`.
 1. **Subir al servidor** — lo hacen Felipe y su papá. Ver "Antes de desplegar" en el README; lo más
    importante: backups de la base, dominio con HTTPS, número real de WhatsApp. En el servidor también
    hay que compilar whisper.cpp (ver "Audios con Whisper local").
@@ -639,6 +640,20 @@ todo; base ya se equivocaba palabras).
   `GET graph.facebook.com/<versión>/debug_token?input_token=<T>&access_token=<T>`: `expires_at: 0` =
   permanente; "Session has expired" = vencido (el 2026-09-28 la compu con Docker tenía uno temporal
   vencido y se reemplazó por el permanente). Al cambiar el `.env` hay que reiniciar `npm run dev`.
+  **No generar tokens temporales**: el `.env` ya tiene uno permanente (usuario del sistema "Felo").
+- **Si Chop no recibe nada y el token está bien: el número se desregistró** (pasó el 2026-10-29; antes
+  Felipe lo "arreglaba" generando un token temporal, porque entrar a "Configuración de la API" en Meta
+  vuelve a registrar el número de prueba, y eso confundía). Señales: `GET /<PHONE_NUMBER_ID>?fields=status`
+  da `PENDING` (tiene que ser `CONNECTED`) y mandar un mensaje da `(#133010) Account not registered`.
+  Como el número no recibe, Meta no llama al webhook y en Salt **no aparece ningún error**. Arreglo:
+  `POST /<PHONE_NUMBER_ID>/register` con `{"messaging_product":"whatsapp","pin":"<PIN>"}` y el token
+  permanente (el PIN de 6 dígitos lo tiene Felipe guardado; no va en el repo). Se desconoce por qué se
+  desregistra. Para descartar el resto (todo estaba bien ese día): el webhook de la app (`GET
+  /<APP_ID>/subscriptions` con `APP_ID|APP_SECRET`) apunta a `https://salt.estilo.ar/api/whatsapp`;
+  la cuenta de WhatsApp (WABA `1583246332723255`) tiene la app Salt en `/subscribed_apps`; y el
+  servidor acepta un POST vacío firmado con `WHATSAPP_APP_SECRET` (`{"object":"whatsapp_business_account",
+  "entry":[]}` → 200). Probar el envío a un número que no está en la lista de prueba no le manda nada a
+  nadie: con el número bien registrado da `131030` (no está en la lista).
 - Después de una migración nueva hay que **reiniciar `npm run dev`**: si no, sigue con el cliente
   de Prisma viejo en memoria y la tabla nueva da `undefined`.
 - **Docker sin sudo (compu sin Docker):** el usuario `laptop` no está en el grupo `docker`, así que
