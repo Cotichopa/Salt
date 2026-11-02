@@ -652,6 +652,10 @@ todo; base ya se equivocaba palabras).
   lista de destinatarios (máximo 5, con código) se vació con el cambio de número: en esta fecha solo
   estaba `+54 341 747 5887`. En el `.env` de la compu con Docker, el Phone Number ID sigue siendo el viejo
   (solo el servidor atiende a Chop).
+- **Botón "Bienvenida"** en Cuentas (admin y superadmin; 2026-11-02): manda por WhatsApp la plantilla
+  `salt_bienvenida` (`es_AR`, con el nombre), porque fuera de las 24 horas Meta solo acepta plantillas
+  (`sendWelcome` en `client.ts`, `welcomeUser` en `actions/users.ts`). Las plantillas son de la cuenta de
+  mensajes: si cambia el número de prueba y la cuenta, hay que crearla de nuevo y esperar la aprobación.
 - **Si Chop deja de contestar, mirar primero qué dice Meta** (token permanente; ninguna de estas
   pruebas le llega a nadie si el destino no está en la lista):
   - `GET /<PHONE_NUMBER_ID>?fields=status` da `PENDING` y enviar da `(#133010) Account not registered`:

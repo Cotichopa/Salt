@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { inviteUser, resetUserPassword, toggleUserActive, updateUserPhone } from "@/lib/actions/users";
+import { inviteUser, resetUserPassword, toggleUserActive, updateUserPhone, welcomeUser } from "@/lib/actions/users";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldError } from "@/components/field-error";
@@ -73,6 +73,23 @@ export function UserActions({
           }
         >
           Invitar
+        </Button>
+      )}
+      {/* La bienvenida de Chop por WhatsApp: también a uno mismo, para probarla */}
+      {active && phone && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              const result = await welcomeUser(userId);
+              if (result?.ok) toast.success(result.message);
+              else toast.error(result?.message ?? "No se pudo mandar");
+            })
+          }
+        >
+          Bienvenida
         </Button>
       )}
       {!isSelf && (

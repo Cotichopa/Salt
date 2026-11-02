@@ -14,14 +14,16 @@ export function toRecipient(phone: string) {
   return phone.replace(/^549(\d{10})$/, "54$1");
 }
 
-async function send(to: string, payload: Record<string, unknown>) {
+export type SendResult = { ok: true } | { ok: false; error: string };
+
+async function send(to: string, payload: Record<string, unknown>): Promise<SendResult> {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
   // Sin credenciales (por ejemplo, en pruebas locales) mostramos el mensaje en la terminal
   if (!token || !phoneNumberId) {
     console.log(`[whatsapp:simulado] → ${to}:`, JSON.stringify(payload));
-    return;
+    return { ok: true };
   }
 
   const post = (recipient: string) =>
@@ -43,7 +45,9 @@ async function send(to: string, payload: Record<string, unknown>) {
   if (!res.ok) {
     // No cortamos la app: dejamos el error en la terminal para poder revisarlo
     console.error(`[whatsapp] error ${res.status} enviando a ${to}:`, error);
+    return { ok: false, error };
   }
+  return { ok: true };
 }
 
 // Un audio de WhatsApp de 1 minuto pesa unos 100 KB y una foto, menos de 1 MB (WhatsApp las achica):
@@ -73,8 +77,23 @@ export async function downloadMedia(mediaId: string): Promise<Buffer | null> {
   }
 }
 
-export function sendText(to: string, body: string) {
-  return send(to, { type: "text", text: { body, preview_url: false } });
+export async function sendText(to: string, body: string) {
+  await send(to, { type: "text", text: { body, preview_url: false } });
+}
+
+/**
+ * Bienvenida a alguien que todavía no le escribió a Chop. Fuera de las 24 horas desde su último
+ * mensaje, Meta solo deja mandar plantillas aprobadas: esta se creó en la cuenta de mensajes de Meta.
+ */
+export function sendWelcome(to: string, name: string) {
+  return send(to, {
+    type: "template",
+    template: {
+      name: "salt_bienvenida",
+      language: { code: "es_AR" },
+      components: [{ type: "body", parameters: [{ type: "text", text: name }] }],
+    },
+  });
 }
 
 // Límites de WhatsApp: si un texto se pasa, Meta rechaza el mensaje entero
@@ -83,8 +102,8 @@ const cut = (text: string, max: number) => (text.length > max ? `${text.slice(0,
 export type Button = { id: string; title: string };
 
 /** Mensaje con hasta 3 botones (título de 20 caracteres como máximo) */
-export function sendButtons(to: string, body: string, buttons: Button[]) {
-  return send(to, {
+export async function sendButtons(to: string, body: string, buttons: Button[]) {
+  await send(to, {
     type: "interactive",
     interactive: {
       type: "button",
@@ -99,8 +118,8 @@ export function sendButtons(to: string, body: string, buttons: Button[]) {
 export type ListRow = { id: string; title: string; description?: string };
 
 /** Mensaje con un botón que abre una lista de hasta 10 opciones */
-export function sendList(to: string, body: string, buttonText: string, rows: ListRow[], sectionTitle = "Opciones") {
-  return send(to, {
+export async function sendList(to: string, body: string, buttonText: string, rows: ListRow[], sectionTitle = "Opciones") {
+  await send(to, {
     type: "interactive",
     interactive: {
       type: "list",

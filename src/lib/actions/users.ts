@@ -13,6 +13,7 @@ import { createUserSchema, resetPasswordSchema, updatePhoneSchema, type FormStat
 import { Prisma } from "@/generated/prisma/client";
 import { MailError } from "@/lib/mail";
 import { sendInvitation } from "@/lib/services/password-reset";
+import { sendWelcome } from "@/lib/whatsapp/client";
 
 // Acciones de administración de cuentas. Cada una verifica que quien la llama sea ADMIN:
 // esconder el botón en la pantalla no alcanza, porque una acción se puede invocar a mano.
@@ -73,6 +74,21 @@ export async function inviteUser(userId: string): Promise<FormState> {
     throw e;
   }
   return { ok: true, message: "Invitación enviada" };
+}
+
+/** Manda la bienvenida de Chop por WhatsApp: sale recién cuando el admin toca el botón */
+export async function welcomeUser(userId: string): Promise<FormState> {
+  const admin = await requireAdminEditor();
+  if (!(await canManage(admin, userId))) return { message: NOT_ALLOWED };
+  const user = await db.user.findUnique({ where: { id: String(userId) }, select: { name: true, phone: true, active: true } });
+  if (!user?.active) return { message: "Esa cuenta está desactivada" };
+  if (!user.phone) return { message: "Esa cuenta no tiene WhatsApp cargado" };
+  const result = await sendWelcome(user.phone, user.name);
+  if (result.ok) return { ok: true, message: `Meta aceptó la bienvenida para ${user.name}` };
+  // 131030 = no está en la lista del número de prueba; 132001 = plantilla inexistente o sin aprobar
+  if (result.error.includes("131030")) return { message: "Ese número no está en la lista de destinatarios de Meta" };
+  if (result.error.includes("132001")) return { message: "La plantilla de bienvenida todavía no está aprobada en Meta" };
+  return { message: "WhatsApp no aceptó el mensaje. El detalle quedó en los errores del servidor." };
 }
 
 export async function toggleUserActive(userId: string) {
