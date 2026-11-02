@@ -640,20 +640,38 @@ todo; base ya se equivocaba palabras).
   `GET graph.facebook.com/<versión>/debug_token?input_token=<T>&access_token=<T>`: `expires_at: 0` =
   permanente; "Session has expired" = vencido (el 2026-09-28 la compu con Docker tenía uno temporal
   vencido y se reemplazó por el permanente). Al cambiar el `.env` hay que reiniciar `npm run dev`.
-  **No generar tokens temporales**: el `.env` ya tiene uno permanente (usuario del sistema "Felo").
-- **Si Chop no recibe nada y el token está bien: el número se desregistró** (pasó el 2026-10-29; antes
-  Felipe lo "arreglaba" generando un token temporal, porque entrar a "Configuración de la API" en Meta
-  vuelve a registrar el número de prueba, y eso confundía). Señales: `GET /<PHONE_NUMBER_ID>?fields=status`
-  da `PENDING` (tiene que ser `CONNECTED`) y mandar un mensaje da `(#133010) Account not registered`.
-  Como el número no recibe, Meta no llama al webhook y en Salt **no aparece ningún error**. Arreglo:
-  `POST /<PHONE_NUMBER_ID>/register` con `{"messaging_product":"whatsapp","pin":"<PIN>"}` y el token
-  permanente (el PIN de 6 dígitos lo tiene Felipe guardado; no va en el repo). Se desconoce por qué se
-  desregistra. Para descartar el resto (todo estaba bien ese día): el webhook de la app (`GET
-  /<APP_ID>/subscriptions` con `APP_ID|APP_SECRET`) apunta a `https://salt.estilo.ar/api/whatsapp`;
-  la cuenta de WhatsApp (WABA `1583246332723255`) tiene la app Salt en `/subscribed_apps`; y el
-  servidor acepta un POST vacío firmado con `WHATSAPP_APP_SECRET` (`{"object":"whatsapp_business_account",
-  "entry":[]}` → 200). Probar el envío a un número que no está en la lista de prueba no le manda nada a
-  nadie: con el número bien registrado da `131030` (no está en la lista).
+  **No generar tokens temporales**: el `.env` lleva uno permanente del usuario del sistema "Felo".
+- **Chop sigue en un número de prueba de Meta, y se rompió dos veces** (2026-10-29 y 2026-11-02). Felipe
+  decidió seguir con él: el de la oficina tiene WhatsApp con clientes, y pasarlo a la API le haría
+  perder ese WhatsApp (todo le llegaría a Chop). Lo definitivo es un número real en un chip aparte; no
+  tiene lista de destinatarios. Los primeros 1.000 mensajes por mes son gratis, conviene cargar un medio
+  de pago (lo cobra Meta, no la línea). No se sabe por qué falla el número de prueba.
+- **Número actual (desde 2026-11-02):** `+1 555 156-6349`, Phone Number ID `1476231748898138`, cuenta de
+  mensajes `2169406230648985`, cuenta de WhatsApp `1833553151289847`. Meta ahora separa las dos: para
+  suscribir la app se usa la de **mensajes**; con la de WhatsApp, esas consultas dan "not supported". La
+  lista de destinatarios (máximo 5, con código) se vació con el cambio de número: en esta fecha solo
+  estaba `+54 341 747 5887`. En el `.env` de la compu con Docker, el Phone Number ID sigue siendo el viejo
+  (solo el servidor atiende a Chop).
+- **Si Chop deja de contestar, mirar primero qué dice Meta** (token permanente; ninguna de estas
+  pruebas le llega a nadie si el destino no está en la lista):
+  - `GET /<PHONE_NUMBER_ID>?fields=status` da `PENDING` y enviar da `(#133010) Account not registered`:
+    **número sin registrar**. Arreglo: `POST /<PHONE_NUMBER_ID>/register` con
+    `{"messaging_product":"whatsapp","pin":"<PIN>"}` (el PIN lo tiene Felipe; no va en el repo). Un número
+    sin registrar no recibe, Meta no llama al webhook y en Salt **no aparece ningún error**.
+  - `Object with ID ... does not exist` (subcódigo 33): **número o cuenta nuevos, o token sin acceso**. Pasó
+    cuando Meta dejó de asociar el número viejo y Felipe apretó el botón de Salt → WhatsApp, que creó
+    número y cuentas nuevos. Arreglo, en orden: en Configuración de la API, leer los ID nuevos; en
+    Usuarios del sistema → Felo, asignarle la cuenta de mensajes y la de WhatsApp con acceso total;
+    **generar un token nuevo** (con el anterior se podía leer pero no cambiar; asignar no alcanzó);
+    registrar el número; `POST /<CUENTA_DE_MENSAJES>/subscribed_apps`; cargar los destinatarios; en el
+    `.env` del servidor, token e ID; `sudo systemctl restart salt`. Avisar a todos el número nuevo.
+    Al generar el token nuevo, el anterior empezó a dar `190 Authentication Error`.
+  - Enviar da `131030` (no está en la lista): **está bien**, número y token andan.
+  - Para descartar lo demás: el webhook (`GET /<APP_ID>/subscriptions` con `APP_ID|APP_SECRET`) tiene que
+    apuntar a `https://salt.estilo.ar/api/whatsapp`, y el servidor tiene que aceptar un POST vacío firmado
+    con `WHATSAPP_APP_SECRET` (`{"object":"whatsapp_business_account","entry":[]}` → 200).
+  - El botón "Enviar mensaje" de la pantalla de Meta no usa el token de Salt: su error no dice nada de Chop.
+    Por qué antes "lo arreglaba" un token temporal no se confirmó.
 - Después de una migración nueva hay que **reiniciar `npm run dev`**: si no, sigue con el cliente
   de Prisma viejo en memoria y la tabla nueva da `undefined`.
 - **Docker sin sudo (compu sin Docker):** el usuario `laptop` no está en el grupo `docker`, así que
