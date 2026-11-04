@@ -30,7 +30,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
     listPaymentSources(user.id),
     findExpenses(user.id, params, today),
   ]);
-  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon, color }) => ({ id, name, emoji, icon, color }));
 
   // Paginado: el total y la cantidad son de TODO lo filtrado; la lista, solo de esta página
   const pageCount = Math.max(1, Math.ceil(expenses.length / PAGE_SIZE));

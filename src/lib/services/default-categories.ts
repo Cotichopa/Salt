@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
+import { leastUsedColor } from "@/lib/category-colors";
 import type { CategoryInput } from "@/lib/validators";
 import { CategoryError } from "@/lib/services/categories";
 
@@ -19,7 +20,9 @@ export async function saveDefaultCategory(id: string | null, data: CategoryInput
     if (id) await db.defaultCategory.update({ where: { id }, data });
     else {
       const last = await db.defaultCategory.aggregate({ _max: { position: true } });
-      await db.defaultCategory.create({ data: { ...data, position: (last._max.position ?? -1) + 1 } });
+      const used = await db.defaultCategory.findMany({ select: { color: true } });
+      const color = data.color ?? leastUsedColor(used.map((c) => c.color));
+      await db.defaultCategory.create({ data: { ...data, color, position: (last._max.position ?? -1) + 1 } });
     }
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new CategoryError(DUPLICATE);

@@ -64,7 +64,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
     getBudget(user.id, id),
     listMerchants(user.id, id),
   ]);
-  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon, color }) => ({ id, name, emoji, icon, color }));
   const href = (p: CategoryPeriod, c: CurrencyCode) => `/categorias/${id}?periodo=${p}&moneda=${c}`;
 
   return (
@@ -76,7 +76,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
 
       {/* Encabezado: ícono, nombre, editar y eliminar */}
       <div className="flex items-center gap-3">
-        <CategoryIcon icon={category.icon} emoji={category.emoji} size="lg" />
+        <CategoryIcon color={category.color} icon={category.icon} emoji={category.emoji} size="lg" />
         <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold">{category.name}</h1>
         <div className="flex items-center gap-1">
           <Editable>

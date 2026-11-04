@@ -67,7 +67,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 font-medium">
-                      <CategoryIcon icon={e.category.icon} emoji={e.category.emoji} size="sm" />
+                      <CategoryIcon color={e.category.color} icon={e.category.icon} emoji={e.category.emoji} size="sm" />
                       <span className="truncate">{e.category.name}</span>
                       {e.source === "WHATSAPP" && (
                         <MessageCircleIcon className="size-3.5 shrink-0 text-green-600" aria-label="Cargado por WhatsApp" />
@@ -120,7 +120,7 @@ export function ExpenseList({ expenses, categories, sources, today, emptyMessage
                   <TableCell className="whitespace-nowrap text-muted-foreground">{formatDay(isoToDate(e.date))}</TableCell>
                   <TableCell className="font-medium whitespace-nowrap">
                     <span className="flex items-center gap-2">
-                      <CategoryIcon icon={e.category.icon} emoji={e.category.emoji} size="sm" />
+                      <CategoryIcon color={e.category.color} icon={e.category.icon} emoji={e.category.emoji} size="sm" />
                       {e.category.name}
                       {e.source === "WHATSAPP" && (
                         <MessageCircleIcon className="size-3.5 text-green-600" aria-label="Cargado por WhatsApp" />

@@ -26,7 +26,7 @@ export type RecurringDTO = {
   dollarType: DollarTypeCode | null;
   paymentMethod: PaymentMethodCode;
   paymentSource: { id: string; name: string } | null;
-  category: { id: string; name: string; emoji: string | null; icon: string | null };
+  category: { id: string; name: string; emoji: string | null; icon: string | null; color: string };
   day: number;
   active: boolean;
   nextAmount: number | null; // monto nuevo que empieza a valer en nextAmountFrom
@@ -88,7 +88,7 @@ const recurringSelect = {
   nextAmount: true,
   nextAmountFrom: true,
   paymentSource: { select: { id: true, name: true } },
-  category: { select: { id: true, name: true, emoji: true, icon: true } },
+  category: { select: { id: true, name: true, emoji: true, icon: true, color: true } },
 } satisfies Prisma.RecurringExpenseSelect;
 
 export async function listRecurring(userId: string, today = todayISO()): Promise<RecurringDTO[]> {

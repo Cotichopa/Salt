@@ -7,7 +7,7 @@ import { MerchantDialog } from "./merchant-dialog";
 // Tarjeta "Comercios" de la pantalla de una categoría: los comercios (por el CUIT de sus tickets)
 // cuyos tickets Chop pone en esta categoría. Solo aparece si hay alguno.
 
-type Option = { id: string; name: string; emoji: string | null; icon: string | null };
+type Option = { id: string; name: string; emoji: string | null; icon: string | null; color?: string | null };
 
 export function MerchantsCard({
   merchants,

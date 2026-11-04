@@ -30,13 +30,14 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Color principal elegido en "Cuenta" (sin sesión, el de siempre)
   const user = await getCurrentUser();
-  const accent = user ? (await getPreferences(user.id)).accentColor : "neutral";
+  const preferences = user ? await getPreferences(user.id) : null;
 
   return (
     // suppressHydrationWarning: next-themes escribe la clase del tema antes de que React arranque
     <html
       lang="es"
-      data-accent={accent}
+      data-accent={preferences?.accentColor ?? "neutral"}
+      data-style={preferences?.colorStyle ?? "sober"}
       suppressHydrationWarning
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >

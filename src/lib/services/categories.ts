@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { leastUsedColor } from "@/lib/category-colors";
 import { monthRange, todayISO } from "@/lib/format";
 import { normalize } from "@/lib/text";
 import type { CategoryInput } from "@/lib/validators";
@@ -17,7 +18,7 @@ export async function ensureDefaultCategories(userId: string) {
   if (count > 0) return;
   const defaults = await db.defaultCategory.findMany({
     orderBy: { position: "asc" },
-    select: { name: true, icon: true, emoji: true, keywords: true },
+    select: { name: true, icon: true, emoji: true, color: true, keywords: true },
   });
   await db.category.createMany({ data: defaults.map((c) => ({ ...c, userId })) });
 }
@@ -27,7 +28,7 @@ export function listCategories(userId: string) {
   return db.category.findMany({
     where: { userId },
     orderBy: { name: "asc" },
-    select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
+    select: { id: true, name: true, emoji: true, icon: true, color: true, keywords: true, userId: true },
   });
 }
 
@@ -35,7 +36,7 @@ export function listCategories(userId: string) {
 export function getCategory(userId: string, id: string) {
   return db.category.findFirst({
     where: { id, userId },
-    select: { id: true, name: true, emoji: true, icon: true, keywords: true, userId: true },
+    select: { id: true, name: true, emoji: true, icon: true, color: true, keywords: true, userId: true },
   });
 }
 
@@ -94,7 +95,8 @@ async function assertNameFree(userId: string, name: string, exceptId?: string) {
 
 export async function createCategory(userId: string, input: CategoryInput) {
   await assertNameFree(userId, input.name);
-  return db.category.create({ data: { ...input, userId } });
+  const used = await db.category.findMany({ where: { userId }, select: { color: true } });
+  return db.category.create({ data: { ...input, color: input.color ?? leastUsedColor(used.map((c) => c.color)), userId } });
 }
 
 export async function updateCategory(userId: string, id: string, input: CategoryInput) {

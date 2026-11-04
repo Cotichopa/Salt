@@ -35,7 +35,7 @@ export default async function RecurringPage() {
     listCategories(user.id),
     listPaymentSources(user.id),
   ]);
-  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon, color }) => ({ id, name, emoji, icon, color }));
 
   // Cuánto suman por mes los que están activos (pesos y dólares por separado)
   const active = recurring.filter((r) => r.active);
@@ -77,7 +77,7 @@ export default async function RecurringPage() {
           )}
           {recurring.map((r) => (
             <div key={r.id} className="flex items-center gap-3 py-2">
-              <CategoryIcon icon={r.category.icon} emoji={r.category.emoji} size="sm" />
+              <CategoryIcon color={r.category.color} icon={r.category.icon} emoji={r.category.emoji} size="sm" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{r.description}</span>

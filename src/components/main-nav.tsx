@@ -61,6 +61,7 @@ export function MobileNav({ role }: { role: string }) {
               key={href}
               href={href}
               onClick={() => setOpen(false)}
+              data-nav
               aria-current={isActive(pathname, href) ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2.5 text-base text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -90,6 +91,7 @@ export function DesktopNav({ role }: { role: string }) {
         <Link
           key={href}
           href={href}
+          data-nav
           aria-current={isActive(pathname, href) ? "page" : undefined}
           className={cn(
             "shrink-0 rounded-md px-3 py-1.5 text-sm whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -122,6 +124,7 @@ export function SideNav({ role, name, email }: { role: string; name: string; ema
           <Link
             key={href}
             href={href}
+            data-nav
             aria-current={isActive(pathname, href) ? "page" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

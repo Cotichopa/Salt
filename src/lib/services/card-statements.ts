@@ -174,7 +174,7 @@ export async function installmentPurchases(userId: string, cardId: string, from:
       currency: true,
       date: true,
       description: true,
-      category: { select: { name: true, emoji: true, icon: true } },
+      category: { select: { name: true, emoji: true, icon: true, color: true } },
     },
   });
 

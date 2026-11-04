@@ -25,6 +25,7 @@ export type BudgetStatus = {
   name: string;
   icon: string | null;
   emoji: string | null;
+  color: string;
   amount: number;
   spent: number;
   remaining: number; // negativo si te pasaste
@@ -47,7 +48,7 @@ async function spentByCategory(userId: string, categoryIds: string[], month: str
 export async function listBudgets(userId: string, month = todayISO().slice(0, 7)): Promise<BudgetStatus[]> {
   const budgets = await db.budget.findMany({
     where: { userId },
-    select: { amount: true, category: { select: { id: true, name: true, icon: true, emoji: true } } },
+    select: { amount: true, category: { select: { id: true, name: true, icon: true, emoji: true, color: true } } },
   });
   if (budgets.length === 0) return [];
   const spent = await spentByCategory(
@@ -64,6 +65,7 @@ export async function listBudgets(userId: string, month = todayISO().slice(0, 7)
         name: b.category.name,
         icon: b.category.icon,
         emoji: b.category.emoji,
+        color: b.category.color,
         amount,
         spent: s,
         remaining: amount - s,

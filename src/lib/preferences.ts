@@ -23,9 +23,19 @@ export const ACCENT_COLORS = {
   green: { label: "Verde", swatch: "#15803d" },
   violet: { label: "Violeta", swatch: "#7c3aed" },
   orange: { label: "Naranja", swatch: "#c2410c" },
+  pink: { label: "Rosa", swatch: "#be185d" },
+  teal: { label: "Turquesa", swatch: "#0f766e" },
 } as const;
 export type AccentColor = keyof typeof ACCENT_COLORS;
 
 export function accentOf(value: string | null | undefined): AccentColor {
   return value && value in ACCENT_COLORS ? (value as AccentColor) : "neutral";
+}
+
+// El estilo: "Sobrio" es la app de siempre; "Con color" les da color a las categorías y a los módulos
+export const COLOR_STYLES = { sober: "Sobrio", color: "Con color" } as const;
+export type ColorStyle = keyof typeof COLOR_STYLES;
+
+export function colorStyleOf(value: string | null | undefined): ColorStyle {
+  return value === "color" ? "color" : "sober";
 }

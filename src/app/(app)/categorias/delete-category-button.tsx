@@ -21,7 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-type Option = { id: string; name: string; emoji: string | null; icon: string | null };
+type Option = { id: string; name: string; emoji: string | null; icon: string | null; color?: string | null };
 
 // Si la categoría tiene gastos, pide elegir qué hacer con ellos: moverlos a otra categoría
 // o borrarlos junto con ella.
@@ -117,7 +117,7 @@ export function DeleteCategoryButton({
                 {others.map((o) => (
                   <SelectItem key={o.id} value={o.id}>
                     <span className="flex items-center gap-2">
-                      <CategoryIcon icon={o.icon} emoji={o.emoji} size="sm" />
+                      <CategoryIcon color={o.color} icon={o.icon} emoji={o.emoji} size="sm" />
                       {o.name}
                     </span>
                   </SelectItem>

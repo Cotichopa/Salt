@@ -29,7 +29,7 @@ import { ReceiptViewer } from "@/components/receipt-viewer";
 import { useReadOnly } from "@/components/read-only";
 import { TagInput } from "@/components/tag-input";
 
-export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null };
+export type CategoryOption = { id: string; name: string; emoji: string | null; icon: string | null; color?: string | null };
 export type SourceOption = { id: string; name: string; kind: "CARD" | "WALLET" };
 
 const currencies = Object.entries(currencyLabels).map(([value, label]) => ({ value, label }));
@@ -257,7 +257,7 @@ export function ExpenseForm({ categories, sources, expense, today, onDone }: Pro
               {categories.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   <span className="flex items-center gap-2">
-                    <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                    <CategoryIcon color={c.color} icon={c.icon} emoji={c.emoji} size="sm" />
                     {c.name}
                   </span>
                 </SelectItem>

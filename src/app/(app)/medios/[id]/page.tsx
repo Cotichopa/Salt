@@ -96,7 +96,7 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
   const open = statement.status === "a pagar" && month !== current ? await getStatement(user.id, id, current) : null;
   const today = todayISO();
 
-  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon, color }) => ({ id, name, emoji, icon, color }));
   const href = (m: string) => `/medios/${id}?resumen=${m}`;
   const status = STATUS[statement.status];
   const monthName = formatMonth(month).toLowerCase();
@@ -243,7 +243,7 @@ export default async function CardPage({ params, searchParams }: PageProps<"/med
           <CardContent className="flex flex-col divide-y">
             {cuotas.purchases.map((p, i) => (
               <div key={i} className="flex items-center gap-3 py-2">
-                <CategoryIcon icon={p.category.icon} emoji={p.category.emoji} size="sm" />
+                <CategoryIcon color={p.category.color} icon={p.category.icon} emoji={p.category.emoji} size="sm" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{p.description ?? p.category.name}</div>
                   {/* Barrita de avance: cuántas cuotas van de cuántas */}

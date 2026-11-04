@@ -73,6 +73,7 @@ model User {
   homePage             String        @default("/dashboard") // pantalla con la que abre la app
   defaultCurrency      Currency      @default(ARS) // moneda en que se ven los totales
   accentColor          String        @default("neutral") // color principal de la app
+  colorStyle           String        @default("sober") // "sober": como siempre · "color": categorías y módulos con color
   defaultPaymentMethod PaymentMethod @default(DEBIT) // medio de pago que se propone primero
   defaultDollarType    DollarType    @default(MEP) // dólar que se propone primero (USD sin crédito)
   createdAt            DateTime      @default(now())
@@ -217,6 +218,7 @@ model Category {
   name      String
   emoji     String? // lo usa Chop en WhatsApp (ahí no hay íconos)
   icon      String? // ícono en blanco y negro para la web (ver src/components/category-icon.tsx)
+  color     String   @default("azul") // se ve con el estilo "Con color" (src/lib/category-colors.ts)
   keywords  String[] @default([]) // palabras que el bot de WhatsApp asocia a esta categoría
   userId    String // cada cuenta tiene las suyas (las iniciales se copian al crearla)
   createdAt DateTime @default(now())
@@ -445,6 +447,7 @@ model DefaultCategory {
   name     String   @unique
   icon     String
   emoji    String
+  color    String   @default("azul")
   keywords String[] @default([])
   position Int      @default(0)
 

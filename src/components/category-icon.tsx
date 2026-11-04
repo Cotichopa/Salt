@@ -59,6 +59,7 @@ import {
   WrenchIcon,
   type LucideIcon,
 } from "lucide-react";
+import { categoryColorVar } from "@/lib/category-colors";
 import { cn } from "@/lib/utils";
 import {
   CATEGORY_ICON_INFO,
@@ -152,11 +153,13 @@ const sizes = {
 export function CategoryIcon({
   icon,
   emoji,
+  color,
   size = "md",
   className,
 }: {
   icon: string | null | undefined;
   emoji?: string | null;
+  color?: string | null; // se ve solo con el estilo "Con color": la regla está en globals.css ([data-cat])
   size?: keyof typeof sizes;
   className?: string;
 }) {
@@ -164,6 +167,8 @@ export function CategoryIcon({
   return (
     <span
       aria-hidden
+      data-cat={color ?? undefined}
+      style={color ? ({ "--cat": categoryColorVar(color) } as React.CSSProperties) : undefined}
       className={cn("inline-flex shrink-0 items-center justify-center border bg-muted/40", sizes[size].box, className)}
     >
       <Icon className={sizes[size].icon} strokeWidth={1.75} />

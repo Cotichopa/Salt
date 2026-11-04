@@ -34,7 +34,7 @@ export default async function TagPage({ params }: PageProps<"/etiquetas/[id]">) 
     listCategories(user.id),
     listPaymentSources(user.id),
   ]);
-  const categoryOptions = categories.map(({ id, name, emoji, icon }) => ({ id, name, emoji, icon }));
+  const categoryOptions = categories.map(({ id, name, emoji, icon, color }) => ({ id, name, emoji, icon, color }));
   const totals = totalInPesos(expenses);
 
   // Por categoría, de mayor a menor (en pesos; los USD viejos sin convertir no suman)
@@ -103,7 +103,7 @@ export default async function TagPage({ params }: PageProps<"/etiquetas/[id]">) 
             <ul className="flex flex-col gap-3">
               {categoriesSorted.map(({ category, total }) => (
                 <li key={category.id} className="flex items-center gap-3 text-sm">
-                  <CategoryIcon icon={category.icon} emoji={category.emoji} size="sm" />
+                  <CategoryIcon color={category.color} icon={category.icon} emoji={category.emoji} size="sm" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex justify-between gap-2">
                       <span className="truncate">{category.name}</span>

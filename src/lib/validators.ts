@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { dollarTypeLabels, parseAmount, paymentMethodLabels, todayISO, type DollarTypeCode } from "@/lib/format";
-import { ACCENT_COLORS, HOME_PAGES } from "@/lib/preferences";
+import { ACCENT_COLORS, COLOR_STYLES, HOME_PAGES } from "@/lib/preferences";
+import { CATEGORY_COLOR_KEYS } from "@/lib/category-colors";
 import { parseKeywords } from "@/lib/text";
 import { parseTagList } from "@/lib/tags";
 import { CATEGORY_ICON_INFO, CATEGORY_ICON_KEYS } from "@/lib/category-icon-data";
@@ -67,6 +68,7 @@ export const preferencesSchema = z.object({
   homePage: z.enum(keysOf(HOME_PAGES)),
   defaultCurrency: z.enum(["ARS", "USD"]),
   accentColor: z.enum(keysOf(ACCENT_COLORS)),
+  colorStyle: z.enum(keysOf(COLOR_STYLES)),
   defaultPaymentMethod: z.enum(keysOf(paymentMethodLabels)),
   defaultDollarType: z.enum(keysOf(dollarTypeLabels)),
 });
@@ -276,6 +278,8 @@ export const categorySchema = z
   .object({
     name: z.string().trim().min(2, "Mínimo 2 caracteres").max(30, "Máximo 30 caracteres"),
     icon: z.enum(CATEGORY_ICON_KEYS, "Elegí un ícono"),
+    // Sin elegir: a una categoría nueva le toca el color menos usado
+    color: z.enum(CATEGORY_COLOR_KEYS).optional(),
     keywords: z
       .string()
       .max(500, "Demasiadas palabras")

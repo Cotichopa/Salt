@@ -5,7 +5,7 @@ import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { savePreference } from "@/lib/actions/preferences";
 import { currencyLabels, dollarTypeLabels, paymentMethodLabels } from "@/lib/format";
-import { ACCENT_COLORS, HOME_PAGES } from "@/lib/preferences";
+import { ACCENT_COLORS, COLOR_STYLES, HOME_PAGES } from "@/lib/preferences";
 import type { Preferences } from "@/lib/services/preferences";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,7 +131,30 @@ export function PreferencesRows({ initial }: { initial: Preferences }) {
       <Row label="Tema" help="Se recuerda en este dispositivo.">
         <ThemeChoice />
       </Row>
-      <Row label="Color" help="El de los botones principales.">
+      <Row label="Estilo" help="Sobrio es la app de siempre. Con color, las categorías y los módulos tienen color.">
+        <div className="flex w-44 rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="Estilo">
+          {Object.entries(COLOR_STYLES).map(([value, label]) => (
+            <label
+              key={value}
+              className="flex-1 cursor-pointer rounded-md py-1 text-center text-sm font-medium text-muted-foreground has-checked:bg-background has-checked:text-foreground has-checked:shadow-sm has-focus-visible:ring-2 has-focus-visible:ring-ring/50"
+            >
+              <input
+                type="radio"
+                name="colorStyle"
+                value={value}
+                checked={prefs.colorStyle === value}
+                onChange={() => save("colorStyle", value)}
+                className="sr-only"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </Row>
+      <Row
+        label="Color"
+        help={prefs.colorStyle === "color" ? "El de los botones y los módulos. Con Negro, los módulos no se tiñen." : "El de los botones principales."}
+      >
         <div className="flex gap-2" role="radiogroup" aria-label="Color">
           {Object.entries(ACCENT_COLORS).map(([value, { label, swatch }]) => (
             <label key={value} title={label} className="cursor-pointer">

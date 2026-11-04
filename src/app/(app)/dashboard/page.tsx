@@ -216,7 +216,7 @@ function MonthView({
     <>
     {/* Fila de indicadores */}
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Card size="sm">
+      <Card size="sm" data-hero>
         <CardHeader>
           <CardDescription>Total del mes</CardDescription>
           <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(data.total, currency)}</div>
@@ -287,7 +287,7 @@ function MonthView({
                   href={`/categorias/${b.categoryId}`}
                   className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
                 >
-                  <CategoryIcon icon={b.icon} emoji={b.emoji} size="sm" />
+                  <CategoryIcon color={b.color} icon={b.icon} emoji={b.emoji} size="sm" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <div className="flex items-baseline justify-between gap-2 text-sm">
                       <span className="truncate font-medium">{b.name}</span>

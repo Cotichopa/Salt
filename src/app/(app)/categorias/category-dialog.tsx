@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
+import { CATEGORY_COLOR_KEYS, CATEGORY_COLORS, categoryColorVar } from "@/lib/category-colors";
 import {
   CATEGORY_ICON_KEYS,
   CATEGORY_ICONS,
@@ -18,7 +19,7 @@ import {
   type CategoryIconKey,
 } from "@/components/category-icon";
 
-type Category = { id: string; name: string; emoji: string | null; icon: string | null; keywords: string[] };
+type Category = { id: string; name: string; emoji: string | null; icon: string | null; color?: string | null; keywords: string[] };
 type SaveAction = (prev: FormState, formData: FormData) => Promise<FormState>;
 
 // `action`: por defecto guarda en las categorías de la cuenta; el Resumen del superadmin lo usa con
@@ -49,7 +50,7 @@ export function CategoryDialog({ category, action = saveCategory }: { category?:
         {/* key: si al guardar llegan los datos nuevos mientras la ventana se cierra, React arma un
             formulario nuevo en vez de cambiarle el valor inicial a los campos (Base UI no lo permite) */}
         <CategoryForm
-          key={category ? [category.name, category.icon, category.keywords.join(",")].join("|") : "nueva"}
+          key={category ? [category.name, category.icon, category.color, category.keywords.join(",")].join("|") : "nueva"}
           category={category}
           save={action}
           onDone={() => setOpen(false)}
@@ -68,13 +69,15 @@ function CategoryForm({ category, save, onDone }: { category?: Category; save: S
     }
     return result;
   }, undefined);
+  // Sin elegir (categoría nueva): el servidor le pone el color menos usado
+  const [color, setColor] = useState(category?.color ?? null);
   const [icon, setIcon] = useState<CategoryIconKey>(category ? resolveCategoryIcon(category.icon, category.emoji) : "tag");
 
   return (
     <form action={action} className="flex flex-col gap-4">
       {category && <input type="hidden" name="id" value={category.id} />}
       <div className="flex items-end gap-3">
-        <CategoryIcon icon={icon} size="lg" />
+        <CategoryIcon color={color} icon={icon} size="lg" />
         <div className="flex flex-1 flex-col gap-2">
           <Label htmlFor="name">Nombre</Label>
           <Input id="name" name="name" placeholder="Café" defaultValue={category?.name ?? ""} autoFocus required />
@@ -109,6 +112,31 @@ function CategoryForm({ category, save, onDone }: { category?: Category; save: S
           })}
         </div>
         <FieldError errors={state?.errors?.icon} />
+      </fieldset>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-2 text-sm font-medium">Color</legend>
+        <div className="flex flex-wrap gap-2">
+          {CATEGORY_COLOR_KEYS.map((key) => (
+            <label key={key} title={CATEGORY_COLORS[key]} className="cursor-pointer">
+              <input
+                type="radio"
+                name="color"
+                value={key}
+                aria-label={CATEGORY_COLORS[key]}
+                checked={color === key}
+                onChange={() => setColor(key)}
+                className="peer sr-only"
+              />
+              <span
+                className="block size-7 rounded-full ring-offset-2 ring-offset-popover peer-checked:ring-2 peer-checked:ring-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
+                style={{ background: categoryColorVar(key) }}
+              />
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {category ? "Se ve con el estilo «Con color» (Mi cuenta)." : "Si no elegís, se le pone uno solo. Se ve con el estilo «Con color» (Mi cuenta)."}
+        </p>
       </fieldset>
       <div className="flex flex-col gap-2">
         <Label htmlFor="keywords">Palabras clave (separadas por coma)</Label>

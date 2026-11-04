@@ -61,9 +61,9 @@ async function main() {
   // 3) Categorías propias (además de las iniciales)
   await db.category.createMany({
     data: [
-      { userId: user.id, name: "Café", icon: "coffee", emoji: "☕", keywords: ["cafe", "starbucks", "havanna", "medialunas"] },
-      { userId: user.id, name: "Mascotas", icon: "paw", emoji: "🐾", keywords: ["veterinaria", "alimento", "toby"] },
-      { userId: user.id, name: "Viajes", icon: "plane", emoji: "✈️", keywords: ["vuelo", "hotel", "airbnb"] },
+      { userId: user.id, name: "Café", color: "violeta", icon: "coffee", emoji: "☕", keywords: ["cafe", "starbucks", "havanna", "medialunas"] },
+      { userId: user.id, name: "Mascotas", color: "celeste", icon: "paw", emoji: "🐾", keywords: ["veterinaria", "alimento", "toby"] },
+      { userId: user.id, name: "Viajes", color: "rosa", icon: "plane", emoji: "✈️", keywords: ["vuelo", "hotel", "airbnb"] },
     ],
   });
   const categories = await db.category.findMany({

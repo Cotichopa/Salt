@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-type Option = { id: string; name: string; emoji: string | null; icon: string | null };
+type Option = { id: string; name: string; emoji: string | null; icon: string | null; color?: string | null };
 
 // Ventana para cambiar de categoría un comercio (sus próximos tickets van a la nueva) u olvidarlo
 
@@ -62,7 +62,7 @@ export function MerchantDialog({
               {categories.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   <span className="flex items-center gap-2">
-                    <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                    <CategoryIcon color={c.color} icon={c.icon} emoji={c.emoji} size="sm" />
                     {c.name}
                   </span>
                 </SelectItem>

@@ -29,7 +29,7 @@ function CategoryLink({ c }: { c: Row }) {
       href={`/categorias/${c.id}`}
       className="-mx-2 flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
     >
-      <CategoryIcon icon={c.icon} emoji={c.emoji} />
+      <CategoryIcon color={c.color} icon={c.icon} emoji={c.emoji} />
       <div className="min-w-0 flex-1">
         <div className="truncate font-medium">{c.name}</div>
         {c.budget && level ? (
@@ -121,7 +121,7 @@ export default async function CategoriesPage() {
           <CardContent className="flex flex-col divide-y">
             {defaults.map((c) => (
               <div key={c.id} className="flex items-center gap-3 py-2">
-                <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                <CategoryIcon color={c.color} icon={c.icon} emoji={c.emoji} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{c.name}</p>
                   {c.keywords.length > 0 && <p className="truncate text-xs text-muted-foreground">{c.keywords.join(", ")}</p>}

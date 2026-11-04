@@ -94,7 +94,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
   // Categorías: sumar y ordenar de mayor a menor, con nombre e ícono
   const categories = await db.category.findMany({
     where: { id: { in: byCategoryRaw.map((c) => c.categoryId) } },
-    select: { id: true, name: true, emoji: true, icon: true },
+    select: { id: true, name: true, emoji: true, icon: true, color: true },
   });
   const catById = new Map(categories.map((c) => [c.id, c]));
   const byCategory = byCategoryRaw
@@ -104,6 +104,7 @@ export async function getDashboard(userId: string, month: string, currency: Curr
         id: c.categoryId as string | null,
         name: cat?.name ?? "?",
         icon: resolveCategoryIcon(cat?.icon, cat?.emoji) as string | null,
+        color: cat?.color ?? null,
         total: pick(c, currency),
       };
     })
@@ -225,7 +226,7 @@ export async function getYear(userId: string, year: number, currency: CurrencyCo
   const upToNow = (months: number[]) => months.slice(0, currentMonth).reduce((a, b) => a + b, 0);
 
   const ids = [...new Set([...byCat.keys(), ...prevRows.map((r) => r.categoryId)])];
-  const cats = await db.category.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, emoji: true, icon: true } });
+  const cats = await db.category.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, emoji: true, icon: true, color: true } });
   const catById = new Map(cats.map((c) => [c.id, c]));
   const prevById = new Map(prevRows.map((r) => [r.categoryId, pick(r, currency)]));
 
@@ -236,6 +237,7 @@ export async function getYear(userId: string, year: number, currency: CurrencyCo
         id,
         name: cat?.name ?? "?",
         icon: resolveCategoryIcon(cat?.icon, cat?.emoji) as string | null,
+        color: cat?.color ?? null,
         months,
         total: upToNow(months),
         upcoming: months.slice(currentMonth).reduce((a, b) => a + b, 0), // cuotas de los meses que vienen

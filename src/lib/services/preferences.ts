@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { MailError, mailLayout, sendMail } from "@/lib/mail";
 import { Prisma } from "@/generated/prisma/client";
 import type { CurrencyCode, DollarTypeCode, PaymentMethodCode } from "@/lib/format";
-import { accentOf, homePageOf, type AccentColor, type HomePage } from "@/lib/preferences";
+import { accentOf, colorStyleOf, homePageOf, type AccentColor, type ColorStyle, type HomePage } from "@/lib/preferences";
 
 // Preferencias y perfil de cada cuenta (se cambian en "Cuenta"): con qué pantalla abre la app, en
 // qué moneda se ven los totales, el color, y qué medio de pago y dólar se proponen primero al cargar.
@@ -24,6 +24,7 @@ export type Preferences = {
   homePage: HomePage;
   defaultCurrency: CurrencyCode;
   accentColor: AccentColor;
+  colorStyle: ColorStyle;
   defaultPaymentMethod: PaymentMethodCode;
   defaultDollarType: DollarTypeCode;
 };
@@ -32,9 +33,9 @@ export type Preferences = {
 export const getPreferences = cache(async (userId: string): Promise<Preferences> => {
   const u = await db.user.findUniqueOrThrow({
     where: { id: userId },
-    select: { homePage: true, defaultCurrency: true, accentColor: true, defaultPaymentMethod: true, defaultDollarType: true },
+    select: { homePage: true, defaultCurrency: true, accentColor: true, colorStyle: true, defaultPaymentMethod: true, defaultDollarType: true },
   });
-  return { ...u, homePage: homePageOf(u.homePage), accentColor: accentOf(u.accentColor) };
+  return { ...u, homePage: homePageOf(u.homePage), accentColor: accentOf(u.accentColor), colorStyle: colorStyleOf(u.colorStyle) };
 });
 
 export async function updatePreferences(userId: string, prefs: Partial<Preferences>) {

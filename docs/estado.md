@@ -266,6 +266,23 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: estilo "Con color" (2026-11-04)
+
+Felipe eligió entre mockups: **las categorías y los módulos con color, sin cambiar el fondo ni el menú**. Es una
+opción por persona, en Mi cuenta → Estilo: **Sobrio** (la app de siempre, y con la que arranca todo el mundo) o
+**Con color** (migración `colores`: `users.colorStyle`, `categories.color`, `default_categories.color`).
+- **Con una sola regla de CSS** (`globals.css`, `html[data-style]`, lo pone el layout): en Sobrio no aplica nada.
+  Las tarjetas se tiñen cambiando `--card`, `--border` y `--muted-foreground` dentro de `[data-slot=card]`, con el
+  tono del color principal (`--accent-hue`). `data-hero` llena el total del mes y del año, y `data-nav` marca el ítem
+  activo del menú. Con el color **Negro** los módulos no se tiñen: quedan solo las categorías.
+- **Color por categoría:** 8 colores (`lib/category-colors.ts`, `--cat-*`), validados con la guía dataviz en ese
+  orden; una paleta de 11 no pasó. Uno automático al crearla (`leastUsedColor`, también por Chop) y se cambia al
+  editarla. A las que ya existían se les repartieron en orden. Si dos comparten color, las separan ícono y nombre.
+- **Gráficos:** con Con color, torta y barras del año usan el color de cada categoría; si dos del mismo gráfico lo
+  comparten, una toma uno libre (`distinctColors`). En Sobrio siguen los de siempre, por orden.
+- Se sumaron **Rosa y Turquesa** al color principal.
+- Ojo: `prisma/schema.prisma` tiene una línea vieja que dice "Resumen → Accesos" sobre `lastWebAt`: ahora va en Cuentas.
+
 ## Hecho: Mi cuenta por temas (2026-11-04)
 
 Felipe eligió entre mockups: **una sola página por temas**, con el título a la izquierda y las filas a la derecha

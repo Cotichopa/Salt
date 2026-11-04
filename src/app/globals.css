@@ -137,6 +137,74 @@
 .dark[data-accent="violet"] { --primary: #a78bfa; --primary-foreground: #0d0d0d; --ring: #a78bfa; }
 .dark[data-accent="orange"] { --primary: #fb923c; --primary-foreground: #0d0d0d; --ring: #fb923c; }
 
+/* Rosa y turquesa, los dos que se sumaron con el estilo "Con color" */
+:root[data-accent="pink"] { --primary: #be185d; --primary-foreground: #ffffff; --ring: #be185d; }
+:root[data-accent="teal"] { --primary: #0f766e; --primary-foreground: #ffffff; --ring: #0f766e; }
+.dark[data-accent="pink"] { --primary: #f472b6; --primary-foreground: #0d0d0d; --ring: #f472b6; }
+.dark[data-accent="teal"] { --primary: #2dd4bf; --primary-foreground: #0d0d0d; --ring: #2dd4bf; }
+
+/* ---------- Colores de las categorías (src/lib/category-colors.ts) ---------- */
+:root {
+  --cat-azul: #2a78d6;
+  --cat-naranja: #eb6834;
+  --cat-turquesa: #1baf7a;
+  --cat-ambar: #eda100;
+  --cat-rosa: #e87ba4;
+  --cat-verde: #008300;
+  --cat-violeta: #8660dc;
+  --cat-celeste: #1f9cc4;
+}
+.dark {
+  --cat-azul: #3987e5;
+  --cat-naranja: #d95926;
+  --cat-turquesa: #199e70;
+  --cat-ambar: #c98500;
+  --cat-rosa: #d55181;
+  --cat-verde: #008300;
+  --cat-violeta: #8f6fe3;
+  --cat-celeste: #259cc0;
+}
+
+/* ---------- Estilo "Con color" (data-style en <html>; en "Sobrio" no aplica nada de esto) ----------
+   El fondo y el menú siguen como siempre. Cambian: los íconos de las categorías, los módulos (las
+   tarjetas, teñidas con el color principal), el módulo destacado (data-hero) y el ítem activo del
+   menú. Con el color "Negro" los módulos no se tiñen: quedan solo las categorías. */
+:root[data-accent="blue"] { --accent-hue: 262; }
+:root[data-accent="green"] { --accent-hue: 150; }
+:root[data-accent="violet"] { --accent-hue: 300; }
+:root[data-accent="orange"] { --accent-hue: 45; }
+:root[data-accent="pink"] { --accent-hue: 350; }
+:root[data-accent="teal"] { --accent-hue: 190; }
+
+:root[data-style="color"] [data-cat] {
+  background-color: var(--cat);
+  border-color: transparent;
+  color: #0d0d0d;
+}
+:root[data-style="color"]:not([data-accent="neutral"]) [data-slot="card"] {
+  --card: oklch(0.955 0.025 var(--accent-hue));
+  --border: oklch(0.88 0.04 var(--accent-hue));
+  --muted-foreground: oklch(0.42 0.05 var(--accent-hue));
+}
+.dark[data-style="color"]:not([data-accent="neutral"]) [data-slot="card"] {
+  --card: oklch(0.25 0.05 var(--accent-hue));
+  --border: oklch(0.34 0.07 var(--accent-hue));
+  --muted-foreground: oklch(0.8 0.04 var(--accent-hue));
+}
+:root[data-style="color"]:not([data-accent="neutral"]) [data-hero] {
+  --card: var(--primary);
+  --card-foreground: var(--primary-foreground);
+  --muted-foreground: var(--primary-foreground);
+}
+/* Sobre el color lleno, el "% más / menos" va del color del texto: la flecha y la palabra ya lo dicen */
+:root[data-style="color"]:not([data-accent="neutral"]) [data-hero] p {
+  color: var(--primary-foreground);
+}
+:root[data-style="color"]:not([data-accent="neutral"]) [data-nav][aria-current="page"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

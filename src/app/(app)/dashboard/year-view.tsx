@@ -28,7 +28,7 @@ export function YearView({ data, currency }: { data: YearOverview; currency: Cur
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card size="sm">
+        <Card size="sm" data-hero>
           <CardHeader>
             <CardDescription>Total del año</CardDescription>
             <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(Math.round(data.total), currency)}</div>
@@ -115,7 +115,7 @@ export function YearView({ data, currency }: { data: YearOverview; currency: Cur
                     <td className="sticky left-0 bg-card py-1.5 pr-3">
                       <Link href={`/categorias/${c.id}`} className="flex items-center gap-2 hover:underline">
                         {/* El ícono solo en pantallas muy anchas: así los 12 meses entran sin deslizar */}
-                        <CategoryIcon icon={c.icon} size="sm" className="max-2xl:hidden" />
+                        <CategoryIcon color={c.color} icon={c.icon} size="sm" className="max-2xl:hidden" />
                         <span className="max-w-32 truncate">{c.name}</span>
                       </Link>
                     </td>

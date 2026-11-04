@@ -20,6 +20,8 @@ import {
 } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
+import { distinctColors } from "@/lib/category-colors";
+import { useColorStyle } from "@/lib/use-color-style";
 import { CategoryIcon } from "@/components/category-icon";
 import { formatMoney, paymentMethodLabels, type CurrencyCode } from "@/lib/format";
 import type { Dashboard, YearOverview } from "@/lib/services/stats";
@@ -151,12 +153,16 @@ function ActiveSlice(props: PieSectorDataItem) {
 
 export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"]; currency: CurrencyCode }) {
   const [active, setActive] = useState(0);
+  const colored = useColorStyle();
 
   const slices = useMemo(() => {
-    const top = data.slice(0, 6).map((d, i) => ({ ...d, fill: SLICE_COLORS[i] }));
+    const first = data.slice(0, 6);
+    // Con el estilo "Con color", cada categoría con su color; si no, los de siempre, por orden
+    const fills = colored ? distinctColors(first.map((d) => d.color)) : SLICE_COLORS;
+    const top = first.map((d, i) => ({ ...d, fill: fills[i] }));
     const restTotal = data.slice(6).reduce((sum, d) => sum + d.total, 0);
-    return restTotal > 0 ? [...top, { id: null, name: "Otras", icon: null, total: restTotal, fill: "var(--chart-5)" }] : top;
-  }, [data]);
+    return restTotal > 0 ? [...top, { id: null, name: "Otras", icon: null, color: null, total: restTotal, fill: "var(--chart-5)" }] : top;
+  }, [data, colored]);
 
   const total = slices.reduce((sum, d) => sum + d.total, 0);
   const current = slices[Math.min(active, slices.length - 1)];
@@ -213,7 +219,7 @@ export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"];
               className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-muted aria-[current=true]:bg-muted"
             >
               <span className="size-3 shrink-0 rounded-sm" style={{ background: s.fill }} />
-              {s.icon && <CategoryIcon icon={s.icon} size="sm" />}
+              {s.icon && <CategoryIcon color={s.color} icon={s.icon} size="sm" />}
               <span className="flex-1 truncate">{s.name}</span>
               <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
               <span className="w-10 text-right text-muted-foreground tabular-nums">
@@ -330,10 +336,11 @@ const YEAR_COLORS = SLICE_COLORS;
 
 type YearSeries = { key: string; name: string; color: string; values: number[] };
 
-function yearSeries(data: YearOverview): YearSeries[] {
+function yearSeries(data: YearOverview, colored: boolean): YearSeries[] {
   const top = data.categories.slice(0, YEAR_COLORS.length);
   const rest = data.categories.slice(YEAR_COLORS.length);
-  const series = top.map((c, i) => ({ key: `c${i}`, name: c.name, color: YEAR_COLORS[i], values: c.months }));
+  const colors = colored ? distinctColors(top.map((c) => c.color)) : YEAR_COLORS;
+  const series = top.map((c, i) => ({ key: `c${i}`, name: c.name, color: colors[i], values: c.months }));
   if (rest.length > 0) {
     const values = Array.from({ length: 12 }, (_, m) => rest.reduce((sum, c) => sum + c.months[m], 0));
     series.push({ key: "otras", name: "Otras", color: "var(--chart-5)", values });
@@ -390,7 +397,8 @@ function useNarrow() {
 }
 
 export function YearChart({ data, currency }: { data: YearOverview; currency: CurrencyCode }) {
-  const series = useMemo(() => yearSeries(data), [data]);
+  const colored = useColorStyle();
+  const series = useMemo(() => yearSeries(data, colored), [data, colored]);
   const narrow = useNarrow();
   const rows = data.months.map((m, i) => ({
     short: m.short,

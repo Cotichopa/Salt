@@ -225,7 +225,7 @@ function RecurringForm({ categories, sources, recurring, today, onDone }: Props 
             {categories.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 <span className="flex items-center gap-2">
-                  <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                  <CategoryIcon color={c.color} icon={c.icon} emoji={c.emoji} size="sm" />
                   {c.name}
                 </span>
               </SelectItem>
