@@ -153,6 +153,12 @@
   --cat-verde: #008300;
   --cat-violeta: #8660dc;
   --cat-celeste: #1f9cc4;
+  --cat-cielo: #8dbcf0;
+  --cat-lima: #8fb01c;
+  --cat-cacao: #8f5f3a;
+  --cat-magenta: #b82ea8;
+  --cat-bordo: #9e2a42;
+  --cat-arena: #d6c9a0;
 }
 .dark {
   --cat-azul: #3987e5;
@@ -163,6 +169,12 @@
   --cat-verde: #008300;
   --cat-violeta: #8f6fe3;
   --cat-celeste: #259cc0;
+  --cat-cielo: #a5cdf7;
+  --cat-lima: #a6c832;
+  --cat-cacao: #9c6b45;
+  --cat-magenta: #c23bb2;
+  --cat-bordo: #a8324a;
+  --cat-arena: #dcc78f;
 }
 
 /* ---------- Estilo "Con color" (data-style en <html>; en "Sobrio" no aplica nada de esto) ----------
@@ -180,6 +192,10 @@
   background-color: var(--cat);
   border-color: transparent;
   color: #0d0d0d;
+}
+/* El bordó es el único oscuro: el dibujo va en blanco para que se vea */
+:root[data-style="color"] [data-cat="bordo"] {
+  color: #ffffff;
 }
 :root[data-style="color"]:not([data-accent="neutral"]) [data-slot="card"] {
   --card: oklch(0.955 0.025 var(--accent-hue));

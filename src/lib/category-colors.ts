@@ -1,7 +1,7 @@
 // Los colores de las categorías (se ven con el estilo "Con color"). Los tonos están en globals.css
-// (--cat-*), uno para claro y otro para oscuro, validados con la guía dataviz en este orden. Son 8:
-// con más, hay pares que no se distinguen. Si dos categorías comparten color, las separan el ícono y
-// el nombre.
+// (--cat-*), uno para claro y otro para oscuro. Los primeros 8 son los validados con la guía dataviz; los
+// otros 6 se eligieron para que no se parezcan a ninguno (el par más parecido sigue siendo azul y celeste).
+// Con daltonismo algunos se confunden: por eso siempre van con su ícono o su nombre.
 
 export const CATEGORY_COLORS = {
   azul: "Azul",
@@ -12,6 +12,12 @@ export const CATEGORY_COLORS = {
   verde: "Verde",
   violeta: "Violeta",
   celeste: "Celeste",
+  cielo: "Cielo",
+  lima: "Lima",
+  cacao: "Cacao",
+  magenta: "Magenta",
+  bordo: "Bordó",
+  arena: "Arena",
 } as const;
 
 export type CategoryColor = keyof typeof CATEGORY_COLORS;
