@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowDownIcon, ArrowUpIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from "lucide-react";
 import { requireAccount } from "@/lib/dal";
 import { formatMoney, formatMonth, todayISO, type CurrencyCode } from "@/lib/format";
 import { getDashboard, getYear, type Dashboard, type YearOverview } from "@/lib/services/stats";
@@ -17,6 +17,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { BudgetBar } from "@/components/budget-bar";
 import { ChopAvatar } from "@/components/chop/chop-avatar";
 import { CategoryPie, CumulativeChart, DailyChart, PaymentMethodBar, WeekdayChart } from "./charts";
+import { Comparison, StatCard, StatList, TotalHeader, type Stat } from "./stat-parts";
 import { YearView } from "./year-view";
 
 export const metadata: Metadata = { title: "Inicio · Salt" };
@@ -199,6 +200,71 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 }
 
 /** Inicio → "Mes": indicadores, presupuestos y gráficos del mes */
+function BudgetList({ budgets, month, single }: { budgets: BudgetStatus[]; month: string; single?: boolean }) {
+  return (
+    <Card className={single ? "h-full" : undefined}>
+      <CardHeader>
+        <CardTitle>Presupuestos</CardTitle>
+        <CardDescription>Cuánto usaste de cada uno en {formatMonth(month).toLowerCase()}.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className={single ? "grid grid-cols-[minmax(0,1fr)] gap-y-1" : "grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-3"}>
+          {budgets.map((b) => (
+            <li key={b.categoryId}>
+              <Link href={`/categorias/${b.categoryId}`} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60">
+                <CategoryIcon color={b.color} icon={b.icon} emoji={b.emoji} size="sm" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  {/* Si no entra todo en una línea, el monto baja a la siguiente */}
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
+                    <span className="truncate font-medium">{b.name}</span>
+                    <span
+                      className={cn(
+                        "whitespace-nowrap tabular-nums",
+                        b.level === "exceeded" && "font-medium text-red-700 dark:text-red-400",
+                        b.level === "warning" && "font-medium text-amber-700 dark:text-amber-400",
+                        b.level === "ok" && "text-muted-foreground",
+                      )}
+                    >
+                      {formatMoney(b.spent, "ARS")} de {formatMoney(b.amount, "ARS")}
+                      {b.level === "exceeded" && " · te pasaste"}
+                    </span>
+                  </div>
+                  <BudgetBar spent={b.spent} amount={b.amount} level={b.level} className="h-1.5" />
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PaymentDetail({ data, currency, stacked }: { data: Dashboard; currency: CurrencyCode; stacked?: boolean }) {
+  return (
+    <>
+      <PaymentMethodBar data={data.byMethod} currency={currency} stacked={stacked} />
+      {data.bySource.length > 0 && (
+        <div className="flex flex-col gap-3 border-t pt-5">
+          <p className="text-sm text-muted-foreground">Con qué tarjeta o billetera</p>
+          <ul className={stacked ? "grid gap-2" : "grid gap-2 sm:grid-cols-2"}>
+            {data.bySource.map((s) => (
+              <li key={s.name} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate">{s.name}</span>
+                <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Dos columnas parejas en la compu: la principal y la de detalle, un poco más angosta. Cada fila es una grilla
+// propia, así las tarjetas de una misma fila arrancan y terminan a la misma altura.
+const WIDE_ROW = "grid grid-cols-[minmax(0,5fr)_minmax(0,3fr)] items-stretch gap-4";
+
 function MonthView({
   data,
   budgets,
@@ -211,186 +277,179 @@ function MonthView({
   currency: CurrencyCode;
 }) {
   const delta = data.previousTotal > 0 ? (data.total - data.previousTotal) / data.previousTotal : null;
+  const total = {
+    label: "Total del mes",
+    value: formatMoney(data.total, currency),
+    pct: delta !== null ? Math.round(delta * 100) : null,
+    comparisonLabel: data.comparisonLabel,
+  };
+  const stats: Stat[] = [
+    {
+      label: data.projection !== null ? "Proyección a fin de mes" : "Promedio por día",
+      value: formatMoney(Math.round(data.projection ?? data.dailyAverage), currency),
+      help:
+        data.projection !== null ? `Si seguís a este ritmo · ${formatMoney(Math.round(data.dailyAverage), currency)} por día` : "Mes cerrado",
+    },
+    {
+      label: "Gasto promedio",
+      value: formatMoney(Math.round(data.averageTicket), currency),
+      help: `${data.count} ${data.count === 1 ? "gasto cargado" : "gastos cargados"}`,
+    },
+    {
+      label: "El más grande",
+      value: data.biggest ? formatMoney(data.biggest.amount, currency) : "—",
+      help: data.biggest ? `${data.biggest.category}${data.biggest.description ? ` · ${data.biggest.description}` : ""}` : undefined,
+    },
+  ];
+  const showBudgets = currency === "ARS" && budgets.length > 0;
+  const hasData = data.count > 0;
 
   return (
     <>
-    {/* Fila de indicadores */}
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Card size="sm" data-hero>
-        <CardHeader>
-          <CardDescription>Total del mes</CardDescription>
-          <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(data.total, currency)}</div>
-          {delta !== null && Math.round(delta * 100) === 0 && (
-            <p className="text-sm text-muted-foreground">Igual {data.comparisonLabel.replace("vs.", "que")}</p>
-          )}
-          {delta !== null && Math.round(delta * 100) !== 0 && (
-            // Gastar más es malo: sube en rojo, baja en verde (siempre con flecha y texto, no solo color)
-            <p className={cn("flex flex-wrap items-center gap-1 text-sm", delta > 0 ? "text-red-700 dark:text-red-400" : "text-green-800 dark:text-green-500")}>
-              {delta > 0 ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />}
-              {Math.abs(Math.round(delta * 100))}% {delta > 0 ? "más" : "menos"}
-              <span className="text-muted-foreground">{data.comparisonLabel}</span>
-            </p>
-          )}
-        </CardHeader>
-      </Card>
+      {/* Celular y tablet (en la compu también, si no hay gastos este mes) */}
+      <div className={cn("flex flex-col gap-4", hasData && "xl:hidden")}>
+        <StatList total={total} stats={stats} />
+        <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
+          <Card size="sm" data-hero>
+            <CardHeader>
+              <CardDescription>{total.label}</CardDescription>
+              <div className="text-2xl font-semibold lg:text-3xl">{total.value}</div>
+              <Comparison pct={total.pct} label={total.comparisonLabel} />
+            </CardHeader>
+          </Card>
+          {stats.map((s) => (
+            <StatCard key={s.label} stat={s} />
+          ))}
+        </div>
 
-      <Card size="sm">
-        <CardHeader>
-          <CardDescription>{data.projection !== null ? "Proyección a fin de mes" : "Promedio por día"}</CardDescription>
-          <div className="text-2xl font-semibold lg:text-3xl">
-            {formatMoney(Math.round(data.projection ?? data.dailyAverage), currency)}
+        {/* Presupuestos del mes (son en pesos, así que con "Dólares" no se muestran) */}
+        {showBudgets && <BudgetList budgets={budgets} month={month} />}
+
+        {!hasData ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              No hay gastos este mes. Contáselo a Chop con el botón de abajo, o cargalo en{" "}
+              <Link href="/gastos" className="text-foreground underline underline-offset-4">
+                Gastos
+              </Link>
+              .
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>En qué se fue</CardTitle>
+                <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-6">
+                <CategoryPie data={data.byCategory} currency={currency} />
+                <div className="flex flex-col gap-3 border-t pt-5">
+                  <p className="text-sm text-muted-foreground">Cómo lo pagaste</p>
+                  <PaymentDetail data={data} currency={currency} />
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Cómo venís contra el mes pasado</CardTitle>
+                <CardDescription>Suma acumulada día a día.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CumulativeChart data={data.cumulative} currency={currency} month={month} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Gasto por día</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DailyChart data={data.byDay} currency={currency} month={month} />
+                <ChartDataTable
+                  currency={currency}
+                  rows={data.byDay.filter((d) => d.total > 0).map((d) => ({ label: `${d.day}/${month.slice(5)}`, total: d.total }))}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Por día de la semana</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <WeekdayChart data={data.byWeekday} currency={currency} />
+                <ChartDataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
+              </CardContent>
+            </Card>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {data.projection !== null ? `Si seguís a este ritmo · ${formatMoney(Math.round(data.dailyAverage), currency)} por día` : "Mes cerrado"}
-          </p>
-        </CardHeader>
-      </Card>
-
-      <Card size="sm">
-        <CardHeader>
-          <CardDescription>Gasto promedio</CardDescription>
-          <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(Math.round(data.averageTicket), currency)}</div>
-          <p className="text-sm text-muted-foreground">
-            {data.count} {data.count === 1 ? "gasto cargado" : "gastos cargados"}
-          </p>
-        </CardHeader>
-      </Card>
-
-      <Card size="sm">
-        <CardHeader>
-          <CardDescription>El más grande</CardDescription>
-          <div className="text-2xl font-semibold lg:text-3xl">
-            {data.biggest ? formatMoney(data.biggest.amount, currency) : "—"}
-          </div>
-          {data.biggest && (
-            <p className="truncate text-sm text-muted-foreground">
-              {data.biggest.category}
-              {data.biggest.description ? ` · ${data.biggest.description}` : ""}
-            </p>
-          )}
-        </CardHeader>
-      </Card>
-    </div>
-
-    {/* Presupuestos del mes (son en pesos, así que con "Dólares" no se muestran) */}
-    {currency === "ARS" && budgets.length > 0 && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Presupuestos</CardTitle>
-          <CardDescription>Cuánto usaste de cada uno en {formatMonth(month).toLowerCase()}.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="grid gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
-            {budgets.map((b) => (
-              <li key={b.categoryId}>
-                <Link
-                  href={`/categorias/${b.categoryId}`}
-                  className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
-                >
-                  <CategoryIcon color={b.color} icon={b.icon} emoji={b.emoji} size="sm" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex items-baseline justify-between gap-2 text-sm">
-                      <span className="truncate font-medium">{b.name}</span>
-                      <span
-                        className={cn(
-                          "whitespace-nowrap tabular-nums",
-                          b.level === "exceeded" && "font-medium text-red-700 dark:text-red-400",
-                          b.level === "warning" && "font-medium text-amber-700 dark:text-amber-400",
-                          b.level === "ok" && "text-muted-foreground",
-                        )}
-                      >
-                        {formatMoney(b.spent, "ARS")} de {formatMoney(b.amount, "ARS")}
-                        {b.level === "exceeded" && " · te pasaste"}
-                      </span>
-                    </div>
-                    <BudgetBar spent={b.spent} amount={b.amount} level={b.level} className="h-1.5" />
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    )}
-
-    {data.count === 0 ? (
-      <Card>
-        <CardContent className="py-10 text-center text-muted-foreground">
-          No hay gastos este mes. Contáselo a Chop con el botón de
-          abajo, o cargalo en{" "}
-          <Link href="/gastos" className="text-foreground underline underline-offset-4">
-            Gastos
-          </Link>
-          .
-        </CardContent>
-      </Card>
-    ) : (
-      // En pantallas anchas (xl): "En qué se fue" a la izquierda; a la derecha la suma acumulada y el día
-      // de la semana; abajo, a todo el ancho, el gasto por día (31 barras: aprovechan el ancho)
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Card className="lg:col-span-2 xl:col-span-1 xl:row-span-2">
-          <CardHeader>
-            <CardTitle>En qué se fue</CardTitle>
-            <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            <CategoryPie data={data.byCategory} currency={currency} />
-            <div className="flex flex-col gap-3 border-t pt-5">
-              <p className="text-sm text-muted-foreground">Cómo lo pagaste</p>
-              <PaymentMethodBar data={data.byMethod} currency={currency} />
-            </div>
-
-            {data.bySource.length > 0 && (
-              <div className="flex flex-col gap-3 border-t pt-5">
-                <p className="text-sm text-muted-foreground">Con qué tarjeta o billetera</p>
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {data.bySource.map((s) => (
-                    <li key={s.name} className="flex items-center gap-2 text-sm">
-                      <span className="flex-1 truncate">{s.name}</span>
-                      <span className="font-medium tabular-nums">{formatMoney(s.total, currency)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2 xl:col-span-1">
-          <CardHeader>
-            <CardTitle>Cómo venís contra el mes pasado</CardTitle>
-            <CardDescription>Suma acumulada día a día.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CumulativeChart data={data.cumulative} currency={currency} month={month} />
-          </CardContent>
-        </Card>
-
-        <Card className="xl:order-last xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Gasto por día</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DailyChart data={data.byDay} currency={currency} month={month} />
-            <ChartDataTable
-              currency={currency}
-              rows={data.byDay.filter((d) => d.total > 0).map((d) => ({ label: `${d.day}/${month.slice(5)}`, total: d.total }))}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Por día de la semana</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WeekdayChart data={data.byWeekday} currency={currency} />
-            <ChartDataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
-          </CardContent>
-        </Card>
-
+        )}
       </div>
-    )}
+
+      {/* Compu */}
+      {hasData && (
+        <div className="hidden flex-col gap-4 xl:flex">
+          <div className={WIDE_ROW}>
+            <div className="flex min-w-0 flex-col gap-4">
+              <Card className="flex-1 gap-0 py-0">
+                <TotalHeader {...total} large />
+                <div className="flex flex-1 flex-col gap-2 border-t p-4">
+                  <p className="text-sm text-muted-foreground">Cómo venís contra el mes pasado, día a día</p>
+                  <CumulativeChart data={data.cumulative} currency={currency} month={month} fill />
+                </div>
+              </Card>
+              <div className="grid grid-cols-3 gap-4">
+                {stats.map((s) => (
+                  <StatCard key={s.label} stat={s} />
+                ))}
+              </div>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>En qué se fue</CardTitle>
+                <CardDescription>Tocá una categoría para ver el detalle.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CategoryPie data={data.byCategory} currency={currency} vertical />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className={showBudgets ? WIDE_ROW : "grid"}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Gasto por día</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col">
+                <DailyChart data={data.byDay} currency={currency} month={month} fill />
+                <ChartDataTable
+                  currency={currency}
+                  rows={data.byDay.filter((d) => d.total > 0).map((d) => ({ label: `${d.day}/${month.slice(5)}`, total: d.total }))}
+                />
+              </CardContent>
+            </Card>
+            {showBudgets && <BudgetList budgets={budgets} month={month} single />}
+          </div>
+
+          <div className={WIDE_ROW}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Por día de la semana</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col">
+                <WeekdayChart data={data.byWeekday} currency={currency} fill />
+                <ChartDataTable currency={currency} rows={data.byWeekday.map((d) => ({ label: d.name, total: d.total }))} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Cómo lo pagaste</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-5">
+                <PaymentDetail data={data} currency={currency} stacked />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </>
   );
 }

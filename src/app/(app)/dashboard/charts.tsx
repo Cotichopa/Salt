@@ -50,9 +50,9 @@ function MoneyTooltip({
 
 const singleSeries = { total: { label: "Total", color: "var(--chart-1)" } } satisfies ChartConfig;
 
-export function DailyChart({ data, currency, month }: { data: Dashboard["byDay"]; currency: CurrencyCode; month: string }) {
+export function DailyChart({ data, currency, month, fill }: { data: Dashboard["byDay"]; currency: CurrencyCode; month: string; fill?: boolean }) {
   return (
-    <ChartContainer config={singleSeries} className="aspect-auto h-56 w-full">
+    <ChartContainer config={singleSeries} className={fill ? "aspect-auto min-h-56 w-full flex-1" : "aspect-auto h-56 w-full"}>
       <BarChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="day" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={12} />
@@ -96,7 +96,7 @@ const methodColors = {
   TRANSFER: "var(--chart-4)",
 } as const;
 
-export function PaymentMethodBar({ data, currency }: { data: Dashboard["byMethod"]; currency: CurrencyCode }) {
+export function PaymentMethodBar({ data, currency, stacked }: { data: Dashboard["byMethod"]; currency: CurrencyCode; stacked?: boolean }) {
   const total = data.reduce((s, d) => s + d.total, 0);
   const used = data.filter((d) => d.total > 0);
 
@@ -112,7 +112,7 @@ export function PaymentMethodBar({ data, currency }: { data: Dashboard["byMethod
           />
         ))}
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className={stacked ? "grid gap-2" : "grid gap-2 sm:grid-cols-2"}>
         {data.map((d) => (
           <li key={d.method} className="flex items-center gap-2 text-sm">
             <span className="size-3 shrink-0 rounded-sm" style={{ background: methodColors[d.method] }} />
@@ -151,7 +151,7 @@ function ActiveSlice(props: PieSectorDataItem) {
   );
 }
 
-export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"]; currency: CurrencyCode }) {
+export function CategoryPie({ data, currency, vertical }: { data: Dashboard["byCategory"]; currency: CurrencyCode; vertical?: boolean }) {
   const [active, setActive] = useState(0);
   const colored = useColorStyle();
 
@@ -169,7 +169,7 @@ export function CategoryPie({ data, currency }: { data: Dashboard["byCategory"];
   const share = total > 0 ? Math.round((current.total / total) * 100) : 0;
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-2">
+    <div className={vertical ? "flex flex-col items-center gap-4" : "flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-2"}>
       <ChartContainer config={singleSeries} className="aspect-square h-56 shrink-0">
         <PieChart>
           <ChartTooltip defaultIndex={0} content={() => null} />
@@ -239,10 +239,12 @@ export function CumulativeChart({
   data,
   currency,
   month,
+  fill,
 }: {
   data: Dashboard["cumulative"];
   currency: CurrencyCode;
   month: string;
+  fill?: boolean;
 }) {
   const config = {
     actual: { label: "Este mes", color: "var(--chart-1)" },
@@ -250,7 +252,7 @@ export function CumulativeChart({
   } satisfies ChartConfig;
 
   return (
-    <ChartContainer config={config} className="aspect-auto h-56 w-full">
+    <ChartContainer config={config} className={fill ? "aspect-auto min-h-56 w-full flex-1" : "aspect-auto h-56 w-full"}>
       <LineChart data={data} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="day" tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={12} />
@@ -307,10 +309,10 @@ function CompareTooltip({
 
 // ---------- Gasto por día de la semana ----------
 
-export function WeekdayChart({ data, currency }: { data: Dashboard["byWeekday"]; currency: CurrencyCode }) {
+export function WeekdayChart({ data, currency, fill }: { data: Dashboard["byWeekday"]; currency: CurrencyCode; fill?: boolean }) {
   const max = Math.max(...data.map((d) => d.total));
   return (
-    <ChartContainer config={singleSeries} className="aspect-auto h-44 w-full">
+    <ChartContainer config={singleSeries} className={fill ? "aspect-auto min-h-44 w-full flex-1" : "aspect-auto h-44 w-full"}>
       <BarChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
         <CartesianGrid vertical={false} />
         <XAxis dataKey="name" tickLine={false} axisLine={false} />
@@ -396,7 +398,7 @@ function useNarrow() {
   );
 }
 
-export function YearChart({ data, currency }: { data: YearOverview; currency: CurrencyCode }) {
+export function YearChart({ data, currency, fill }: { data: YearOverview; currency: CurrencyCode; fill?: boolean }) {
   const colored = useColorStyle();
   const series = useMemo(() => yearSeries(data, colored), [data, colored]);
   const narrow = useNarrow();
@@ -420,7 +422,7 @@ export function YearChart({ data, currency }: { data: YearOverview; currency: Cu
           </li>
         ))}
       </ul>
-      <ChartContainer config={config} className="aspect-auto h-72 w-full">
+      <ChartContainer config={config} className={fill ? "aspect-auto min-h-72 w-full flex-1" : "aspect-auto h-72 w-full"}>
         <BarChart data={rows} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="short" tickLine={false} axisLine={false} interval={0} tickFormatter={(m: string) => (narrow ? m[0] : m)} />

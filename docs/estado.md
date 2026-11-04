@@ -266,6 +266,20 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Inicio ordenado (2026-11-04)
+
+Felipe eligió entre mockups. **Compu** (desde `xl`, 1280 px): una columna principal y otra de detalle, con cada fila
+alineada, sin alturas disparejas (`WIDE_ROW` en `dashboard/page.tsx`). Fila 1: total + "Cómo venís" y los otros 3
+números | En qué se fue. Fila 2: Gasto por día | Presupuestos (sin presupuestos, Gasto por día va a lo ancho). Fila
+3: Por día de la semana | Cómo lo pagaste. Los gráficos se estiran para llenar su fila (prop `fill`).
+- **Celular** (hasta `sm`): el total grande y los otros 3 números en filas, en una sola tarjeta (`StatList` en
+  `dashboard/stat-parts.tsx`). Lo demás, igual y en el mismo orden. Tablet, como antes.
+- **Vista Año**, igual: total + gráfico | los 3 números, y la tabla a lo ancho.
+- Como el orden de la compu y el del celular son distintos, cada uno es su propio armado y se esconde el otro con CSS.
+  Sin gastos en el mes se usa el armado de tablet también en la compu (el aviso va a lo ancho).
+- "Con color": `data-hero` ahora es la franja del total, no toda la tarjeta (abajo va el gráfico).
+- De paso: en Presupuestos, un monto largo baja de línea en vez de salirse de la tarjeta (pasaba también en el celular).
+
 ## Hecho: estilo "Con color" (2026-11-04)
 
 Felipe eligió entre mockups: **las categorías y los módulos con color, sin cambiar el fondo ni el menú**. Es una

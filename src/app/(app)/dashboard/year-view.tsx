@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import { formatMoney, type CurrencyCode } from "@/lib/format";
 import type { YearOverview } from "@/lib/services/stats";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CategoryIcon } from "@/components/category-icon";
 import { cn } from "@/lib/utils";
 import { YearChart } from "./charts";
+import { Comparison, StatCard, StatList, TotalHeader, type Stat } from "./stat-parts";
 
 // Inicio → "Año": indicadores del año, el gráfico de cada mes por categoría y la tabla con todo.
 
@@ -25,66 +25,72 @@ export function YearView({ data, currency }: { data: YearOverview; currency: Cur
     );
   }
 
+  const total = { label: "Total del año", value: formatMoney(Math.round(data.total), currency), pct, comparisonLabel: data.comparisonLabel };
+  const stats: Stat[] = [
+    {
+      label: "Promedio por mes",
+      value: formatMoney(Math.round(data.monthlyAverage), currency),
+      help: `${data.since ? `Desde ${data.since} · ` : ""}${data.count} ${data.count === 1 ? "gasto cargado" : "gastos cargados"}`,
+    },
+    {
+      label: "El mes más caro",
+      value: data.priciest?.long ?? "—",
+      valueClassName: "capitalize",
+      help: data.priciest ? formatMoney(Math.round(data.priciest.total), currency) : undefined,
+    },
+    {
+      label: "La que más creció",
+      value: data.grown?.name ?? "—",
+      valueClassName: "truncate",
+      help: data.grown
+        ? `${formatMoney(Math.round(data.grown.diff), currency)} más ${data.comparisonLabel.replace("vs. ", "que ")}`
+        : `Ninguna gastó más ${data.comparisonLabel.replace("vs. ", "que ")}`,
+    },
+  ];
+
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card size="sm" data-hero>
+      {/* Celular y tablet */}
+      <div className="flex flex-col gap-4 xl:hidden">
+        <StatList total={total} stats={stats} />
+        <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-4">
+          <Card size="sm" data-hero>
+            <CardHeader>
+              <CardDescription>{total.label}</CardDescription>
+              <div className="text-2xl font-semibold lg:text-3xl">{total.value}</div>
+              <Comparison pct={pct} label={data.comparisonLabel} />
+            </CardHeader>
+          </Card>
+          {stats.map((s) => (
+            <StatCard key={s.label} stat={s} />
+          ))}
+        </div>
+        <Card>
           <CardHeader>
-            <CardDescription>Total del año</CardDescription>
-            <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(Math.round(data.total), currency)}</div>
-            {pct === 0 && <p className="text-sm text-muted-foreground">Igual {data.comparisonLabel.replace("vs.", "que")}</p>}
-            {pct !== null && pct !== 0 && (
-              // Gastar más es malo: sube en rojo, baja en verde (siempre con flecha y texto, no solo color)
-              <p className={cn("flex flex-wrap items-center gap-1 text-sm", pct > 0 ? "text-red-700 dark:text-red-400" : "text-green-800 dark:text-green-500")}>
-                {pct > 0 ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />}
-                {Math.abs(pct)}% {pct > 0 ? "más" : "menos"}
-                <span className="text-muted-foreground">{data.comparisonLabel}</span>
-              </p>
-            )}
+            <CardTitle>Mes a mes</CardTitle>
+            <CardDescription>Cuánto gastaste cada mes, por categoría. Pasá el mouse por una barra para ver el detalle.</CardDescription>
           </CardHeader>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardDescription>Promedio por mes</CardDescription>
-            <div className="text-2xl font-semibold lg:text-3xl">{formatMoney(Math.round(data.monthlyAverage), currency)}</div>
-            <p className="text-sm text-muted-foreground">
-              {data.since && `Desde ${data.since} · `}
-              {data.count} {data.count === 1 ? "gasto cargado" : "gastos cargados"}
-            </p>
-          </CardHeader>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardDescription>El mes más caro</CardDescription>
-            <div className="text-2xl font-semibold capitalize lg:text-3xl">{data.priciest?.long ?? "—"}</div>
-            {data.priciest && <p className="text-sm text-muted-foreground">{formatMoney(Math.round(data.priciest.total), currency)}</p>}
-          </CardHeader>
-        </Card>
-
-        <Card size="sm">
-          <CardHeader>
-            <CardDescription>La que más creció</CardDescription>
-            <div className="truncate text-2xl font-semibold lg:text-3xl">{data.grown?.name ?? "—"}</div>
-            <p className="text-sm text-muted-foreground">
-              {data.grown
-                ? `${formatMoney(Math.round(data.grown.diff), currency)} más ${data.comparisonLabel.replace("vs. ", "que ")}`
-                : `Ninguna gastó más ${data.comparisonLabel.replace("vs. ", "que ")}`}
-            </p>
-          </CardHeader>
+          <CardContent>
+            <YearChart data={data} currency={currency} />
+          </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Mes a mes</CardTitle>
-          <CardDescription>Cuánto gastaste cada mes, por categoría. Pasá el mouse por una barra para ver el detalle.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <YearChart data={data} currency={currency} />
-        </CardContent>
-      </Card>
+      {/* Compu: las dos columnas arrancan y terminan a la misma altura */}
+      <div className="hidden grid-cols-[minmax(0,5fr)_minmax(0,3fr)] items-stretch gap-4 xl:grid">
+        <Card className="gap-0 py-0">
+          <TotalHeader {...total} large />
+          <div className="flex flex-1 flex-col gap-2 border-t p-4">
+            <p className="text-sm text-muted-foreground">Mes a mes, por categoría. Pasá el mouse por una barra para ver el detalle.</p>
+            <YearChart data={data} currency={currency} fill />
+          </div>
+        </Card>
+        <div className="grid min-w-0 auto-rows-fr gap-4">
+          {stats.map((s) => (
+            <StatCard key={s.label} stat={s} className="justify-center" />
+          ))}
+        </div>
+      </div>
 
       {/* La tabla con todos los números: en el celular se desliza de costado */}
       <Card>
