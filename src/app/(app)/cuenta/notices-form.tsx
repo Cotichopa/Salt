@@ -11,7 +11,7 @@ const OPTIONS: { setting: NoticeSetting; label: string; help: string }[] = [
   { setting: "notifyMonthly", label: "Resumen del mes", help: "Lo del mes pasado y cómo cerraron tus presupuestos." },
 ];
 
-/** Tildes para prender o apagar cada aviso de Chop. Cada uno se guarda apenas se toca. */
+/** Llaves para prender o apagar cada aviso de Chop. Cada uno se guarda apenas se toca. */
 export function NoticesForm({ initial }: { initial: NoticeSettings }) {
   const [settings, setSettings] = useState(initial);
   const [pending, startTransition] = useTransition();
@@ -30,22 +30,27 @@ export function NoticesForm({ initial }: { initial: NoticeSettings }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <>
       {OPTIONS.map(({ setting, label, help }) => (
-        <label key={setting} className="flex items-start gap-2 text-sm">
+        <label key={setting} className="flex cursor-pointer items-center gap-3 border-t py-3 text-sm first:border-t-0">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{label}</span>
+            <span className="block text-xs text-muted-foreground">{help}</span>
+          </span>
           <input
             type="checkbox"
+            role="switch"
             checked={settings[setting]}
             disabled={pending}
             onChange={(e) => toggle(setting, e.target.checked)}
-            className="mt-0.5 accent-primary"
+            className="peer sr-only"
           />
-          <span>
-            {label}
-            <span className="block text-muted-foreground">{help}</span>
-          </span>
+          <span
+            aria-hidden
+            className="relative h-6 w-10 shrink-0 rounded-full bg-input transition-colors after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-foreground/70 after:transition-transform peer-checked:bg-primary peer-checked:after:translate-x-4 peer-checked:after:bg-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring/50"
+          />
         </label>
       ))}
-    </div>
+    </>
   );
 }

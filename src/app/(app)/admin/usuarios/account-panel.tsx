@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/field-error";
 import { useReadOnly } from "@/components/read-only";
+import { RowAction, SettingRow } from "@/components/setting-row";
 import type { FormState } from "@/lib/validators";
 import { MethodChoice, RoleChoice, type Account, type AccessMethod } from "./account-fields";
 
@@ -27,26 +28,6 @@ import { MethodChoice, RoleChoice, type Account, type AccessMethod } from "./acc
 // así vuelven a arrancar con los datos actuales.
 
 type Open = { kind: "edit"; focus: "name" | "phone" | "role" } | { kind: "password" } | { kind: "deactivate" } | { kind: "closeSessions" } | { kind: "delete" } | null;
-
-function Row({ label, value, action }: { label: string; value: string; action?: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 border-t py-3">
-      <div className="min-w-0 flex-1">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-sm break-words">{value}</div>
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function RowAction({ children, ...props }: React.ComponentProps<typeof Button>) {
-  return (
-    <Button type="button" variant="link" size="sm" className="h-11 shrink-0 px-1 underline lg:h-7" {...props}>
-      {children}
-    </Button>
-  );
-}
 
 export function AccountPanel({ account, avatar, onDeleted }: { account: Account; avatar: React.ReactNode; onDeleted: () => void }) {
   const readOnly = useReadOnly();
@@ -115,23 +96,23 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
         </div>
       </div>
 
-      <div className="flex flex-col">
-        <Row
+      <div className="flex flex-col border-t">
+        <SettingRow
           label="Rol"
           value={account.roleLabel}
           action={canEdit && account.canChangeRole && <RowAction onClick={() => setOpen({ kind: "edit", focus: "role" })}>Cambiar</RowAction>}
         />
-        <Row
+        <SettingRow
           label="WhatsApp"
           value={account.phoneLabel ?? "Sin cargar"}
           action={canEdit && <RowAction onClick={() => setOpen({ kind: "edit", focus: "phone" })}>{account.phone ? "Cambiar" : "Agregar"}</RowAction>}
         />
-        <Row
+        <SettingRow
           label="Cómo entra"
           value={account.access}
           action={canEdit && <RowAction onClick={() => setOpen({ kind: "password" })}>{mayInvite ? "Reenviar invitación" : "Cambiar"}</RowAction>}
         />
-        <Row label="Último uso" value={account.lastUse} />
+        <SettingRow label="Último uso" value={account.lastUse} />
         {account.login && (
           <div className="flex items-center gap-3 border-t py-3">
             <div className="min-w-0 flex-1">
@@ -155,7 +136,7 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
           </div>
         )}
         {canEdit && account.canWelcome && (
-          <Row
+          <SettingRow
             label="Chop"
             value="Bienvenida por WhatsApp"
             action={

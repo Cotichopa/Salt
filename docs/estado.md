@@ -266,6 +266,18 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Mi cuenta por temas (2026-11-04)
+
+Felipe eligió entre mockups: **una sola página por temas**, con el título a la izquierda y las filas a la derecha
+(Perfil, Cómo usás Salt, Avisos de Chop, Seguridad y privacidad). Cada dato tiene su acción al lado; la fila es
+`components/setting-row.tsx`, compartida con la ficha de Cuentas.
+- **Las preferencias se guardan solas** (`savePreference`: un campo por vez; si falla, vuelve como estaba), igual
+  que los avisos. Ya no hay botón "Guardar preferencias".
+- **Cada persona puede cambiar su email**, pidiendo la contraseña (`saveOwnEmail`), igual que el WhatsApp. A la
+  dirección anterior le llega un aviso (`notifyEmailChanged`); si ese mail falla, el cambio queda igual.
+- **Tema claro u oscuro** también en "Cómo usás Salt", además del botón del menú (se recuerda en el dispositivo).
+- Nombre, email, WhatsApp y contraseña se editan en una ventana (`cuenta/form-dialog.tsx`).
+
 ## Hecho: Resumen ordenado (2026-11-04)
 
 Felipe eligió entre mockups: **"Para revisar" arriba y pestañas** Gastos, Chop y Servidor (`?seccion=chop`, cada

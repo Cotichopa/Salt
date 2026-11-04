@@ -68,7 +68,7 @@ export function mailLayout({
   preheader: string; // el resumen que muestra la bandeja de entrada al lado del asunto
   title: string;
   paragraphs: string[];
-  button: { label: string; href: string };
+  button?: { label: string; href: string }; // no todos los mails llevan a un lado
   footnote: string[];
 }) {
   const p = (text: string) =>
@@ -91,14 +91,14 @@ export function mailLayout({
       <tr><td style="background:#ffffff;border:1px solid #e4e4e7;border-radius:16px;padding:32px 28px">
         <h1 style="margin:0 0 20px;font-size:22px;line-height:28px;font-weight:700;color:#0d0d0d">${escapeHtml(title)}</h1>
         ${paragraphs.map(p).join("\n        ")}
-        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px">
+        ${button ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px">
           <tr><td style="background:#0d0d0d;border-radius:10px">
             <a href="${button.href}" style="display:inline-block;padding:14px 28px;font-size:16px;font-weight:600;color:#fafafa;text-decoration:none;border-radius:10px">${escapeHtml(button.label)}</a>
           </td></tr>
-        </table>
+        </table>` : ""}
         <div style="border-top:1px solid #e4e4e7;padding-top:16px">
           ${footnote.map(small).join("\n          ")}
-          <p style="margin:0;font-size:12px;line-height:18px;color:#a1a1aa;word-break:break-all">Si el botón no anda, copiá este link: ${escapeHtml(button.href)}</p>
+          ${button ? `<p style="margin:0;font-size:12px;line-height:18px;color:#a1a1aa;word-break:break-all">Si el botón no anda, copiá este link: ${escapeHtml(button.href)}</p>` : ""}
         </div>
       </td></tr>
       <tr><td align="center" style="padding-top:20px;font-size:12px;color:#a1a1aa">

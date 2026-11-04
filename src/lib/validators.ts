@@ -81,6 +81,12 @@ export const ownPhoneSchema = z.object({
   password: z.string().min(1, "Ingresá tu contraseña"),
 });
 
+// Cambiar el propio email también: es con lo que se entra a Salt
+export const ownEmailSchema = z.object({
+  email: accountFields.email,
+  password: z.string().min(1, "Ingresá tu contraseña"),
+});
+
 // El rol es opcional: el formulario no lo manda si no se puede cambiar (uno mismo o el superadmin)
 export const updateUserSchema = z.object({
   ...accountFields,
