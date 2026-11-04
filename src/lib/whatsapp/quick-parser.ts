@@ -323,6 +323,75 @@ const PERIODS: [string, QueryPeriod][] = [
 // Relleno propio de las consultas ("cómo vengo CON EL PRESUPUESTO de salidas")
 const QUERY_FILLER = new Set(["presupuesto", "gastado", "y", "a", "al", "hasta", "ahora", "va", "este", "esta", "plata", "guita"]);
 
+// Palabras que nunca se aprenden como referencia de una categoría: cuentan cómo fue la compra, no qué es
+const NOT_LEARNABLE = new Set([
+  "compre", "compra", "compramos", "comprado", "compro", "pagamos", "pago", "pagado", "puse", "saque", "retire", "salio", "sale", "costo",
+  "gastamos", "gasto", "gastos", "agrega", "agregar", "sumame", "suma", "para", "pal", "al", "que", "este", "esta", "esto", "ese", "esa", "eso",
+  "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo", "manana", "tarde", "noche", "semana", "mes", "anteayer",
+  "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  "otro", "otra", "otros", "otras", "algo", "cosas", "cosa", "varios", "varias", "pesos", "dolar", "cuotas", "cuota", "sin", "total",
+]);
+
+/**
+ * La palabra (o dos seguidas) de un gasto que Chop no conoce: "kiosko 500" → "kiosko". Al guardar el
+ * gasto queda como palabra clave de su categoría, así la próxima vez lo entiende sin IA. Es conservadora:
+ * null si el mensaje ya nombra una categoría ("pizza con amigos": "amigos" no dice nada de la comida), si
+ * no es un solo gasto, o si lo desconocido son varias palabras sueltas.
+ */
+export function learnableWord(text: string, categories: Category[], sources: Source[]): string | null {
+  const { words } = splitWords(text.replace(/#\S+/g, " "));
+  const dict = buildDictionary(categories, sources);
+  const unknown: number[] = [];
+  let amounts = 0;
+  for (let i = 0; i < words.length; ) {
+    const known = lookup(dict, words, i);
+    if (known) {
+      if (known.meaning.type === "category" || known.meaning.type === "ambiguous") return null;
+      i += known.used;
+      continue;
+    }
+    const amount = readAmount(words, i);
+    if (amount) {
+      amounts++;
+      i += amount.used;
+      continue;
+    }
+    if (!NOT_LEARNABLE.has(words[i])) unknown.push(i);
+    i++;
+  }
+  if (amounts !== 1 || unknown.length === 0 || unknown.length > 2) return null;
+  if (unknown.length === 2 && unknown[1] !== unknown[0] + 1) return null;
+  if (unknown.some((i) => !/^[a-zñ]{3,}$/.test(words[i]))) return null;
+  const word = unknown.map((i) => words[i]).join(" ");
+  return word.length <= 24 ? word : null;
+}
+
+/**
+ * La palabra clave por la que el mensaje eligió la categoría ("kiosko 700" → "kiosko"). Si después lo
+ * corrige a otra categoría, la palabra se muda (vale la última). null si nombró la categoría por su
+ * nombre ("super" sí, "Supermercado" no), si hay más de una o si no es un solo gasto.
+ */
+export function categoryKeywordIn(text: string, categories: Category[], sources: Source[]): string | null {
+  const { words } = splitWords(text.replace(/#\S+/g, " "));
+  const dict = buildDictionary(categories, sources);
+  const found: string[] = [];
+  let amounts = 0;
+  for (let i = 0; i < words.length; ) {
+    const known = lookup(dict, words, i);
+    if (known) {
+      if (known.meaning.type === "ambiguous") return null;
+      if (known.meaning.type === "category") found.push(words.slice(i, i + known.used).join(" "));
+      i += known.used;
+      continue;
+    }
+    const amount = readAmount(words, i);
+    if (amount) amounts++;
+    i += amount ? amount.used : 1;
+  }
+  if (amounts !== 1 || found.length !== 1) return null;
+  return categories.some((c) => normalize(c.name) === found[0]) ? null : found[0];
+}
+
 // Palabras desconocidas que NO se buscan en la descripción: hablan de otra cosa ("gastos fijos", "el año
 // pasado", "en cuotas") y es mejor que decida la IA
 const NOT_TEXT = new Set([

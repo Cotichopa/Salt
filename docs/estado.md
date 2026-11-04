@@ -266,6 +266,24 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Chop aprende palabras (2026-11-05)
+
+Pedido de Felipe: si Chop no conoce una palabra ("kiosko 500") y el gasto termina en Supermercado, la guarda como
+palabra clave de esa categoría, solo para esa cuenta. La próxima vez lo entiende sin IA.
+- **Qué palabra** (`learnableWord` en `quick-parser.ts`): una o dos seguidas que no reconoce, en un mensaje con un
+  solo monto y sin ninguna categoría nombrada. Es conservadora: "pizza con amigos" o "kiosko de la esquina" no
+  aprenden nada. `NOT_LEARNABLE` tiene lo que nunca se aprende (verbos, días, meses...).
+- **Cuándo:** al guardar el gasto (`savePending`), con la categoría final: la que dijo la IA, la elegida en la lista
+  o la de una corrección. Viaja en `PendingExpense.learnWord`. Solo por texto o audio, no por tickets.
+- **Cuándo no:** si la categoría es "Otros", si la palabra ya significa algo en otra categoría o si esa categoría ya
+  tiene 30 palabras clave (el máximo del formulario).
+- **Avisa** ("🧠 Aprendí...") con el botón **No aprender** (`forget:`); **Deshacer** también la olvida. Se ve y se
+  edita en las palabras clave de la categoría, en la web.
+- **Vale la última** (decisión de Felipe): si la categoría salió de una palabra clave y antes de guardar la corrige a
+  otra, la palabra se muda (`categoryKeywordIn`, `moveCategoryWord`), también las de fábrica ("chino"). A "Otros" no se
+  muda, y No aprender / Deshacer la devuelven. Solo al corregir en Chop antes de guardar: no al cambiar un gasto ya guardado.
+- Probado con la IA simulada (la clave de Anthropic de la compu con Docker da 401): todavía falta con la IA real.
+
 ## Hecho: Inicio ordenado (2026-11-04)
 
 Felipe eligió entre mockups. **Compu** (desde `xl`, 1280 px): una columna principal y otra de detalle, con cada fila
@@ -289,9 +307,11 @@ opción por persona, en Mi cuenta → Estilo: **Sobrio** (la app de siempre, y c
   Las tarjetas se tiñen cambiando `--card`, `--border` y `--muted-foreground` dentro de `[data-slot=card]`, con el
   tono del color principal (`--accent-hue`). `data-hero` llena el total del mes y del año, y `data-nav` marca el ítem
   activo del menú. Con el color **Negro** los módulos no se tiñen: quedan solo las categorías.
-- **Color por categoría:** 8 colores (`lib/category-colors.ts`, `--cat-*`), validados con la guía dataviz en ese
-  orden; una paleta de 11 no pasó. Uno automático al crearla (`leastUsedColor`, también por Chop) y se cambia al
-  editarla. A las que ya existían se les repartieron en orden. Si dos comparten color, las separan ícono y nombre.
+- **Color por categoría:** 14 colores (`lib/category-colors.ts`, `--cat-*`). Los primeros 8 pasan la validación de
+  la guía dataviz; Felipe pidió más (con 11 categorías iniciales se repetían) y se sumaron 6 elegidos a mano para que
+  no se parezcan (migración `mas_colores`). Esos 6 no pasan esa validación estricta (algunos son muy claros o se
+  confunden con daltonismo), por eso siempre van con ícono o nombre. Uno automático al crearla (`leastUsedColor`,
+  también por Chop) y se cambia al editarla.
 - **Gráficos:** con Con color, torta y barras del año usan el color de cada categoría; si dos del mismo gráfico lo
   comparten, una toma uno libre (`distinctColors`). En Sobrio siguen los de siempre, por orden.
 - Se sumaron **Rosa y Turquesa** al color principal.

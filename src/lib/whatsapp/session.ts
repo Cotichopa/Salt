@@ -24,6 +24,8 @@ export type PendingExpense = {
   installments?: number;
   dollarType?: DollarTypeCode; // en USD sin crédito: a qué dólar se pagó (se pregunta antes de guardar)
   tags?: string[]; // etiquetas ("#bariloche" en el mensaje)
+  learnWord?: string; // la palabra que Chop no conocía: al guardar, queda en la categoría elegida
+  knownWord?: string; // la palabra clave que eligió la categoría: si termina en otra, se muda ahí
 };
 
 /** Una opción de una confirmación: botón "act:<id>" y palabras que valen escritas */

@@ -99,6 +99,45 @@ export async function createCategory(userId: string, input: CategoryInput) {
   return db.category.create({ data: { ...input, color: input.color ?? leastUsedColor(used.map((c) => c.color)), userId } });
 }
 
+/**
+ * Chop aprendió una palabra ("kiosko" → Supermercado). Devuelve el nombre de la categoría, o null si no
+ * corresponde: "Otros" no dice nada, la palabra ya significa algo en otra categoría, o no entran más (30).
+ */
+export async function learnCategoryWord(userId: string, categoryId: string, word: string) {
+  const cats = await db.category.findMany({ where: { userId }, select: { id: true, name: true, keywords: true } });
+  const cat = cats.find((c) => c.id === categoryId);
+  if (!cat || normalize(cat.name) === "otros" || cat.keywords.length >= 30) return null;
+  if (cats.some((c) => normalize(c.name) === word || c.keywords.includes(word))) return null;
+  await db.category.update({ where: { id: categoryId }, data: { keywords: { push: word } } });
+  return cat.name;
+}
+
+/**
+ * Corrigió un gasto a otra categoría: la palabra clave se muda ahí (vale la última). Devuelve de dónde a
+ * dónde, o null si no corresponde: a "Otros" no se muda (no dice nada) y tampoco si ya no entran más.
+ */
+export async function moveCategoryWord(userId: string, toCategoryId: string, word: string) {
+  const cats = await db.category.findMany({ where: { userId }, select: { id: true, name: true, keywords: true } });
+  const to = cats.find((c) => c.id === toCategoryId);
+  const from = cats.find((c) => c.id !== toCategoryId && c.keywords.includes(word));
+  if (!to || !from || normalize(to.name) === "otros" || to.keywords.length >= 30) return null;
+  await db.$transaction([
+    db.category.update({ where: { id: from.id }, data: { keywords: from.keywords.filter((k) => k !== word) } }),
+    db.category.update({ where: { id: to.id }, data: { keywords: { push: word } } }),
+  ]);
+  return { fromId: from.id, fromName: from.name, toName: to.name };
+}
+
+/** Se arrepintió de lo que aprendió Chop: saca la palabra y, si la había mudado, la devuelve adonde estaba */
+export async function forgetCategoryWord(userId: string, categoryId: string, word: string, backToId?: string) {
+  const cat = await db.category.findFirst({ where: { id: categoryId, userId }, select: { keywords: true } });
+  if (!cat) return;
+  await db.category.update({ where: { id: categoryId }, data: { keywords: cat.keywords.filter((k) => k !== word) } });
+  if (!backToId) return;
+  const back = await db.category.findFirst({ where: { id: backToId, userId }, select: { keywords: true } });
+  if (back && !back.keywords.includes(word)) await db.category.update({ where: { id: backToId }, data: { keywords: { push: word } } });
+}
+
 export async function updateCategory(userId: string, id: string, input: CategoryInput) {
   await findOwn(userId, id);
   await assertNameFree(userId, input.name, id);

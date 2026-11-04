@@ -10,7 +10,7 @@ import { hashtags, withoutHashtags } from "@/lib/tags";
 import { ReceiptError } from "@/lib/services/receipts";
 import { readReceipt, receiptKind, type ReceiptKind } from "@/lib/services/receipt-reading";
 import { listPaymentSources } from "@/lib/services/payment-sources";
-import { isDeleteLast, parseWithoutAI } from "@/lib/whatsapp/quick-parser";
+import { isDeleteLast, parseWithoutAI, learnableWord, categoryKeywordIn } from "@/lib/whatsapp/quick-parser";
 import {
   handleDelete,
   handleEdit,
@@ -201,11 +201,15 @@ ${notices}` : hello;
       if (followup.section) {
         if (await handleSection(ctx, followup.section, combined)) return;
       } else if (isAiEnabled()) {
-        return askAI(ctx, combined, categories, sources);
+        return askAI(ctx, combined, categories, sources, followup.text);
       }
     }
     if (quick) console.log(`[quick-parser] ${quick.intent} resuelto sin IA`);
-    if (quick?.intent === "cargar" && (await proposeExpenses(ctx, quick.expenses))) return;
+    if (quick?.intent === "cargar") {
+      const word = quick.expenses.length === 1 ? categoryKeywordIn(input.text, categories, sources) : null;
+      if (word) quick.expenses[0].knownWord = word;
+      if (await proposeExpenses(ctx, quick.expenses)) return;
+    }
     if (quick?.intent === "consultar") return void (await handleQuery(ctx, quick));
     if (quick?.intent === "eliminar") return void (await handleDelete(ctx, quick.target));
     if (quick?.intent === "seccion" && (await handleSection(ctx, quick.section, input.text, quick.quick))) return;
@@ -247,6 +251,7 @@ async function askAI(
   text: string,
   categories: Awaited<ReturnType<typeof listCategories>>,
   sources: Awaited<ReturnType<typeof listPaymentSources>>,
+  original = text, // si contesta una pregunta de Chop, `text` trae todo junto; acá va lo que escribió primero
 ) {
   const parsed = withTags(
     await parseMessage(text, {
@@ -266,7 +271,14 @@ async function askAI(
     );
     return;
   }
-  if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses))) return;
+  if (parsed.intent === "cargar") {
+    // Si tuvo que preguntarle a la IA porque había una palabra que no conoce, se la aprende al guardar
+    const word = parsed.expenses.length === 1 ? learnableWord(original, categories, sources) : null;
+    if (word) parsed.expenses[0].learnWord = word;
+    const known = parsed.expenses.length === 1 ? categoryKeywordIn(original, categories, sources) : null;
+    if (known) parsed.expenses[0].knownWord = known;
+    if (await proposeExpenses(ctx, parsed.expenses)) return;
+  }
   if (parsed.intent === "consultar") return void (await handleQuery(ctx, parsed));
   if (parsed.intent === "eliminar") return void (await handleDelete(ctx, parsed.target));
   if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));

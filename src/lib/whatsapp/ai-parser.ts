@@ -66,6 +66,8 @@ export type ParsedExpense = {
   date: string;
   description: string | null;
   tags?: string[]; // etiquetas escritas con "#" en el mensaje ("café 3000 #bariloche"): las pone bot.ts
+  learnWord?: string; // la palabra que Chop no conocía ("kiosko"): se aprende al guardar (bot.ts)
+  knownWord?: string; // la palabra clave que eligió la categoría: si la corrige, se muda (bot.ts)
 };
 
 export type QueryPeriod = "hoy" | "ayer" | "semana" | "mes" | "mes_pasado" | "anio" | "todo";

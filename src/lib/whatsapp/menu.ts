@@ -12,7 +12,7 @@ import {
 import { normalize } from "@/lib/text";
 import { searchExpenses } from "@/lib/expense-search";
 import { hashtags } from "@/lib/tags";
-import { listCategories } from "@/lib/services/categories";
+import { listCategories, forgetCategoryWord, learnCategoryWord, moveCategoryWord } from "@/lib/services/categories";
 import {
   createExpense,
   deleteExpense,
@@ -132,7 +132,8 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
 
   // Los botones del menú principal y "Deshacer" valen en cualquier momento
   if (id?.startsWith("menu:")) return routeMain(ctx, id.slice(5));
-  if (id?.startsWith("undo:")) return undoSaved(ctx, id.slice(5).split("."));
+  if (id?.startsWith("undo:")) return undoSaved(ctx, id.slice(5));
+  if (id?.startsWith("forget:")) return forgetWord(ctx, id.slice(7));
   if (!session && !id) return false;
 
   if (id && (!session || !expected[session.state]?.some((p) => id.startsWith(p)))) {
@@ -627,6 +628,8 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
       sourceName: usable?.name ?? null,
       installments: method === "CREDIT" ? p.installments : 1,
       ...(p.tags?.length ? { tags: p.tags } : {}),
+      ...(p.learnWord ? { learnWord: p.learnWord } : {}),
+      ...(p.knownWord ? { knownWord: p.knownWord } : {}),
     });
   }
   if (pending.length === 0) return false;
@@ -953,6 +956,12 @@ async function savePending(ctx: Ctx, pending: PendingExpense[], receiptId?: stri
   }
 
   const saved = pending.slice(0, ids.length);
+  // Chop no conocía la palabra ("kiosko") y ya se sabe la categoría: la próxima la entiende sin IA
+  const only = ids.length === 1 && saved.length === 1 ? saved[0] : null;
+  const learnedIn = only?.learnWord ? await learnCategoryWord(ctx.userId, only.categoryId, only.learnWord) : null;
+  // Y si la categoría salió de una palabra clave pero la corrigió a otra, la palabra se muda (vale la última)
+  const moved = only?.knownWord ? await moveCategoryWord(ctx.userId, only.categoryId, only.knownWord) : null;
+  const word = learnedIn ? only?.learnWord : moved ? only?.knownWord : undefined;
   const title =
     ids.length === 0
       ? "❌ No pude guardarlo"
@@ -974,23 +983,43 @@ async function savePending(ctx: Ctx, pending: PendingExpense[], receiptId?: stri
       : "",
     saved.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
     receiptId && ids.length > 0 ? "🧾 _El ticket quedó guardado con el gasto: lo ves en la web, en Gastos._" : "",
+    learnedIn ? `🧠 _Aprendí: la próxima vez que digas «${word}», va a ${learnedIn}._` : "",
+    moved ? `🧠 _Aprendí: «${word}» ahora va a ${moved.toName} (antes, ${moved.fromName})._` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
   // El botón lleva los ids de lo guardado (entran hasta 3 en los 100 caracteres de un botón)
-  const undoId = `undo:${ids.join(".")}`;
+  // Si aprendió una palabra, va en los botones: deshacer el gasto también la olvida
+  const learned = word ? [saved[0].categoryId, word, ...(moved ? [moved.fromId] : [])].join("~") : null;
+  const plainUndo = `undo:${ids.join(".")}`;
+  // Un botón entra hasta 100 caracteres: si no da, Deshacer borra el gasto y queda "No aprender" para la palabra
+  const undoId = learned && `${plainUndo}~${learned}`.length <= 100 ? `${plainUndo}~${learned}` : plainUndo;
   if (ids.length > 0 && undoId.length <= 100) {
-    await ctx.out.buttons(`${body}${alertLines(alerts)}${BACK}`, [{ id: undoId, title: "↩️ Deshacer" }]);
+    await ctx.out.buttons(`${body}${alertLines(alerts)}${BACK}`, [
+      { id: undoId, title: "↩️ Deshacer" },
+      ...(learned ? [{ id: `forget:${learned}`, title: "🧠 No aprender" }] : []),
+    ]);
   } else {
     await ctx.out.text(`${body}${alertLines(alerts)}${BACK}`);
   }
   return true;
 }
 
-/** Botón Deshacer: borra lo que se acaba de guardar (con todas sus cuotas) */
-async function undoSaved(ctx: Ctx, ids: string[]) {
+/** Botón "No aprender": el gasto queda, pero Chop olvida la palabra */
+async function forgetWord(ctx: Ctx, data: string) {
+  const [categoryId, word, backToId] = data.split("~");
+  await forgetCategoryWord(ctx.userId, categoryId, word, backToId);
+  await ctx.out.text(`Listo, no me la acuerdo 👌 El gasto quedó guardado.${BACK}`);
+  return true;
+}
+
+/** Botón Deshacer: borra lo que se acaba de guardar (con todas sus cuotas) y olvida la palabra, si aprendió una */
+async function undoSaved(ctx: Ctx, data: string) {
   await clearSession(ctx.phone);
+  const [idList, categoryId, word, backToId] = data.split("~");
+  const ids = idList.split(".");
+  if (categoryId && word) await forgetCategoryWord(ctx.userId, categoryId, word, backToId);
   let deleted = 0;
   for (const id of ids) {
     try {
@@ -1059,7 +1088,14 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
             : null;
       // Las etiquetas no pasan por la IA: siguen las que tenía, más las nuevas de la corrección
       const tags = [...new Set([...pending.flatMap((p) => p.tags ?? []), ...hashtags(rawText)])];
-      const withTags = fixed?.map((f) => ({ ...f, ...(tags.length ? { tags } : {}) }));
+      // Las palabras por aprender siguen: "no, era supermercado" es justo el caso de enseñarle
+      const one = fixed?.length === 1 && pending.length === 1 ? pending[0] : null;
+      const withTags = fixed?.map((f) => ({
+        ...f,
+        ...(tags.length ? { tags } : {}),
+        ...(one?.learnWord ? { learnWord: one.learnWord } : {}),
+        ...(one?.knownWord ? { knownWord: one.knownWord } : {}),
+      }));
       if (withTags && (await proposeExpenses(ctx, withTags, "Corregido 👇", d.receiptId))) return true;
     }
     await ctx.out.buttons(`No entendí la corrección 🤔 ¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`, [

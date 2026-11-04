@@ -45,7 +45,7 @@ export async function handleSectionState(ctx: Ctx, input: Input, session: Sessio
   // El menú (➕ Agregar · 📊 Consultar · 🗑️ Eliminar) y sus listas valen en cualquier momento
   if (await handleMenuButtons(ctx, input, session)) return true;
   // "Deshacer" y los demás botones del menú los atiende menu.ts en cualquier momento
-  if (id?.startsWith("menu:") || id?.startsWith("undo:")) return false;
+  if (id?.startsWith("menu:") || id?.startsWith("undo:") || id?.startsWith("forget:")) return false;
   // Botones de los resúmenes, que valen en cualquier momento: "pay:<tarjeta>:<mes>"
   if (id?.startsWith("pay:") || id?.startsWith("unpay:")) {
     const [kind, cardId, month] = id.split(":");
