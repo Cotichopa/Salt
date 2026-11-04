@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/dal";
+import { accessOverview } from "@/lib/services/overview";
 import { ago, formatPhone } from "@/lib/format";
 import { AccountsView } from "./accounts-view";
 import type { Account, InviteState } from "./account-fields";
@@ -9,12 +10,18 @@ export const metadata: Metadata = { title: "Cuentas · Salt" };
 
 const roleLabels = { SUPERADMIN: "Superadmin", ADMIN: "Administrador", MEMBER: "Miembro" } as const;
 
-/** "Hace 2 días, por la web": lo último que usó, entre la web y Chop */
+/** "Web: hace 2 días · Chop: ayer" */
 function lastUse(web: Date | null, chop: Date | null) {
   if (!web && !chop) return "Nunca entró";
-  const byChop = !web || (chop !== null && chop > web);
-  const text = `${ago(byChop ? chop : web)}, ${byChop ? "por Chop" : "por la web"}`;
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return `Web: ${ago(web)} · Chop: ${ago(chop)}`;
+}
+
+function loginProblem(access: { recentFails: number; blockedMinutes: number } | undefined) {
+  if (access && access.blockedMinutes > 0) return { text: `Bloqueado (${access.blockedMinutes} min)`, serious: true };
+  if (access && access.recentFails > 0) {
+    return { text: `${access.recentFails} ${access.recentFails === 1 ? "contraseña mal" : "contraseñas mal"}`, serious: false };
+  }
+  return null;
 }
 
 function inviteState(invitation: { expiresAt: Date } | undefined): InviteState {
@@ -30,9 +37,12 @@ function accessLine(active: boolean, invite: InviteState, passkeys: number) {
   return `Con contraseña y huella en ${passkeys} ${passkeys === 1 ? "dispositivo" : "dispositivos"}`;
 }
 
-export default async function UsersPage() {
+export default async function UsersPage({ searchParams }: PageProps<"/admin/usuarios">) {
   const admin = await requireAdmin();
   const isSuper = admin.role === "SUPERADMIN";
+  // ?cuenta=<id>: llega con esa ficha abierta (desde "Para revisar", en el Resumen)
+  const { cuenta } = await searchParams;
+  const logins = new Map(isSuper ? (await accessOverview()).map((a) => [a.id, a]) : []);
   const users = await db.user.findMany({
     orderBy: { createdAt: "asc" },
     select: {
@@ -68,6 +78,7 @@ export default async function UsersPage() {
       invite,
       lastUse: lastUse(u.lastWebAt, u.lastChopAt),
       access: accessLine(u.active, invite, u._count.passkeys),
+      login: loginProblem(logins.get(u.id)),
       expenses: isSuper ? u._count.expenses : 0,
       isSelf,
       canManage,
@@ -77,8 +88,10 @@ export default async function UsersPage() {
       canWelcome: canManage && u.active && Boolean(u.phone),
       canToggle: canManage && !isSelf,
       canDelete: isSuper && !isSelf && !isTargetSuper,
+      canUnlock: isSuper,
+      canCloseSessions: isSuper && !isSelf,
     };
   });
 
-  return <AccountsView accounts={accounts} />;
+  return <AccountsView accounts={accounts} initialId={typeof cuenta === "string" ? cuenta : null} />;
 }

@@ -4,6 +4,8 @@ import { ChevronRightIcon } from "lucide-react";
 import { requireAccount } from "@/lib/dal";
 import { formatMoney } from "@/lib/format";
 import { listCategoriesWithUsage } from "@/lib/services/categories";
+import { listDefaultCategories } from "@/lib/services/default-categories";
+import { saveDefaultCategoryAction } from "@/lib/actions/superadmin";
 import { budgetLevel } from "@/lib/services/budgets";
 import { cn } from "@/lib/utils";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +13,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { BudgetBar } from "@/components/budget-bar";
 import { CategoryDialog } from "./category-dialog";
 import { DeleteCategoryButton } from "./delete-category-button";
+import { DeleteDefaultCategoryButton } from "./delete-default-category-button";
 import { Editable } from "@/components/read-only";
 
 export const metadata: Metadata = { title: "Categorías · Salt" };
@@ -67,6 +70,8 @@ function CategoryLink({ c }: { c: Row }) {
 export default async function CategoriesPage() {
   const user = await requireAccount();
   const categories = await listCategoriesWithUsage(user.id);
+  // Las iniciales son solo del superadmin. En "ver como", user es la cuenta que se mira: no aparecen
+  const defaults = user.role === "SUPERADMIN" && !user.readOnly ? await listDefaultCategories() : null;
 
   return (
     <div className="flex flex-col gap-6 py-2">
@@ -101,6 +106,33 @@ export default async function CategoriesPage() {
           ))}
         </CardContent>
       </Card>
+
+      {defaults && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Categorías iniciales</CardTitle>
+            <CardDescription>
+              Las que recibe cada cuenta nueva. Cambiarlas no toca las cuentas que ya existen. Esto lo ves solo vos.
+            </CardDescription>
+            <CardAction>
+              <CategoryDialog action={saveDefaultCategoryAction} />
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col divide-y">
+            {defaults.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 py-2">
+                <CategoryIcon icon={c.icon} emoji={c.emoji} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{c.name}</p>
+                  {c.keywords.length > 0 && <p className="truncate text-xs text-muted-foreground">{c.keywords.join(", ")}</p>}
+                </div>
+                <CategoryDialog category={c} action={saveDefaultCategoryAction} />
+                <DeleteDefaultCategoryButton id={c.id} name={c.name} />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

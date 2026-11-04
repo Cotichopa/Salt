@@ -44,14 +44,15 @@ function Avatar({ account, large }: { account: Account; large?: boolean }) {
 }
 
 function subtitle(account: Account) {
+  if (account.login) return account.login.text;
   if (!account.active) return "Desactivada";
   if (account.invite === "pending") return "Invitación pendiente";
   if (account.invite === "expired") return "Invitación vencida";
   return account.roleLabel;
 }
 
-export function AccountsView({ accounts }: { accounts: Account[] }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function AccountsView({ accounts, initialId }: { accounts: Account[]; initialId: string | null }) {
+  const [selectedId, setSelectedId] = useState(initialId);
   const isNarrow = useIsNarrow();
 
   const chosen = accounts.find((a) => a.id === selectedId) ?? null;

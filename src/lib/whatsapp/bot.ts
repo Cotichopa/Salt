@@ -44,7 +44,7 @@ export async function handleMessage(msg: IncomingMessage) {
     await sendText(msg.from, "Hola 👋 Soy Chop, el asistente de gastos de Salt. Este número no está registrado, así que no puedo ayudarte todavía. Pedile al administrador que lo cargue en tu cuenta.");
     return;
   }
-  // "Último mensaje a Chop" (lo ve el superadmin en Resumen → Accesos)
+  // "Último mensaje a Chop" (se ve en la ficha de la persona, en Cuentas)
   await db.user.update({ where: { id: user.id }, data: { lastChopAt: new Date() } });
   const ctx: Ctx = { userId: user.id, name: user.name, phone: msg.from, out: whatsappOutbox(msg.from), source: "WHATSAPP" };
   // Se registra cuánto costó atenderlo (usage.ts)

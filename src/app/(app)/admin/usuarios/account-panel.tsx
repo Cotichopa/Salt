@@ -1,8 +1,9 @@
 "use client";
 
 import { startTransition, useActionState, useRef, useState, useTransition } from "react";
-import { EyeIcon, PencilIcon } from "lucide-react";
+import { CircleAlertIcon, EyeIcon, PencilIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
+import { closeSessions, unlockLogin } from "@/lib/actions/superadmin";
 import { deleteUser, inviteUser, resetUserPassword, toggleUserActive, updateUser, welcomeUser } from "@/lib/actions/users";
 import {
   AlertDialog,
@@ -25,7 +26,7 @@ import { MethodChoice, RoleChoice, type Account, type AccessMethod } from "./acc
 // La ficha de una cuenta: cada dato con su acción al lado. Las ventanas se arman recién al abrirlas,
 // así vuelven a arrancar con los datos actuales.
 
-type Open = { kind: "edit"; focus: "name" | "phone" | "role" } | { kind: "password" } | { kind: "deactivate" } | { kind: "delete" } | null;
+type Open = { kind: "edit"; focus: "name" | "phone" | "role" } | { kind: "password" } | { kind: "deactivate" } | { kind: "closeSessions" } | { kind: "delete" } | null;
 
 function Row({ label, value, action }: { label: string; value: string; action?: React.ReactNode }) {
   return (
@@ -67,6 +68,21 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
     startPending(async () => {
       await toggleUserActive(account.id);
       toast.success(account.active ? `Cuenta de ${account.name} desactivada` : `Cuenta de ${account.name} activada`);
+      close();
+    });
+  }
+
+  function unlock() {
+    startPending(async () => {
+      await unlockLogin(account.id);
+      toast.success(`${account.name} ya puede volver a entrar`);
+    });
+  }
+
+  function endSessions() {
+    startPending(async () => {
+      await closeSessions(account.id);
+      toast.success(`Listo: ${account.name} tiene que volver a entrar`);
       close();
     });
   }
@@ -116,6 +132,28 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
           action={canEdit && <RowAction onClick={() => setOpen({ kind: "password" })}>{mayInvite ? "Reenviar invitación" : "Cambiar"}</RowAction>}
         />
         <Row label="Último uso" value={account.lastUse} />
+        {account.login && (
+          <div className="flex items-center gap-3 border-t py-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-muted-foreground">Login</div>
+              <div
+                className={
+                  account.login.serious
+                    ? "flex items-center gap-1.5 text-sm text-red-700 dark:text-red-400"
+                    : "flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400"
+                }
+              >
+                {account.login.serious ? <CircleAlertIcon className="size-3.5 shrink-0" /> : <TriangleAlertIcon className="size-3.5 shrink-0" />}
+                {account.login.text}
+              </div>
+            </div>
+            {!readOnly && account.canUnlock && (
+              <RowAction disabled={pending} onClick={unlock}>
+                Desbloquear
+              </RowAction>
+            )}
+          </div>
+        )}
         {canEdit && account.canWelcome && (
           <Row
             label="Chop"
@@ -127,7 +165,7 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
             }
           />
         )}
-        {!readOnly && (account.canToggle || account.canDelete) && (
+        {!readOnly && (account.canToggle || account.canCloseSessions || account.canDelete) && (
           <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-3">
             {account.canToggle && (
               <Button
@@ -138,6 +176,11 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
                 onClick={() => (account.active ? setOpen({ kind: "deactivate" }) : toggle())}
               >
                 {account.active ? "Desactivar cuenta" : "Activar cuenta"}
+              </Button>
+            )}
+            {account.canCloseSessions && (
+              <Button type="button" variant="ghost" className="-ml-2.5 h-11 lg:h-8" onClick={() => setOpen({ kind: "closeSessions" })}>
+                Cerrar sesiones
               </Button>
             )}
             {account.canDelete && (
@@ -169,6 +212,25 @@ export function AccountPanel({ account, avatar, onDeleted }: { account: Account;
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
               <Button type="button" variant="destructive" disabled={pending} onClick={toggle}>
                 Desactivar
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+      {open?.kind === "closeSessions" && (
+        <AlertDialog open onOpenChange={(o) => !o && close()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Sacar a {account.name} de todos sus dispositivos?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se cierran sus sesiones en la web y se quitan sus accesos con huella (por si perdió el celular). Vuelve a entrar con su
+                contraseña, que no cambia. Chop por WhatsApp sigue andando.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <Button type="button" variant="destructive" disabled={pending} onClick={endSessions}>
+                Cerrar sesiones
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

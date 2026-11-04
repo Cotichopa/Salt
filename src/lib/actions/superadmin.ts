@@ -9,13 +9,14 @@ import { CategoryError } from "@/lib/services/categories";
 import { deleteDefaultCategory, saveDefaultCategory } from "@/lib/services/default-categories";
 import { categorySchema, type FormState } from "@/lib/validators";
 
-// Acciones del Resumen del superadmin. Solo el superadmin (y no en "ver como").
+// Acciones del superadmin (Resumen, ficha de Cuentas y categorías iniciales). No valen en "ver como".
 
 /** Borra los intentos fallidos: si estaba bloqueada por 15 minutos, ya puede entrar */
 export async function unlockLogin(userId: string) {
   await requireSuperadminEditor();
   const user = await db.user.findUnique({ where: { id: userId }, select: { email: true } });
   if (user) await clearFailedLogins(user.email);
+  revalidatePath("/admin/usuarios");
   revalidatePath("/admin/resumen");
 }
 
@@ -31,6 +32,7 @@ export async function closeSessions(userId: string) {
     where: { id: userId },
     data: { sessionVersion: { increment: 1 }, passkeys: { deleteMany: {} } },
   });
+  revalidatePath("/admin/usuarios");
   revalidatePath("/admin/resumen");
 }
 
@@ -48,7 +50,7 @@ export async function saveDefaultCategoryAction(_prev: FormState, formData: Form
     if (e instanceof CategoryError) return { errors: { name: [e.message] } };
     throw e;
   }
-  revalidatePath("/admin/resumen");
+  revalidatePath("/categorias");
   return { ok: true, message: id ? "Categoría inicial actualizada" : `"${parsed.data.name}" se suma a las cuentas nuevas` };
 }
 
@@ -60,7 +62,7 @@ export async function removeDefaultCategory(id: string): Promise<FormState> {
     if (e instanceof CategoryError) return { message: e.message };
     throw e;
   }
-  revalidatePath("/admin/resumen");
+  revalidatePath("/categorias");
   return { ok: true, message: "Las cuentas nuevas ya no la reciben" };
 }
 

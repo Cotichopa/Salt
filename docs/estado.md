@@ -266,6 +266,20 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Resumen ordenado (2026-11-04)
+
+Felipe eligió entre mockups: **"Para revisar" arriba y pestañas** Gastos, Chop y Servidor (`?seccion=chop`, cada
+una en su archivo de `admin/resumen/`). Las flechas de mes van solo al lado de lo que cambia con el mes (en
+Chop, en "Mensajes y costo": lo que no entendió no depende del mes).
+- **Para revisar** es lo que tiene que resolver el superadmin: errores, chequeos del sistema en falla, lo que Chop
+  no entendió y contraseñas mal (solo cuentan los últimos 15 minutos). Las alertas de presupuestos y tarjetas de
+  cada persona siguen en Gastos. Cada aviso lleva a donde se resuelve; el de login, a `/admin/usuarios?cuenta=<id>`.
+- **Accesos dejó de existir como tabla:** último uso (web y Chop), huellas, Desbloquear y Cerrar sesiones están en
+  la ficha de Cuentas. Login, Desbloquear y Cerrar sesiones los ve solo el superadmin.
+- **Categorías iniciales** pasaron a la pantalla de Categorías, visibles solo para el superadmin (no en "ver como").
+- Ojo en la compu con Docker: "Último backup" y "Audios (Whisper)" salen en falla porque acá no hay ni una cosa ni la
+  otra. En el servidor, esos avisos sí importan.
+
 ## Hecho: rediseño de Cuentas (2026-11-04)
 
 Felipe eligió entre mockups: **lista y ficha** (lista de personas a la izquierda, ficha con cada acción al

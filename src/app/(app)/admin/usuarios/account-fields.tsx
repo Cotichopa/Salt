@@ -18,6 +18,8 @@ export type Account = {
   active: boolean;
   invite: InviteState;
   lastUse: string;
+  // Contraseñas mal en los últimos 15 minutos. Solo le llega al superadmin; sin problemas, null
+  login: { text: string; serious: boolean } | null;
   access: string;
   expenses: number;
   isSelf: boolean;
@@ -29,6 +31,8 @@ export type Account = {
   canWelcome: boolean;
   canToggle: boolean;
   canDelete: boolean;
+  canUnlock: boolean;
+  canCloseSessions: boolean;
 };
 
 const ROLES = [
