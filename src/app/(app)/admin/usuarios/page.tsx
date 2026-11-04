@@ -1,94 +1,84 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/dal";
-import { EyeIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Editable } from "@/components/read-only";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CreateUserForm } from "./create-user-form";
-import { UserActions } from "./user-actions";
+import { ago, formatPhone } from "@/lib/format";
+import { AccountsView } from "./accounts-view";
+import type { Account, InviteState } from "./account-fields";
 
 export const metadata: Metadata = { title: "Cuentas · Salt" };
 
-const roleLabels = { SUPERADMIN: "Superadmin", ADMIN: "Admin", MEMBER: "Miembro" } as const;
+const roleLabels = { SUPERADMIN: "Superadmin", ADMIN: "Administrador", MEMBER: "Miembro" } as const;
+
+/** "Hace 2 días, por la web": lo último que usó, entre la web y Chop */
+function lastUse(web: Date | null, chop: Date | null) {
+  if (!web && !chop) return "Nunca entró";
+  const byChop = !web || (chop !== null && chop > web);
+  const text = `${ago(byChop ? chop : web)}, ${byChop ? "por Chop" : "por la web"}`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function inviteState(invitation: { expiresAt: Date } | undefined): InviteState {
+  if (!invitation) return "none";
+  return invitation.expiresAt > new Date() ? "pending" : "expired";
+}
+
+function accessLine(active: boolean, invite: InviteState, passkeys: number) {
+  if (!active) return "No puede entrar: cuenta desactivada";
+  if (invite === "pending") return "Invitación enviada, todavía no eligió su contraseña";
+  if (invite === "expired") return "La invitación venció sin que eligiera su contraseña";
+  if (passkeys === 0) return "Con contraseña";
+  return `Con contraseña y huella en ${passkeys} ${passkeys === 1 ? "dispositivo" : "dispositivos"}`;
+}
 
 export default async function UsersPage() {
   const admin = await requireAdmin();
+  const isSuper = admin.role === "SUPERADMIN";
   const users = await db.user.findMany({
     orderBy: { createdAt: "asc" },
-    select: { id: true, name: true, email: true, phone: true, role: true, active: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      active: true,
+      lastWebAt: true,
+      lastChopAt: true,
+      // Una invitación sin usar: pedir otra o poner una contraseña anula las anteriores
+      passwordResets: { where: { invite: true, usedAt: null }, select: { expiresAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
+      _count: { select: { passkeys: true, expenses: true } },
+    },
   });
 
-  return (
-    <div className="flex flex-col gap-6 py-2">
-      <h1 className="text-2xl font-semibold">Cuentas</h1>
+  const accounts: Account[] = users.map((u) => {
+    const isSelf = u.id === admin.id;
+    const isTargetSuper = u.role === "SUPERADMIN";
+    // La cuenta del superadmin solo la toca el superadmin (users.ts, canManage)
+    const canManage = isSuper || !isTargetSuper;
+    const invite = inviteState(u.passwordResets[0]);
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      phoneLabel: u.phone ? formatPhone(u.phone) : null,
+      role: u.role === "ADMIN" ? "ADMIN" : "MEMBER",
+      roleLabel: roleLabels[u.role],
+      active: u.active,
+      invite,
+      lastUse: lastUse(u.lastWebAt, u.lastChopAt),
+      access: accessLine(u.active, invite, u._count.passkeys),
+      expenses: isSuper ? u._count.expenses : 0,
+      isSelf,
+      canManage,
+      canView: isSuper && !isSelf,
+      canChangeRole: canManage && !isSelf && !isTargetSuper,
+      canInvite: canManage && !isSelf && u.active,
+      canWelcome: canManage && u.active && Boolean(u.phone),
+      canToggle: canManage && !isSelf,
+      canDelete: isSuper && !isSelf && !isTargetSuper,
+    };
+  });
 
-      <Editable>
-        <Card>
-          <CardHeader>
-            <CardTitle>Nueva cuenta</CardTitle>
-            <CardDescription>
-              Con contraseña inicial, pasásela a la persona (después la cambia desde &quot;Mi cuenta&quot;). Sin contraseña, le
-              llega un mail para que elija la suya.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CreateUserForm />
-          </CardContent>
-        </Card>
-      </Editable>
-
-      <Card>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>WhatsApp</TableHead>
-                <TableHead>Rol</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id} className={u.active ? undefined : "opacity-50"}>
-                  <TableCell className="font-medium">
-                    {u.name} {!u.active && <Badge variant="outline">inactiva</Badge>}
-                  </TableCell>
-                  <TableCell>{u.email}</TableCell>
-                  <TableCell>{u.phone ?? "—"}</TableCell>
-                  <TableCell>
-                    <Badge variant={u.role === "MEMBER" ? "secondary" : "default"}>{roleLabels[u.role]}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {/* "Ver como": el superadmin mira la cuenta de esa persona, sin poder cambiar nada */}
-                      {admin.role === "SUPERADMIN" && u.id !== admin.id && (
-                        <form action="/api/ver-como" method="post">
-                          <input type="hidden" name="userId" value={u.id} />
-                          <Button type="submit" size="sm" variant="outline">
-                            <EyeIcon />
-                            Ver cuenta
-                          </Button>
-                        </form>
-                      )}
-                      {/* La cuenta del superadmin solo la toca el superadmin (users.ts, canManage) */}
-                      {(u.role !== "SUPERADMIN" || admin.role === "SUPERADMIN") && (
-                        <Editable>
-                          <UserActions userId={u.id} phone={u.phone} active={u.active} isSelf={u.id === admin.id} />
-                        </Editable>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <AccountsView accounts={accounts} />;
 }

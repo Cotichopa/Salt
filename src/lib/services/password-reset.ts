@@ -64,20 +64,44 @@ export async function requestPasswordReset(email: string) {
 }
 
 /**
- * Invitación a una cuenta (la manda el admin): el mismo link que "olvidé mi contraseña", pero vence
- * en 48 horas y el mail y la pantalla dan la bienvenida. Anula los links anteriores sin usar.
+ * Link para elegir contraseña que manda un admin: el mismo de "olvidé mi contraseña", pero vence en
+ * 48 horas. Si la persona nunca usó Salt es una invitación (el mail y la pantalla dan la bienvenida);
+ * si ya la usa, el mail habla de una contraseña nueva. Anula los links anteriores sin usar.
  */
 export async function sendInvitation(userId: string) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, name: true, email: true } });
+  const user = await db.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, lastWebAt: true, lastChopAt: true },
+  });
+  const invite = !user.lastWebAt && !user.lastChopAt;
   const token = randomBytes(32).toString("base64url");
   await db.$transaction([
     db.passwordReset.updateMany({ where: { userId, usedAt: null }, data: { usedAt: new Date() } }),
     db.passwordReset.create({
-      data: { userId, tokenHash: hash(token), expiresAt: new Date(Date.now() + INVITE_EXPIRES_MS), invite: true },
+      data: { userId, tokenHash: hash(token), expiresAt: new Date(Date.now() + INVITE_EXPIRES_MS), invite },
     }),
   ]);
 
   const link = `${appUrl()}/recuperar/${token}`;
+  if (!invite) {
+    await sendMail(
+      user.email,
+      "Salt: elegí una contraseña nueva",
+      `Hola ${user.name}:\n\nTe mandamos un link para elegir una contraseña nueva en Salt (vence en 48 horas):\n${link}\n\n` +
+        "Hasta que la elijas, tu contraseña sigue igual.\n\nSalt",
+      mailLayout({
+        preheader: "Elegí una contraseña nueva para tu cuenta de Salt.",
+        title: "Elegí una contraseña nueva",
+        paragraphs: [`¡Hola ${user.name}!`, "Te mandamos este link para que elijas una contraseña nueva para Salt."],
+        button: { label: "Elegir contraseña nueva", href: link },
+        footnote: [
+          "El link vence en 48 horas y se puede usar una sola vez.",
+          "Hasta que la elijas, tu contraseña sigue igual. Al cambiarla se cierran tus sesiones abiertas y se borran tus accesos con huella.",
+        ],
+      }),
+    );
+    return;
+  }
   await sendMail(
     user.email,
     "Te invitaron a Salt",

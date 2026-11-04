@@ -260,12 +260,34 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      servidor se actualice con esto, correr `deploy/update.sh` dos veces** (bash sigue con la versión
      vieja del script y no corre el paso nuevo).
    - **Invitar por mail** (`sendInvitation` en `password-reset.ts`, `password_resets.invite`): en Nueva
-     cuenta, si la contraseña queda vacía le llega un link para elegirla (48 h); botón "Invitar" en cada
-     cuenta para reenviarla. La pantalla `/recuperar/<token>` da la bienvenida si es invitación.
+     cuenta, si la contraseña queda vacía le llega un link para elegirla (48 h); se reenvía desde su ficha ("Reenviar invitación"; ver "Hecho: rediseño de Cuentas"). La pantalla `/recuperar/<token>` da la bienvenida si es invitación.
    - **Categorías iniciales editables** (tabla `default_categories`, con las 11 de antes cargadas por la
      migración): Resumen → Categorías iniciales, con el mismo diálogo que las categorías (`CategoryDialog`
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
+
+## Hecho: rediseño de Cuentas (2026-11-04)
+
+Felipe eligió entre mockups: **lista y ficha** (lista de personas a la izquierda, ficha con cada acción al
+lado de su dato; en celular y tablet la ficha sube desde abajo) y **"Nueva cuenta" en una ventana**, con
+pantalla final. Archivos en `admin/usuarios/`: `accounts-view.tsx`, `account-panel.tsx`,
+`create-account-dialog.tsx`, `account-fields.tsx`.
+- **Último uso y estado de la invitación** se ven también para los admin (antes, solo en Resumen).
+- **Contraseña e Invitar son una sola acción** con dos opciones: link por mail (48 h) o ponerle una. Si la
+  persona ya usó Salt (`lastWebAt`/`lastChopAt`), `sendInvitation` manda "elegí una contraseña nueva" con
+  `invite: false`, y deja de figurar como invitación. Poner una contraseña a mano anula los links sin usar.
+- **Crear:** se elige "¿Cómo va a entrar?" (`method` en `createUserSchema`; antes, contraseña vacía =
+  invitación). La pantalla final ofrece mandar la bienvenida de Chop.
+- **Editar nombre, email, WhatsApp y rol** en una sola ventana (`updateUser`, reemplaza a `updateUserPhone`).
+  El rol no se cambia en la cuenta propia ni en la del superadmin. Desactivar ahora pide confirmación.
+- **Borrar cuenta: solo SUPERADMIN** (`deleteUser`, con `requireSuperadminEditor`), escribiendo el nombre. No
+  se puede con la propia ni con la de otro superadmin. Ojo: hay que borrar los gastos antes que la cuenta
+  (`Expense.category` es `onDelete: Restrict`); `wa_sessions` y `login_attempts` no están atadas a la cuenta y
+  se borran aparte. No se puede deshacer: lo único que queda son los backups.
+- Probado en Chrome sin ventana, con cuentas temporales y el mail simulado (ya borradas): crear, errores sin
+  perder lo escrito, editar, contraseña, desactivar, borrar sin rastros, celular, "ver como" y permisos de admin
+  (también llamando a la acción a mano). **Sin probar:** la bienvenida real por WhatsApp, un mail real y el
+  aviso de la pantalla final cuando falla el mail.
 
 ## Hecho: atajos de teclado (2026-10-09)
 

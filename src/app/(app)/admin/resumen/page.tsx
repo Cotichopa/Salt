@@ -14,7 +14,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react";
 import { requireSuperadmin } from "@/lib/dal";
-import { formatMoney, formatMonth, todayISO } from "@/lib/format";
+import { ago, formatMoney, formatMonth, todayISO } from "@/lib/format";
 import { shiftMonth } from "@/lib/services/card-statements";
 import {
   accessOverview,
@@ -46,26 +46,11 @@ export const metadata: Metadata = { title: "Resumen · Salt" };
 // Panel del superadmin: cómo viene cada persona, comparación por categoría, accesos y el estado
 // del servidor. Para ver el detalle de alguien, «Ver cuenta» (solo lectura).
 
-const relative = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" });
-
 /** Los costos de la IA son de centavos de dólar: con 4 decimales ("US$ 0,0013") */
 const usd = (n: number) => `US$ ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 
 const dateTime = (d: Date) =>
   d.toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
-
-/** "hace 5 minutos", "ayer", "hace 3 semanas" (o "nunca") */
-function ago(date: Date | null | undefined) {
-  if (!date) return "nunca";
-  const minutes = Math.round((date.getTime() - Date.now()) / 60_000);
-  if (minutes > -60) return relative.format(Math.min(minutes, -1), "minute");
-  const hours = Math.round(minutes / 60);
-  if (hours > -24) return relative.format(hours, "hour");
-  const days = Math.round(hours / 24);
-  if (days > -14) return relative.format(days, "day");
-  if (days > -60) return relative.format(Math.round(days / 7), "week");
-  return relative.format(Math.round(days / 30), "month");
-}
 
 function ViewAccountButton({ userId }: { userId: string }) {
   return (

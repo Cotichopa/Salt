@@ -27,14 +27,17 @@ const phoneRule = z
   .refine((v) => v === "" || (v.length >= 10 && v.length <= 15), "Teléfono inválido (ej: 5491122334455)")
   .transform((v) => (v === "" ? null : v));
 
-export const createUserSchema = z.object({
+const accountFields = {
   name: z.string().trim().min(2, "Ingresá el nombre"),
   email: z.string().trim().toLowerCase().pipe(z.email("Email inválido")),
   phone: phoneRule,
-  // Vacía: se le manda una invitación por mail para que elija la suya
-  password: z.union([z.literal(""), passwordRule]),
-  role: z.enum(["ADMIN", "MEMBER"]),
-});
+};
+
+// "link": le llega un mail para que elija su contraseña. "password": se la pone quien crea la cuenta
+export const createUserSchema = z.discriminatedUnion("method", [
+  z.object({ ...accountFields, role: z.enum(["ADMIN", "MEMBER"]), method: z.literal("link") }),
+  z.object({ ...accountFields, role: z.enum(["ADMIN", "MEMBER"]), method: z.literal("password"), password: passwordRule }),
+]);
 
 export const changePasswordSchema = z
   .object({
@@ -78,9 +81,11 @@ export const ownPhoneSchema = z.object({
   password: z.string().min(1, "Ingresá tu contraseña"),
 });
 
-export const updatePhoneSchema = z.object({
+// El rol es opcional: el formulario no lo manda si no se puede cambiar (uno mismo o el superadmin)
+export const updateUserSchema = z.object({
+  ...accountFields,
   userId: z.string().min(1),
-  phone: phoneRule,
+  role: z.enum(["ADMIN", "MEMBER"]).optional(),
 });
 
 export const resetPasswordSchema = z.object({
@@ -290,3 +295,7 @@ export type FormState =
       errors?: Record<string, string[] | undefined>;
     }
   | undefined;
+
+/** Lo que necesita la pantalla final de "Nueva cuenta" */
+export type CreatedAccount = { id: string; name: string; email: string; phone: string | null; invited: boolean; mailError?: string };
+export type CreateUserState = (NonNullable<FormState> & { created?: CreatedAccount }) | undefined;

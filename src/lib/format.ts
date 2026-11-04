@@ -120,3 +120,26 @@ export function formatMonthList(months: string[]) {
   });
   return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} y ${names.at(-1)}`;
 }
+
+const relative = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" });
+
+/** "hace 5 minutos", "ayer", "hace 3 semanas" (o "nunca") */
+export function ago(date: Date | null | undefined) {
+  if (!date) return "nunca";
+  const minutes = Math.round((date.getTime() - Date.now()) / 60_000);
+  if (minutes > -60) return relative.format(Math.min(minutes, -1), "minute");
+  const hours = Math.round(minutes / 60);
+  if (hours > -24) return relative.format(hours, "hour");
+  const days = Math.round(hours / 24);
+  if (days > -14) return relative.format(days, "day");
+  if (days > -60) return relative.format(Math.round(days / 7), "week");
+  return relative.format(Math.round(days / 30), "month");
+}
+
+/** Un WhatsApp para mostrar: "+54 9 341 555-0142". Si no es un celular argentino, con el + y nada más */
+export function formatPhone(phone: string) {
+  const national = phone.slice(3);
+  if (!phone.startsWith("549") || national.length !== 10) return `+${phone}`;
+  const area = national.startsWith("11") ? 2 : 3;
+  return `+54 9 ${national.slice(0, area)} ${national.slice(area, -4)}-${national.slice(-4)}`;
+}
