@@ -1,12 +1,11 @@
 "use server";
 
-import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
-import { db } from "@/lib/db";
 import { requireEditor } from "@/lib/dal";
 import { createSession } from "@/lib/session";
+import { checkCurrentPassword } from "@/lib/services/login-attempts";
 import {
   authenticationOptions,
   deletePasskey,
@@ -30,10 +29,8 @@ function looksLikeResponse(response: unknown): response is { id: string } {
 /** Agregar este dispositivo, paso 1: pide la contraseña (por si alguien encontró la sesión abierta) */
 export async function startPasskeyRegistration(password: string) {
   const me = await requireEditor();
-  const user = await db.user.findUniqueOrThrow({ where: { id: me.id }, select: { passwordHash: true } });
-  if (typeof password !== "string" || !(await bcrypt.compare(password, user.passwordHash))) {
-    return { error: "Contraseña incorrecta" } as const;
-  }
+  const check = await checkCurrentPassword(me.id, password);
+  if (!check.ok) return { error: check.message } as const;
   return { options: await registrationOptions(me) } as const;
 }
 

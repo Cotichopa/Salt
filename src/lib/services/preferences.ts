@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { checkCurrentPassword } from "@/lib/services/login-attempts";
 import { MailError, mailLayout, sendMail } from "@/lib/mail";
 import { Prisma } from "@/generated/prisma/client";
 import type { CurrencyCode, DollarTypeCode, PaymentMethodCode } from "@/lib/format";
@@ -49,8 +49,8 @@ export async function updateName(userId: string, name: string) {
 
 /** Cambiar el propio email: pide la contraseña actual, porque es con lo que se entra a Salt */
 export async function updateOwnEmail(userId: string, email: string, password: string) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordHash: true } });
-  if (!(await bcrypt.compare(password, user.passwordHash))) throw new ProfileError("password", "Contraseña incorrecta");
+  const check = await checkCurrentPassword(userId, password);
+  if (!check.ok) throw new ProfileError("password", check.message);
   try {
     await db.user.update({ where: { id: userId }, data: { email } });
   } catch (e) {
@@ -86,8 +86,8 @@ export async function notifyEmailChanged(oldEmail: string, newEmail: string, nam
 
 /** Cambiar el propio WhatsApp: pide la contraseña actual, porque el número también sirve para usar Chop */
 export async function updateOwnPhone(userId: string, phone: string | null, password: string) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordHash: true } });
-  if (!(await bcrypt.compare(password, user.passwordHash))) throw new ProfileError("password", "Contraseña incorrecta");
+  const check = await checkCurrentPassword(userId, password);
+  if (!check.ok) throw new ProfileError("password", check.message);
   try {
     await db.user.update({ where: { id: userId }, data: { phone } });
   } catch (e) {

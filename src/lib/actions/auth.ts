@@ -9,7 +9,7 @@ import { requireEditor } from "@/lib/dal";
 import { createSession, deleteSession } from "@/lib/session";
 import { MailError } from "@/lib/mail";
 import { PasswordResetError, requestPasswordReset, resetPassword } from "@/lib/services/password-reset";
-import { claimLoginAttempt, clearFailedLogins } from "@/lib/services/login-attempts";
+import { checkCurrentPassword, claimLoginAttempt, clearFailedLogins } from "@/lib/services/login-attempts";
 import {
   changePasswordSchema,
   forgotPasswordSchema,
@@ -65,9 +65,9 @@ export async function changePassword(_prev: FormState, formData: FormData): Prom
   const parsed = changePasswordSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { errors: z.flattenError(parsed.error).fieldErrors };
 
-  const user = await db.user.findUniqueOrThrow({ where: { id: me.id } });
-  if (!(await bcrypt.compare(parsed.data.current, user.passwordHash))) {
-    return { errors: { current: ["Contraseña actual incorrecta"] } };
+  const check = await checkCurrentPassword(me.id, parsed.data.current);
+  if (!check.ok) {
+    return { errors: { current: [check.message === "Contraseña incorrecta" ? "Contraseña actual incorrecta" : check.message] } };
   }
   // Subir la versión cierra las sesiones abiertas en otros lados; en este dispositivo seguís
   // adentro con una cookie nueva. Los accesos con huella se borran (decisión de Felipe: si alguien

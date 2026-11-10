@@ -1,4 +1,5 @@
 import "server-only";
+import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 
 // Límite de intentos en el login: si un email junta MAX_FAILS contraseñas mal en WINDOW_MS, queda
@@ -52,4 +53,28 @@ export async function claimLoginAttempt(email: string) {
 /** Borra los intentos de un email (al entrar bien) */
 export async function clearFailedLogins(email: string) {
   await db.loginAttempt.deleteMany({ where: { email } });
+}
+
+/**
+ * La contraseña actual, cuando se pide adentro de la app para algo importante (cambiar la contraseña,
+ * el email o el WhatsApp, o agregar una huella). Cuenta en el mismo límite que el login: si no, quien
+ * encontrara la sesión abierta podría probar contraseñas sin parar y, al acertar, cambiar el email.
+ */
+export async function checkCurrentPassword(
+  userId: string,
+  password: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true, passwordHash: true } });
+  const minutes = await claimLoginAttempt(user.email);
+  if (minutes > 0) {
+    return {
+      ok: false,
+      message: `Demasiados intentos con la contraseña. Probá de nuevo en ${minutes} ${minutes === 1 ? "minuto" : "minutos"}.`,
+    };
+  }
+  if (typeof password !== "string" || !(await bcrypt.compare(password, user.passwordHash))) {
+    return { ok: false, message: "Contraseña incorrecta" };
+  }
+  await clearFailedLogins(user.email);
+  return { ok: true };
 }
