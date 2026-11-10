@@ -164,6 +164,19 @@ export function isDeleteLast(text: string) {
   return /^(borra|borrar|borrame|elimina|eliminar|eliminame)( el)? ultimo( gasto)?$/.test(joined);
 }
 
+// Lo que se dice alrededor de un "gracias": "ok, muchas gracias Chop!"
+const THANKS_COMPANY = new Set([
+  "muchas", "muchisimas", "mil", "chop", "ok", "oka", "okey", "dale", "listo", "bien", "genial", "perfecto",
+  "buenisimo", "joya", "barbaro", "excelente", "che", "capo", "crack", "por", "todo", "la", "ayuda",
+]);
+
+/** "gracias", "muchas gracias!", "ok gracias Chop 🙏". No si dice algo más ("gracias, nafta 5000") */
+export function isThanks(text: string) {
+  const words = normalize(text).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
+  const thanks = (w: string) => w === "gracias" || w === "gracia" || w === "grax";
+  return words.some(thanks) && words.every((w) => thanks(w) || THANKS_COMPANY.has(w));
+}
+
 /**
  * "eliminá el gasto de la nafta", "borrá la pizza": las palabras que identifican el gasto a borrar.
  * null si no es eso o si habla de otra cosa ("borrá la categoría ropa", "sacá el presupuesto...").

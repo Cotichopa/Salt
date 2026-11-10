@@ -26,6 +26,7 @@ import {
 import {
   isAiEnabled,
   matchByName,
+  answerChat,
   parseMessage,
   type ParsedExpense,
   type QueryPeriod,
@@ -381,7 +382,7 @@ export async function showQueryMenu(ctx: Ctx) {
   ]);
 }
 
-function shiftMonth(month: string, delta: number) {
+export function shiftMonth(month: string, delta: number) {
   const [y, m] = month.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
 }
@@ -1061,6 +1062,8 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
 
   if (!yes && !no) {
     // No dijo ni sí ni no: puede ser una corrección ("con efectivo", "eran 8000", "fue ayer")
+    // Si en vez de corregir pregunta algo ("¿qué es el dólar oficial?"), se contesta y sigue la confirmación
+    let reply: string | undefined;
     if (rawText && pending.length > 0 && isAiEnabled()) {
       const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
       const proposed: ParsedExpense[] = pending.map((p) => ({
@@ -1097,8 +1100,10 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
         ...(one?.knownWord ? { knownWord: one.knownWord } : {}),
       }));
       if (withTags && (await proposeExpenses(ctx, withTags, "Corregido 👇", d.receiptId))) return true;
+      if (corrected?.intent === "charla") reply = (await answerChat(rawText)) ?? undefined;
     }
-    await ctx.out.buttons(`No entendí la corrección 🤔 ¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`, [
+    const again = `¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`;
+    await ctx.out.buttons(reply ? `${reply}\n\n${again}` : `No entendí la corrección 🤔 ${again}`, [
       { id: "aiconfirm:yes", title: pending.length === 1 ? "✅ Guardar" : "✅ Guardar todos" },
       { id: "aiconfirm:no", title: "❌ Cancelar" },
     ]);
@@ -1115,21 +1120,9 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
 // ---------- Consultar, eliminar y editar hablando ----------
 
 /** "cuánto gasté en comida este mes" → arma los filtros y manda el resumen */
-export async function handleQuery(
-  ctx: Ctx,
-  q: {
-    period: QueryPeriod;
-    categoryName: string | null;
-    sourceName: string | null;
-    paymentMethod: PaymentMethodCode | null;
-    text: string | null;
-  },
-) {
+/** Título y filtro de un período ("de este mes"). También lo usa sections/analisis.ts */
+export function periodFilters(period: QueryPeriod): { title: string; filters: ExpenseFilters } {
   const today = todayISO();
-  const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
-  const category = matchByName(cats, q.categoryName);
-  const source = matchByName(sources, q.sourceName);
-
   const periods: Record<QueryPeriod, { title: string; filters: ExpenseFilters }> = {
     hoy: { title: "de hoy", filters: { from: today, to: today } },
     ayer: (() => {
@@ -1146,8 +1139,24 @@ export async function handleQuery(
     anio: { title: "de este año", filters: { from: `${today.slice(0, 4)}-01-01`, to: today } },
     todo: { title: "en total", filters: {} },
   };
+  return periods[period];
+}
 
-  const { title, filters } = periods[q.period];
+export async function handleQuery(
+  ctx: Ctx,
+  q: {
+    period: QueryPeriod;
+    categoryName: string | null;
+    sourceName: string | null;
+    paymentMethod: PaymentMethodCode | null;
+    text: string | null;
+  },
+) {
+  const [cats, sources] = await Promise.all([listCategories(ctx.userId), listPaymentSources(ctx.userId)]);
+  const category = matchByName(cats, q.categoryName);
+  const source = matchByName(sources, q.sourceName);
+
+  const { title, filters } = periodFilters(q.period);
   const extra = [
     q.text ? `en «${q.text}»` : "",
     category && !q.text ? `en ${label(category)}` : "",

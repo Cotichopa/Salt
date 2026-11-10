@@ -266,6 +266,28 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Chop charla y contesta sobre tus gastos (2026-11-05, sin commitear)
+
+Lo trajo un «gracias» de Jose que caía en "No te entendí". Pedido de Felipe: que sea más humano y conteste
+preguntas, sin dejar de ser un bot de gastos. Eligió responder sobre Chop, dudas de plata y **sus propios gastos**.
+- **"gracias"** (`isThanks` en `quick-parser.ts`): sin IA, contesta "¡De nada! 🙌" y no toca la sesión, así una
+  confirmación pendiente sigue esperando. "gracias, nafta 5000" no cuenta: va como gasto.
+- **Charla** (`{"accion":"charla"}` + `answerChat` en `ai-parser.ts`): saludos, dudas sobre Chop y de plata en general.
+  Otro tema: dice con buena onda que solo sabe de gastos. Va en una **segunda llamada**, como las secciones: con todo
+  en el prompt principal los gastos subían un 42 % y se ponían a repreguntar. También funciona en medio de una
+  confirmación (contesta y vuelve a preguntar si guarda). Lo contestado no entra en "Lo que Chop no entendió".
+- **Preguntas sobre sus gastos** (`sections/analisis.ts`, intent `analizar`): "¿cuál fue el más grande?", "¿qué día
+  gasto más?", "¿gasté más que el mes pasado?", "¿cuántas veces fui a Coto?". **Las cuentas las hace el código y la IA
+  solo redacta**: sumando se equivocaba (lo probado: "gastaste menos" con dos meses iguales, un 70 % que era 59,5 %).
+  Le llegan totales, los 10 gastos más grandes y descripciones, sin nombre ni teléfono. Si la respuesta trae un monto
+  o porcentaje que no estaba en los datos, se pide de nuevo una vez y si no, avisa que no pudo (`unknownNumbers`). El período que nombra el mensaje manda
+  sobre el de la IA (`periodIn`); los comercios se buscan con el buscador de la web (`searchFacts`).
+- **Costo** (Haiku, banco de 50 mensajes): mensaje común ~US$ 0,0011 (como antes), charla ~US$ 0,0023, pregunta sobre
+  gastos ~US$ 0,0035 (dos llamadas). "gracias" es gratis.
+- **Ojo:** nombrar una tarjeta que la persona no tiene hace que Chop pregunte "¿con cuál?" en vez de cargar (con la
+  tarjeta en la lista, carga 8 de 8). En el banco, usar `BENCH_EMAIL` de una cuenta con Visa, o esos casos fallan.
+- **Falta decidir:** el aviso de Mi cuenta no dice que los mensajes y estos totales pasan por la IA de Anthropic.
+
 ## Hecho: Chop aprende palabras (2026-11-05)
 
 Pedido de Felipe: si Chop no conoce una palabra ("kiosko 500") y el gasto termina en Supermercado, la guarda como

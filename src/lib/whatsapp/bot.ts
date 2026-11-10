@@ -5,12 +5,12 @@ import { downloadMedia, sendText } from "@/lib/whatsapp/client";
 import { isTranscriptionEnabled, transcribeAudio, transcriptionProblem } from "@/lib/transcribe";
 import { whatsappOutbox } from "@/lib/whatsapp/outbox";
 import { listCategories } from "@/lib/services/categories";
-import { isAiEnabled, parseMessage, type Parsed } from "@/lib/whatsapp/ai-parser";
+import { answerChat, isAiEnabled, parseMessage, type Parsed } from "@/lib/whatsapp/ai-parser";
 import { hashtags, withoutHashtags } from "@/lib/tags";
 import { ReceiptError } from "@/lib/services/receipts";
 import { readReceipt, receiptKind, type ReceiptKind } from "@/lib/services/receipt-reading";
 import { listPaymentSources } from "@/lib/services/payment-sources";
-import { isDeleteLast, parseWithoutAI, learnableWord, categoryKeywordIn } from "@/lib/whatsapp/quick-parser";
+import { isDeleteLast, isThanks, parseWithoutAI, learnableWord, categoryKeywordIn } from "@/lib/whatsapp/quick-parser";
 import {
   handleDelete,
   handleEdit,
@@ -28,6 +28,7 @@ import { handleSection, handleSectionState } from "@/lib/whatsapp/sections";
 import { askFollowup } from "@/lib/whatsapp/sections/confirm";
 import { loadedFixedText } from "@/lib/whatsapp/sections/fijos";
 import type { IncomingMessage } from "@/lib/whatsapp/webhook";
+import { handleAnalysis } from "@/lib/whatsapp/sections/analisis";
 import { noteNotUnderstood, trackChop, type MessageKind } from "@/lib/whatsapp/usage";
 
 // Chop, el bot de Salt. handleMessage recibe lo que llega por WhatsApp y handleInput es el
@@ -175,6 +176,8 @@ ${notices}` : hello;
     await clearSession(ctx.phone);
     return ctx.out.text("Listo, cancelado 👌 Escribime cuando quieras.");
   }
+  // Un "gracias" no cambia nada: si había una pregunta o una confirmación en curso, sigue esperando
+  if (input.text && isThanks(input.text)) return ctx.out.text("¡De nada! 🙌");
   // Vale aunque haya otra conversación en curso, como "menu" o "cancelar"
   if (input.text && isDeleteLast(input.text)) return void (await handleDelete(ctx, { last: true, text: "", amount: 0 }));
 
@@ -280,6 +283,7 @@ async function askAI(
     if (await proposeExpenses(ctx, parsed.expenses)) return;
   }
   if (parsed.intent === "consultar") return void (await handleQuery(ctx, parsed));
+  if (parsed.intent === "analizar") return handleAnalysis(ctx, text, parsed);
   if (parsed.intent === "eliminar") return void (await handleDelete(ctx, parsed.target));
   if (parsed.intent === "editar") return void (await handleEdit(ctx, parsed.target, parsed.changes));
   // De otra sección (fijos...): la sección hace su propia llamada chica a la IA
@@ -289,6 +293,11 @@ async function askAI(
     // Se acuerda de la pregunta: la respuesta se interpreta junto con este mensaje
     await askFollowup(ctx, undefined, text, parsed.question, "\n\n_Escribí *menu* si preferís los botones._");
     return;
+  }
+  // Un saludo, una duda sobre Chop u otro tema: se contesta, y no cuenta como "no entendió"
+  if (parsed.intent === "charla") {
+    const reply = await answerChat(text);
+    if (reply) return ctx.out.text(reply);
   }
 
   noteNotUnderstood(text);

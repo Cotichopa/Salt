@@ -9,7 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { db } from "../src/lib/db";
 import { listCategories } from "../src/lib/services/categories";
 import { listPaymentSources } from "../src/lib/services/payment-sources";
-import { isAiEnabled, parseMessage, type Parsed, type ParsedExpense, type Section } from "../src/lib/whatsapp/ai-parser";
+import { answerChat, isAiEnabled, parseMessage, type Parsed, type ParsedExpense, type Section } from "../src/lib/whatsapp/ai-parser";
 import { parseWithoutAI } from "../src/lib/whatsapp/quick-parser";
 import { listRecurring } from "../src/lib/services/recurring";
 import { parseFixed } from "../src/lib/whatsapp/sections/fijos";
@@ -80,8 +80,16 @@ const CASES: [string, Expected, ParsedExpense[]?][] = [
   ["borrá la categoría ropa", "categoria"],
   ["renombrá ropa a indumentaria", "categoria"],
   // Otros
-  ["gracias!", "otro"],
-  ["qué onda", "otro"],
+  ["gracias!", "charla"],
+  ["qué onda", "charla"],
+  ["qué podés hacer?", "charla"],
+  ["cómo te mando un ticket?", "charla"],
+  ["quién ganó el partido de ayer?", "charla"],
+  ["pasame una receta de ñoquis", "charla"],
+  ["qué diferencia hay entre cierre y vencimiento?", "charla"],
+  ["cuál fue mi gasto más grande?", "analizar"],
+  ["en qué gasté más este año?", "analizar"],
+  ["qué día de la semana gasto más?", "analizar"],
 ];
 
 type Row = {
@@ -132,7 +140,12 @@ async function main() {
       presupuesto: () => parseBudgets(text, lists.categories),
       categoria: () => parseCategories(text, lists.categories),
     };
-    const second = parsed?.intent !== "seccion" || parsed.quick ? null : await sectionParsers[parsed.section]();
+    const second =
+      parsed?.intent === "charla"
+        ? await answerChat(text)
+        : parsed?.intent !== "seccion" || parsed.quick
+          ? null
+          : await sectionParsers[parsed.section]();
     const detail = second ? JSON.stringify(second) : describe(parsed);
     const got = parsed?.intent === "seccion" ? parsed.section : (parsed?.intent ?? "error");
     const usd = (usage.inTok * 1 + usage.outTok * 5) / 1e6; // Haiku 4.5: US$1 / US$5 por millón
