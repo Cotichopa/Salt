@@ -94,9 +94,8 @@ npm run dev                 # si ya estaba corriendo, reiniciarlo
      librerías que `apt autoremove` borraría: no correrlo sin el papá de Felipe (la otra app de la VM).
    - En `package.json`, `allowScripts` (npm 11, el de Node 24) tiene versiones fijas: al subir Prisma o
      ffmpeg-static, `npm install-scripts approve`.
-   - **Queda:** pasar `pdfjs-dist` a la 6 (aviso de JavaScript al abrir un PDF malicioso), probando los
-     PDF por Chop y en el visor. El aviso de `braces` se deja: viene de eslint y `shadcn` (solo
-     desarrollo) y arreglarlo rompe `shadcn`.
+   - ~~Pasar `pdfjs-dist` a la 6~~ — hecho el 2026-11-10 (ver "Hecho: segundo análisis de seguridad"). El
+     aviso de `braces` se deja: viene de eslint y `shadcn` (solo desarrollo) y arreglarlo rompe `shadcn`.
    - La compu con Docker también pasó a Node 24.22.1 (nvm, `default`), con Claude Code y n8n
      reinstalados ahí. La 20 queda instalada (el puente de Claude con Chrome apunta a ella). Ya no
      tiene `~/whisper`.
@@ -266,7 +265,31 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
-## Hecho: Chop charla y contesta sobre tus gastos (2026-11-05, sin commitear)
+## Hecho: segundo análisis de seguridad (2026-11-10)
+
+Con las skills de `mukul975/Anthropic-Cybersecurity-Skills` (instaladas en `.agents/skills/`, fuera de git): control de
+accesos e IDOR, lógica de negocio, CSRF, XSS, SSRF, encabezados, criptografía, prompt injection, `npm audit` y claves
+en la historia de git. **Nada crítico:** cada acción pide sesión y filtra por la persona (también los botones de Chop),
+"ver como" es de solo lectura y no hay claves en git. Se arregló, un commit cada uno:
+- **Content-Security-Policy con nonce** (`src/lib/csp.ts`, la arma el proxy en cada página): solo corren los scripts
+  con el nonce de ese pedido. Los estilos sueltos siguen permitidos (gráficos, avisos). **Ojo al sumar código:** un
+  `<script>` propio tiene que recibir el nonce (`headers().get("x-nonce")`, como `Splash` y `ThemeProvider` en el
+  layout), y algo de otro sitio (script, imagen, fuente, fetch desde el navegador) hay que sumarlo a `csp.ts`: si no,
+  el navegador lo bloquea (se ve en la consola).
+- **pdf.js 6.4.299** (no la 6.5, que tenía 9 días): en la 6 se cierra con `loadingTask.destroy()`.
+- `npm audit fix` (zod, nodemailer, undici...). Quedan avisos de `shadcn` y `typescript-eslint`, solo para programar.
+- La **contraseña actual** de Mi cuenta (cambiar contraseña, email o WhatsApp, agregar huella) cuenta en el límite del
+  login (`checkCurrentPassword` en `login-attempts.ts`): 5 mal en 15 minutos bloquean, también el login.
+- **CSV:** una celda que empieza con `= + - @` lleva `'` adelante (si no, Excel la toma como fórmula).
+- **`/api/auth/logout` (GET)** solo borra la cookie si la sesión ya no vale; salir es el botón (POST).
+- No era de seguridad: en el **chat web**, Deshacer y No aprender fallaban cuando Chop aprendía una palabra (el
+  validador de `chop.ts` no aceptaba `~`, ñ, tildes ni espacios).
+Probado con la versión de producción y la de desarrollo en Chrome sin ventana (todas las pantallas sin bloqueos,
+gráficos, service worker, Chop en la web, visor de PDF; un `onerror` y un `<script>` metidos en el HTML quedan
+bloqueados) y con cuentas temporales ya borradas. **Sin probar:** la app instalada en el celular (animación de inicio)
+y la huella con la CSP: probarlas después de actualizar el servidor.
+
+## Hecho: Chop charla y contesta sobre tus gastos (2026-11-05)
 
 Lo trajo un «gracias» de Jose que caía en "No te entendí". Pedido de Felipe: que sea más humano y conteste
 preguntas, sin dejar de ser un bot de gastos. Eligió responder sobre Chop, dudas de plata y **sus propios gastos**.
