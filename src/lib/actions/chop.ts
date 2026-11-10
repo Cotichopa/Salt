@@ -17,8 +17,9 @@ import { clearSession } from "@/lib/whatsapp/session";
 
 const inputSchema = z.union([
   z.object({ text: z.string().trim().min(1).max(500) }),
-  // Los ids de botones son cortos y del tipo "menu:add" o "cat:<id>"
-  z.object({ replyId: z.string().regex(/^[\w:.-]{1,100}$/) }),
+  // Los ids de botones son cortos y del tipo "menu:add" o "cat:<id>". Deshacer y No aprender llevan la
+  // palabra que aprendió Chop, separada con "~": puede tener ñ, tildes o un espacio ("mercado libre")
+  z.object({ replyId: z.string().regex(/^[\p{L}\p{N}_:.~ -]{1,100}$/u) }),
 ]);
 
 async function webCtx() {
