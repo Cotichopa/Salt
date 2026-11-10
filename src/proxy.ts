@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { decrypt, renewedSession } from "@/lib/session";
+import { contentSecurityPolicy } from "@/lib/csp";
 
 // El proxy corre ANTES de cada página. Es un primer filtro rápido: solo mira si la
 // cookie de sesión es válida (sin consultar la base). La verificación completa
 // la hace src/lib/dal.ts en cada página y acción.
+// También arma la Content-Security-Policy de cada página (src/lib/csp.ts), con un nonce nuevo.
 
 // Sin sesión: el login y "olvidé mi contraseña" (/recuperar y el link del mail, /recuperar/<token>)
 const publicRoutes = ["/login", "/recuperar"];
@@ -20,7 +22,17 @@ export default async function proxy(req: NextRequest) {
   if (isPublic && session) {
     return NextResponse.redirect(new URL("/", req.nextUrl));
   }
-  const res = NextResponse.next();
+
+  // El nonce va en el pedido (Next.js lo lee de ahí para ponérselo a sus scripts, y el layout de
+  // x-nonce) y en la respuesta (el navegador lo exige)
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = contentSecurityPolicy(nonce);
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
+
   // Usar la app renueva la sesión: solo vence si pasás 30 días sin abrirla
   const renewed = session && (await renewedSession(token));
   if (renewed) res.cookies.set(renewed.name, renewed.value, renewed.options);

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -31,6 +32,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Color principal elegido en "Cuenta" (sin sesión, el de siempre)
   const user = await getCurrentUser();
   const preferences = user ? await getPreferences(user.id) : null;
+  // El nonce de esta página (lo arma el proxy, src/lib/csp.ts): sin él, la animación de inicio y el
+  // script del tema no corren
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     // suppressHydrationWarning: next-themes escribe la clase del tema antes de que React arranque
@@ -42,8 +46,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${display.variable} ${body.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <Splash />
-        <ThemeProvider>
+        <Splash nonce={nonce} />
+        <ThemeProvider nonce={nonce}>
           {children}
           <Toaster richColors position="top-center" />
           <ServiceWorker />

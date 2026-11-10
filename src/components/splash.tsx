@@ -23,10 +23,10 @@ const strokes = [
 // El interior (cuello y cuerpo): la sal lo llena
 const inside = "M13.5 5h5v3.5l4.1 5.8L16 26.4 9.4 14.3l4.1-5.8z";
 
-export function Splash() {
+export function Splash({ nonce }: { nonce?: string }) {
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: script }} />
+      <script nonce={nonce} dangerouslySetInnerHTML={{ __html: script }} />
       <div className="splash-screen" aria-hidden="true">
         <svg viewBox="0 0 32 32" fill="none" className="size-28">
           <defs>
