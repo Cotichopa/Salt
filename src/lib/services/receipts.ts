@@ -74,12 +74,14 @@ const MIN_TEXT = 40;
 async function firstPageText(pdf: Buffer): Promise<PdfForAi | null> {
   let items: { str: string; x: number; y: number }[];
   try {
-    const doc = await getDocument({ data: new Uint8Array(pdf), verbosity: VerbosityLevel.ERRORS }).promise;
+    // Desde pdf.js 6 se cierra la tarea de carga (el documento ya no tiene destroy)
+    const task = getDocument({ data: new Uint8Array(pdf), verbosity: VerbosityLevel.ERRORS });
+    const doc = await task.promise;
     const content = await (await doc.getPage(1)).getTextContent();
     items = content.items.flatMap((it) =>
       "str" in it && it.str.trim() ? [{ str: it.str.trim(), x: it.transform[4], y: Math.round(it.transform[5]) }] : [],
     );
-    await doc.destroy();
+    await task.destroy();
   } catch {
     throw new ReceiptError("No pude abrir el PDF");
   }

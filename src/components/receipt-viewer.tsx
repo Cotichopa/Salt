@@ -111,8 +111,10 @@ function PdfPages({ src }: { src: string }) {
         await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
         const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
         const data = await (await fetch(src)).arrayBuffer();
-        const doc = await pdfjs.getDocument({ data, verbosity: pdfjs.VerbosityLevel.ERRORS }).promise;
-        destroy = () => doc.destroy();
+        // Desde pdf.js 6 se cierra la tarea de carga (el documento ya no tiene destroy)
+        const task = pdfjs.getDocument({ data, verbosity: pdfjs.VerbosityLevel.ERRORS });
+        destroy = () => task.destroy();
+        const doc = await task.promise;
         const width = Math.min(container.clientWidth * window.devicePixelRatio * 2, 2400);
         for (let n = 1; n <= doc.numPages; n++) {
           const page = await doc.getPage(n);
