@@ -51,3 +51,8 @@ Passphrase
 
 # configuración de npm de cada compu (va en ~/.npmrc, no en el proyecto)
 .npmrc
+
+# herramientas del agente (locales de cada compu)
+.agents/
+.claude/
+skills-lock.json
