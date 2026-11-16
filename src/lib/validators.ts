@@ -14,7 +14,9 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Ingresá tu contraseña"),
 });
 
-const passwordRule = z.string().min(8, "Mínimo 8 caracteres");
+// bcrypt solo usa los primeros 72 bytes de la contraseña: de ahí en más lo ignora. Capamos en 72
+// para que el límite sea honesto (nada se trunca sin avisar) y para no aceptar cuerpos enormes.
+const passwordRule = z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres");
 
 // WhatsApp identifica a las personas por su número en formato internacional sin "+"
 // (ej: 5491122334455). Aceptamos que lo escriban con espacios, guiones o "+".
