@@ -10,7 +10,14 @@ const MAX_LENGTH = 2000;
 
 // Robots que recorren internet probando fallas conocidas de Next.js: Next los rechaza y no
 // son problemas de Salt
-const NOISE = [/Server Reference ID did not match/, /failed-to-find-server-action/, /Failed to find Server Action/];
+const NOISE = [
+  /Server Reference ID did not match/,
+  /failed-to-find-server-action/,
+  /Failed to find Server Action/,
+  // Avisos de Node sobre librerías ("esto va a cambiar en la próxima versión"): no son errores. Node
+  // los escribe con console.error, una vez por arranque (ej.: el de pg que dispara el adaptador de Prisma)
+  /^\(node:\d+\) (\[\w+\] )?DeprecationWarning/,
+];
 
 let saving = false; // si guardar falla y eso escribe otro error, no entrar en un bucle
 let lastMessage = "";
