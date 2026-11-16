@@ -98,8 +98,10 @@ export async function setBudget(userId: string, categoryId: string, amount: numb
   });
 }
 
+/** Saca el presupuesto de una categoría. Devuelve cuántos borró (0 si no tenía). */
 export async function removeBudget(userId: string, categoryId: string) {
-  await db.budget.deleteMany({ where: { userId, categoryId } });
+  const { count } = await db.budget.deleteMany({ where: { userId, categoryId } });
+  return count;
 }
 
 export type BudgetAlert = BudgetStatus & { level: "warning" | "exceeded" };

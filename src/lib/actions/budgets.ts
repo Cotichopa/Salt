@@ -30,7 +30,11 @@ export async function saveBudget(_prev: FormState, formData: FormData): Promise<
 
 export async function deleteBudget(categoryId: string): Promise<FormState> {
   const user = await requireEditor();
-  await removeBudget(user.id, categoryId);
+  const removed = await removeBudget(user.id, categoryId);
   revalidate();
-  return { ok: true, message: "Presupuesto eliminado" };
+  // Antes decía "eliminado" siempre, aunque esa categoría no tuviera presupuesto (o el id fuera de otra
+  // cuenta, en cuyo caso no borra nada): ahora el mensaje dice lo que realmente pasó.
+  return removed > 0
+    ? { ok: true, message: "Presupuesto eliminado" }
+    : { ok: true, message: "Esa categoría no tenía presupuesto" };
 }
