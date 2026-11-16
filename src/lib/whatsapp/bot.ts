@@ -16,6 +16,7 @@ import {
   handleEdit,
   handleMenu,
   handleQuery,
+  askTransferIsExpense,
   proposeExpenses,
   showMainMenu,
   type Ctx,
@@ -135,13 +136,24 @@ export async function processReceipt(ctx: Ctx, file: Buffer, kind: ReceiptKind, 
         'Probá mandarlo de nuevo en un rato o escribime el gasto (ej: _"super 12500"_):',
     );
   }
+  const { transfer } = reading;
+  if (transfer?.own && parsed.intent === "cargar") {
+    return ctx.out.text(
+      "🔁 Es una transferencia entre tus cuentas (sale y llega a tu nombre), así que no es un gasto: no la cargo.\n" +
+        'Si igual querés anotarla, escribímela (ej: _"transferencia 7100"_).',
+    );
+  }
+  if (transfer && parsed.intent === "cargar" && parsed.expenses.length > 0) {
+    return void (await askTransferIsExpense(ctx, parsed.expenses, "💸 Esto leí de la transferencia 👇", receiptId, transfer.to));
+  }
   const heading = pdf ? "📄 Esto leí de la factura 👇" : "🧾 Esto leí del ticket 👇";
   if (parsed.intent === "cargar" && (await proposeExpenses(ctx, parsed.expenses, heading, receiptId))) return;
-  const why = parsed.intent === "otro" && parsed.question ? `${parsed.question} ` : "";
+  // La IA dice qué faltó ("no se ve el total"): no siempre es culpa de la foto, así que no se pide otra
+  const why = parsed.intent === "otro" && parsed.question ? ` ${parsed.question}` : "";
   await ctx.out.text(
     pdf
-      ? `🤔 No pude sacar el gasto de ese PDF. ${why}\nProbá mandándome una foto de la factura, o escribime el gasto.`
-      : `🤔 No pude sacar el gasto de esa foto. ${why}\nProbá con una foto más de cerca y con buena luz, o escribime el gasto.`,
+      ? `🤔 No pude sacar el gasto de ese PDF.${why}\nSi es un gasto, escribímelo (ej: _"luz 25000"_) o mandame una foto de la factura.`
+      : `🤔 No pude sacar el gasto de esa foto.${why}\nSi es un gasto, escribímelo (ej: _"super 12500"_). Si la foto salió borrosa, probá con otra.`,
   );
 }
 

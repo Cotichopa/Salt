@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import type { DollarTypeCode } from "@/lib/format";
-import type { Section } from "@/lib/whatsapp/ai-parser";
+import type { ParsedExpense, Section } from "@/lib/whatsapp/ai-parser";
 
 // "Memoria" de la conversación: en qué paso del menú está cada teléfono y qué datos
 // fue juntando (por ejemplo, la categoría elegida mientras espera el monto).
@@ -66,6 +66,8 @@ export type Draft = {
   pending?: PendingExpense[];
   receiptId?: string; // ticket (foto o PDF) de estos gastos: se guarda con ellos
   heading?: string; // título de la confirmación ("📄 Esto leí de la factura"), aunque antes pregunte algo
+  transferTo?: string; // el ticket es una transferencia (a esta persona): cambia cómo se cuenta lo del "comercio"
+  transferExpenses?: ParsedExpense[]; // transferencia leída, esperando "¿Esto es un gasto?"
   categoryId?: string;
   categoryLabel?: string;
   amount?: number;

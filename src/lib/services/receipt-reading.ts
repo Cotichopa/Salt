@@ -22,9 +22,19 @@ export function receiptKind(mimeType: string | undefined): ReceiptKind | null {
 }
 
 /**
+ * Una transferencia leída del comprobante. `own`: de una cuenta tuya a otra tuya (mismo CUIL de los
+ * dos lados, o el mismo nombre): no es un gasto. `to`: a quién (para la descripción y las preguntas).
+ */
+export type ReceiptTransfer = { to: string | null; own: boolean };
+
+/**
  * Guarda el ticket y lo lee con la IA. `parsed` es null si la IA no respondió. Si se leyó un CUIT
  * válido, queda con el ticket, y si el comercio ya es conocido su categoría reemplaza a la que eligió
  * la IA, salvo que el texto que vino con el ticket nombre otra ("esto es de regalos").
+ * Si es un comprobante de transferencia (decisiones de Felipe, 2026-11-16): la persona que recibe hace
+ * de comercio (su CUIL se recuerda con la categoría), el medio es transferencia, la descripción
+ * "Transferencia a <nombre>" y la categoría no se adivina (se pregunta), salvo que la persona ya sea
+ * conocida o el texto nombre una.
  * ReceiptError si el archivo no se puede abrir.
  */
 export async function readReceipt(userId: string, file: Buffer, kind: ReceiptKind, caption?: string) {
@@ -36,16 +46,37 @@ export async function readReceipt(userId: string, file: Buffer, kind: ReceiptKin
     sources: sources.map((s) => s.name),
   });
   const parsed: Parsed | null = result?.parsed ?? null;
+  const captionCategory = !!caption && namesCategory(categories, caption);
 
-  const cuit = validCuit(result?.cuit);
-  if (cuit && parsed) {
+  let transfer: ReceiptTransfer | null = null;
+  if (result?.transfer && parsed?.intent === "cargar") {
+    const t = result.transfer;
+    transfer = { to: t.to, own: isOwnTransfer(t) };
+    for (const e of parsed.expenses) {
+      e.paymentMethod = "TRANSFER";
+      e.description = t.to ? `Transferencia a ${t.to}` : "Transferencia";
+      if (!captionCategory) e.categoryName = "";
+    }
+  }
+
+  const cuit = validCuit(transfer ? result?.transfer?.toCuit : result?.cuit);
+  if (cuit && parsed && !transfer?.own) {
     await setReceiptCuit(userId, saved.id, cuit);
     const known = await merchantCategory(userId, cuit);
-    if (known && parsed.intent === "cargar" && !(caption && namesCategory(categories, caption))) {
+    if (known && parsed.intent === "cargar" && !captionCategory) {
       for (const e of parsed.expenses) e.categoryName = known.name;
     }
   }
-  return { receiptId: saved.id, parsed, categories, sources };
+  return { receiptId: saved.id, parsed, categories, sources, transfer };
+}
+
+/** De una cuenta a otra de la misma persona: el mismo CUIL de los dos lados o, si no se leyeron, el mismo nombre */
+function isOwnTransfer(t: { to: string | null; toCuit: string | null; from: string | null; fromCuit: string | null }) {
+  const to = validCuit(t.toCuit);
+  const from = validCuit(t.fromCuit);
+  if (to && from) return to === from;
+  const name = (v: string | null) => normalize(v ?? "").replace(/[^a-z0-9ñ]+/g, " ").trim();
+  return !!name(t.to) && name(t.to) === name(t.from);
 }
 
 /**

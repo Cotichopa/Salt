@@ -265,6 +265,30 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: Chop y los comprobantes de transferencia (2026-11-16)
+
+Lo trajo una captura de Mercado Pago (transferencia a una persona) que Chop rechazó: "no es un comprobante de compra".
+Decisiones de Felipe:
+- **Primero pregunta "¿Es un gasto?"** (✅ Sí / ❌ No; estado `ai:transfer`, `askTransferIsExpense` en `menu.ts`): puede
+  ser un préstamo o plata que no se gastó. Si escribe otra cosa, la pregunta se deja y el mensaje se procesa normal.
+- **Categoría: la pregunta** (la IA no la adivina), salvo que el texto de la foto nombre una o la persona ya sea conocida.
+- **Medio Transferencia**, con la billetera o banco de **origen** si está en la lista (si no, pregunta cuál).
+- **Descripción** "Transferencia a <nombre>".
+- **Recuerda a quien la recibe por su CUIL** (la tabla `merchants`, como un comercio): la próxima transferencia a esa
+  persona viene con la última categoría. Esos destinatarios aparecen en la tarjeta Comercios de la categoría.
+- **Entre tus cuentas** (mismo CUIL de los dos lados o, si no se leyeron, el mismo nombre): avisa y no la carga.
+- Vale para cualquier app o banco, foto o PDF, por WhatsApp, en el chat web y en el formulario de gasto.
+Cómo: `RECEIPT_SYSTEM` suma `"transf"` (destino, CUIL de los dos lados, motivo) y `readReceipt` (`receipt-reading.ts`)
+arma el gasto y decide si es entre tus cuentas (`isOwnTransfer`). Probado con la captura (3 de 3 bien leída; ~US$ 0,0023)
+y el recorrido completo con la cuenta demo. En esa captura chica el CUIL se leyó mal y el verificador lo descartó:
+**falta probar con una captura real** (que la recuerde) y una transferencia entre cuentas propias.
+- De paso: elegir la categoría que faltaba en un ticket **perdía el ticket** (no quedaba con el gasto); arreglado
+  (`receiveMissing` sigue con el borrador entero). Y si no saca el gasto de una foto ya no pide "una foto con mejor luz"
+  como única salida.
+- **Errores del Resumen:** los `DeprecationWarning` de Node (el de `pg`, que dispara el adaptador de Prisma, uno por
+  arranque) ya no se guardan como errores (`NOISE` en `server-errors.ts`). Los `132001` de la plantilla eran todos del
+  2/11, el día del número nuevo: ya no pasan.
+
 ## Hecho: tercer test de seguridad (pentest) (2026-11-16)
 
 Test de penetración desde dos lados: **caja negra** (como un desconocido, solo con la dirección) y **caja

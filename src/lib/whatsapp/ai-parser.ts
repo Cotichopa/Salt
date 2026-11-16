@@ -307,10 +307,30 @@ Todo comprobante con un total se propone como gasto (servicios, honorarios, impu
 - fecha YYYY-MM-DD de la compra, nunca futura. Omitila si no se ve.
 - desc: el nombre del comercio, corto ("Carrefour", "YPF").
 - cuit: el CUIT del comercio que emite el ticket (arriba, junto a su nombre), tal cual se lee. Nunca el del cliente. Omitilo si no se ve.
-- Si hay un texto de la persona, manda sobre la foto ("fue con la visa", "es de nafta").`;
+- Si hay un texto de la persona, manda sobre la foto ("fue con la visa", "es de nafta").
+TRANSFERENCIAS: un comprobante de transferencia (plata que pasa de una cuenta a otra, con origen y destino: Mercado Pago, bancos, Ualá...) también es "cargar", con medio TRANSFER, tarjeta = la billetera o banco de ORIGEN si está en la lista, y sin cat, desc ni cuit. Sumá "transf" con el destino (nombre y CUIT/CUIL), el CUIT/CUIL de origen y el motivo, tal cual se leen:
+{"accion":"cargar","gastos":[{"monto":7100,"medio":"TRANSFER","tarjeta":"Mercado Pago"}],"transf":{"a":"Juan Pérez","cuitA":"20-12345678-9","de":"Ana Gómez","cuitDe":"27-87654321-0","motivo":"Varios"}}
+Un pago con QR o tarjeta a un comercio no es transferencia: va como cualquier ticket.`;
 
-// Lo mismo que un mensaje, más el CUIT del comercio (va aparte de los gastos: es uno por ticket)
-const receiptSchema = aiSchema.and(z.object({ cuit: z.string().optional() }));
+// Lo mismo que un mensaje, más el CUIT del comercio (va aparte de los gastos: es uno por ticket) y,
+// si es una transferencia, sus datos: el destino hace de "comercio" (ver receipt-reading.ts)
+const receiptSchema = aiSchema.and(
+  z.object({
+    cuit: z.string().optional(),
+    transf: z
+      .object({
+        a: z.string().optional(),
+        cuitA: z.string().optional(),
+        de: z.string().optional(),
+        cuitDe: z.string().optional(),
+        motivo: z.string().optional(),
+      })
+      .optional(),
+  }),
+);
+
+/** Lo que se leyó de un comprobante de transferencia, tal cual (los CUIT/CUIL sin validar) */
+export type TransferRead = { to: string | null; toCuit: string | null; from: string | null; fromCuit: string | null; reason: string | null };
 
 /** El ticket que lee la IA: una foto (JPEG), o de una factura en PDF su texto o su primera página */
 export type ReceiptFile = { kind: "image"; data: Buffer } | PdfForAi;
@@ -325,7 +345,7 @@ export async function parseReceipt(
   file: ReceiptFile,
   caption: string | undefined,
   lists: Lists,
-): Promise<{ parsed: Parsed; cuit: string | null } | null> {
+): Promise<{ parsed: Parsed; cuit: string | null; transfer: TransferRead | null } | null> {
   if (!isAiEnabled()) return null;
   const text = [todayLine(), ...listsLines(lists), caption ? `\nTexto de la persona: "${caption.slice(0, MAX_CHARS)}"` : ""].join("\n");
   const result = await askModel(
@@ -342,7 +362,13 @@ export async function parseReceipt(
     receiptSchema,
     "ai-ticket",
   );
-  return result ? { parsed: toParsed(result, todayISO()), cuit: result.cuit ?? null } : null;
+  if (!result) return null;
+  const t = result.transf;
+  const clean = (v: string | undefined) => v?.trim().slice(0, 100) || null;
+  const transfer: TransferRead | null = t
+    ? { to: clean(t.a), toCuit: clean(t.cuitA), from: clean(t.de), fromCuit: clean(t.cuitDe), reason: clean(t.motivo) }
+    : null;
+  return { parsed: toParsed(result, todayISO()), cuit: result.cuit ?? null, transfer };
 }
 
 function toParsed(p: z.infer<typeof aiSchema>, today: string): Parsed {

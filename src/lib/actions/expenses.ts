@@ -119,11 +119,15 @@ export async function readReceiptForForm(formData: FormData): Promise<ReceiptRea
     }
 
     // Es una consulta a la IA como las de Chop: cuenta en el gasto de IA del Resumen
-    const { receiptId, parsed, categories, sources } = await trackChop(
+    const { receiptId, parsed, categories, sources, transfer } = await trackChop(
       { userId: user.id, source: "WEB", kind: "ticket del formulario" },
       () => readReceipt(user.id, data, kind),
     );
     const e = parsed?.intent === "cargar" ? parsed.expenses[0] : null;
+    if (e && transfer?.own) {
+      const message = "Es una transferencia entre tus cuentas (sale y llega a tu nombre): no es un gasto. Quedó adjunta por si igual la querés cargar.";
+      return { ok: true, receiptId, kind, fill: null, message };
+    }
     if (!e) {
       const why = parsed?.intent === "otro" && parsed.question ? ` (${parsed.question})` : "";
       const message = parsed
@@ -146,7 +150,10 @@ export async function readReceiptForForm(formData: FormData): Promise<ReceiptRea
       installments: method === "CREDIT" ? e.installments : 1,
       description: e.description,
     };
-    return { ok: true, receiptId, kind, fill, message: "Completé el formulario con lo que leí del ticket: revisalo antes de guardar." };
+    const message = transfer
+      ? `Completé el formulario con lo que leí de la transferencia${fill.categoryId ? "" : ": elegí la categoría"} y revisalo antes de guardar.`
+      : "Completé el formulario con lo que leí del ticket: revisalo antes de guardar.";
+    return { ok: true, receiptId, kind, fill, message };
   } catch (err) {
     if (err instanceof ReceiptError) {
       return { ok: false, message: kind === "pdf" ? "No pude leer ese PDF. Probá con una foto del ticket." : "No pude abrir esa imagen. Probá con otra foto." };

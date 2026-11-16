@@ -109,6 +109,7 @@ const expected: Record<string, string[]> = {
   "ai:missing": ["cat:", "catpage:", "src:"],
   "ai:dollar": ["usd:"],
   "ai:method": ["pm:", "src:"],
+  "ai:transfer": ["transfer:"],
 };
 
 // ---------- Menú principal ----------
@@ -182,6 +183,8 @@ export async function handleMenu(ctx: Ctx, input: Input, session: Session | null
       return receiveDollar(ctx, input, d);
     case "ai:method":
       return receivePayment(ctx, input, d);
+    case "ai:transfer":
+      return receiveTransferAnswer(ctx, id, text, d);
   }
   return false;
 }
@@ -601,7 +604,13 @@ async function confirmDelete(ctx: Ctx, id: string | undefined, text: string, d: 
  * medio de pago del usuario. Un gasto solo se guarda directo; varios, se confirman.
  * Devuelve false si ninguno era válido.
  */
-export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading?: string, receiptId?: string) {
+export async function proposeExpenses(
+  ctx: Ctx,
+  parsed: ParsedExpense[],
+  heading?: string,
+  receiptId?: string,
+  transferTo?: string,
+) {
   const [cats, sources, fallbackMethod] = await Promise.all([
     listCategories(ctx.userId),
     listPaymentSources(ctx.userId),
@@ -634,16 +643,60 @@ export async function proposeExpenses(ctx: Ctx, parsed: ParsedExpense[], heading
     });
   }
   if (pending.length === 0) return false;
-  return showProposal(ctx, pending, heading, receiptId);
+  return showProposal(ctx, pending, heading, receiptId, transferTo);
+}
+
+/**
+ * Un comprobante de transferencia: antes de proponerlo, "¿Esto es un gasto?" (decisión de Felipe: una
+ * transferencia puede ser un préstamo, una devolución, plata para otro...). Si contesta otra cosa
+ * escrita, la pregunta se deja y el mensaje se procesa como cualquiera.
+ */
+export async function askTransferIsExpense(ctx: Ctx, expenses: ParsedExpense[], heading: string, receiptId: string, to: string | null) {
+  const d: Draft = { transferExpenses: expenses, heading, receiptId, transferTo: to ?? "" };
+  await setSession(ctx.phone, "ai:transfer", d);
+  const e = expenses[0];
+  const what = [`*${formatMoney(e.amount, e.currency)}*`, to ? `a ${to}` : null, e.date === todayISO() ? null : `el ${shortDate(e.date)}`]
+    .filter(Boolean)
+    .join(" ");
+  await ctx.out.buttons(`💸 Es una transferencia de ${what}.
+¿Es un gasto? Si es un préstamo o plata que no gastaste, no la cargo.`, [
+    { id: "transfer:yes", title: "✅ Sí, es un gasto" },
+    { id: "transfer:no", title: "❌ No" },
+  ]);
+  return true;
+}
+
+async function receiveTransferAnswer(ctx: Ctx, id: string | undefined, text: string, d: Draft) {
+  const yes = id === "transfer:yes" || ["si", "sip", "dale", "ok", "obvio", "es un gasto"].includes(text);
+  const no = id === "transfer:no" || ["no", "nop", "cancelar", "nada"].includes(text);
+  if (!yes && !no) {
+    // Escribió otra cosa: se deja la pregunta y el mensaje sigue como uno nuevo
+    await clearSession(ctx.phone);
+    return false;
+  }
+  if (no || !d.transferExpenses?.length) {
+    await clearSession(ctx.phone);
+    await ctx.out.text(`Dale, no la cargo 👌${BACK}`);
+    return true;
+  }
+  if (await proposeExpenses(ctx, d.transferExpenses, d.heading, d.receiptId, d.transferTo)) return true;
+  await clearSession(ctx.phone);
+  await ctx.out.text(`No pude armar el gasto de esa transferencia 😕 Escribímelo (ej: _"transferencia 7100"_).${BACK}`);
+  return true;
 }
 
 /**
  * Si alguno quedó sin categoría, primero pregunta cuál (sin categoría no se puede guardar).
  * Un solo gasto se guarda directo (con Deshacer); varios muestran Guardar todos / Cancelar.
  */
-async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string, receiptId?: string) {
+async function showProposal(ctx: Ctx, pending: PendingExpense[], heading?: string, receiptId?: string, transferTo?: string) {
   // El borrador lleva el ticket (si hay) y el título por todas las preguntas hasta guardar
-  const d: Draft = { pending, ...(receiptId ? { receiptId } : {}), ...(heading ? { heading } : {}) };
+  const d: Draft = {
+    pending,
+    ...(receiptId ? { receiptId } : {}),
+    ...(heading ? { heading } : {}),
+    ...(transferTo !== undefined ? { transferTo } : {}),
+  };
   if (pending.some((p) => !p.categoryId)) return askMissing(ctx, d);
   return finishPending(ctx, d, false, heading);
 }
@@ -663,7 +716,7 @@ async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
     "",
     pending.some((p) => p.guessedMethod) ? "_El medio de pago lo supuse: revisalo._" : "",
     pending.some((p) => p.currency === "USD" && p.paymentMethod === "CREDIT") ? "_Con crédito va al dólar oficial, como lo cobra el banco._" : "",
-    d.receiptId ? await merchantNote(ctx.userId, d.receiptId, pending[pending.length - 1]) : "",
+    d.receiptId ? await merchantNote(ctx.userId, d.receiptId, pending[pending.length - 1], d.transferTo) : "",
     "_Si algo está mal, escribime la corrección (ej: \"era con efectivo\")._",
   ]
     .filter(Boolean)
@@ -677,13 +730,27 @@ async function confirmPending(ctx: Ctx, d: Draft, heading?: string) {
 
 /**
  * Qué pasa con el comercio del ticket al guardar (se anota su CUIT con la categoría, ver
- * merchants.ts). Con varios gastos de un ticket, queda la categoría del último.
+ * merchants.ts). Con varios gastos de un ticket, queda la categoría del último. En una transferencia
+ * (`transferTo`), el "comercio" es la persona que la recibe, por su CUIL.
  */
-async function merchantNote(userId: string, receiptId: string, p: PendingExpense) {
+async function merchantNote(userId: string, receiptId: string, p: PendingExpense, transferTo?: string) {
   const merchant = await receiptMerchant(userId, receiptId);
-  if (!merchant) return "🏪 _No pude leer el CUIT del comercio, así que no lo voy a recordar._";
-  if (merchant.category?.id === p.categoryId) return "🏪 _La categoría es la de la última vez en este comercio._";
+  const transfer = transferTo !== undefined;
+  if (!merchant) {
+    return transfer
+      ? "👤 _No pude leer el CUIL de quien la recibe, así que no lo voy a recordar._"
+      : "🏪 _No pude leer el CUIT del comercio, así que no lo voy a recordar._";
+  }
   const cuit = formatCuit(merchant.cuit);
+  if (transfer) {
+    const who = transferTo || `CUIL ${cuit}`;
+    if (merchant.category?.id === p.categoryId) return `👤 _La categoría es la de la última transferencia a ${who}._`;
+    if (merchant.category) {
+      return `👤 _Las transferencias a ${who} estaban en ${label(merchant.category)}: las próximas van a venir con ${p.categoryLabel}._`;
+    }
+    return `👤 _Recuerdo a ${who} (CUIL ${cuit}) en ${p.categoryLabel}: las próximas transferencias van a venir con esa categoría._`;
+  }
+  if (merchant.category?.id === p.categoryId) return "🏪 _La categoría es la de la última vez en este comercio._";
   if (merchant.category) {
     return `🏪 _Este comercio (CUIT ${cuit}) estaba en ${label(merchant.category)}: lo paso a ${p.categoryLabel} para sus próximos tickets._`;
   }
@@ -753,7 +820,8 @@ async function receiveMissing(ctx: Ctx, input: Input, d: Draft): Promise<boolean
       return true;
     }
     pending[i] = { ...pending[i], categoryId: cat.id, categoryLabel: label(cat) };
-    return showProposal(ctx, pending);
+    // Con el resto del borrador: si no, se perdía el ticket (y no quedaba con el gasto)
+    return showPendingAgain(ctx, { ...d, pending, page: undefined });
   }
 
   if (!d.missing?.length || pending.length === 0) return false;
@@ -1099,7 +1167,7 @@ async function confirmAI(ctx: Ctx, id: string | undefined, text: string, rawText
         ...(one?.learnWord ? { learnWord: one.learnWord } : {}),
         ...(one?.knownWord ? { knownWord: one.knownWord } : {}),
       }));
-      if (withTags && (await proposeExpenses(ctx, withTags, "Corregido 👇", d.receiptId))) return true;
+      if (withTags && (await proposeExpenses(ctx, withTags, "Corregido 👇", d.receiptId, d.transferTo))) return true;
       if (corrected?.intent === "charla") reply = (await answerChat(rawText)) ?? undefined;
     }
     const again = `¿${pending.length === 1 ? "Lo guardo así" : "Los guardo así"}?`;
