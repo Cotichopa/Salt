@@ -265,6 +265,52 @@ Salt ya corre en el servidor, en **salt.estilo.ar**. Dos funciones nuevas, en es
      ahora recibe la acción). Tiene que quedar al menos una. Ojo: `db:demo` espera algunos nombres
      (Hogar, Supermercado...).
 
+## Hecho: tercer test de seguridad (pentest) (2026-11-16)
+
+Test de penetración desde dos lados: **caja negra** (como un desconocido, solo con la dirección) y **caja
+blanca** (leyendo el código). Se montó una **copia aislada** para no tocar nada: base `salt_pentest` aparte,
+build de producción en el puerto 3101 solo en localhost, y los secretos que salen a internet (WhatsApp,
+Anthropic, Gmail) reemplazados por falsos. Se cargaron cuentas de mentira (admin, demo, "víctima" con datos
+propios y un superadmin) y se dispararon los ataques con `curl`/Node contra el servidor real. También se
+miraron los encabezados del dominio de verdad (`salt.estilo.ar`, atrás del nginx de la casa).
+
+**Veredicto: nada crítico ni alto.** Lo que se probó a romper y aguantó:
+- **Cookie de sesión (JWT):** no se pudo forjar como SUPERADMIN por `alg:none`, ni manipulando el payload con
+  la firma vieja, ni con secretos débiles. Además el rol se re-lee de la base en cada pedido (`dal.ts`), no del token.
+- **IDOR:** con la cuenta `demo` se atacaron los ids reales de otra cuenta (borrar/editar su gasto, categoría,
+  tarjeta, presupuesto, etiqueta, leer su ticket en `/api/tickets/<id>`): todo rechazado, nada cambió. Cada
+  servicio filtra por `userId` en el `where`.
+- **Escalada de privilegios:** un MEMBER llamando a mano las acciones de admin/superadmin → todas redirigen a
+  `/dashboard` sin ejecutarse. Un ADMIN no puede tocar ni borrar al superadmin (`canManage`), ni auto-ascenderse
+  (zod rechaza el rol `SUPERADMIN` inyectado), ni usar "ver como" (403).
+- **"Ver como" abusado:** un MEMBER que se pone a mano la cookie `view-as` no ve nada ajeno (`getViewedAccount`
+  exige SUPERADMIN).
+- **CSRF:** toda mutación es Server Action; Next rechaza (sin ejecutar) cualquier `Origin` que no coincida con el
+  Host, y la cookie es `SameSite=lax`.
+- **Login:** bloqueo a los 5 intentos (también con la clave correcta y para emails que no existen), tiempos
+  constantes (no filtra por timing), link de recuperación de un solo uso.
+- **Saltear el proxy:** ~30 trucos de rutas y encabezados internos de Next (incluido el `x-middleware-subrequest`
+  del CVE-2025-29927): ninguno llegó a una página privada.
+- **Inyección:** SQL todo por Prisma (la única cruda es `pg_database_size()`, sin entrada); XSS cortado por React
+  + CSP; los tickets se re-codifican con sharp y el tipo lo fija el servidor (no se puede guardar un HTML con script).
+
+Se arreglaron (un test, cuatro cambios; commiteados y subidos):
+- **Redirects relativos en `/api`** (`auth/logout` y `ver-como`): armaban el `Location` con el host del pedido, que
+  detrás del nginx filtraba la dirección interna de la VM (`0.0.0.0:3001`) y dejaba el redirect roto. Ahora van con
+  ruta relativa (el navegador la resuelve contra el dominio real).
+- **Tope de 72 en las contraseñas** (`passwordRule` en `validators.ts`): bcrypt solo usa los primeros 72 bytes, así
+  el límite es honesto y no se aceptan cuerpos enormes. El login con contraseñas viejas no se afecta.
+- **Sin `X-Powered-By: Next.js`** (`poweredByHeader: false` en `next.config.ts`).
+- **`deleteBudget` ya no miente:** antes decía "Presupuesto eliminado" siempre; ahora `removeBudget` devuelve
+  cuántos borró y, si no había, el mensaje lo dice (cosmético, no de seguridad).
+
+**Observación de infraestructura (no de Salt):** `salt.estilo.ar` comparte IP, nginx y **certificado** con otros
+subdominios de la casa (`oficina`, `contable`, `firma`, `soporte`...). Salt está aislado en su VM, pero la superficie
+del frente es compartida. Por eso al HSTS de Salt **no** conviene ponerle `includeSubDomains` (afectaría a los otros).
+
+**Sin probar** (hacer después de actualizar el servidor): confirmar en `salt.estilo.ar` que `/api/auth/logout` sin
+sesión redirige a `/login` (relativo) y que ya no aparece `X-Powered-By`.
+
 ## Hecho: segundo análisis de seguridad (2026-11-10)
 
 Con las skills de `mukul975/Anthropic-Cybersecurity-Skills` (instaladas en `.agents/skills/`, fuera de git): control de
